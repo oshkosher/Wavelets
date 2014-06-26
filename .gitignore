@@ -1,0 +1,13 @@
+*~
+*.jpg
+*.png
+*.data
+*.o
+*.obj
+*.exp
+*.lib
+*.pdb
+.senddevel
+*.class
+haar
+test_haar_cpu
