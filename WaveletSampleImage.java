@@ -24,7 +24,10 @@ import java.text.*;
 import java.util.*;
 import javax.imageio.*;
 
+
 public class WaveletSampleImage {
+
+  private static final boolean VERBOSE_OUTPUT = false;
 
   static class Data {
     float[] data;
@@ -118,6 +121,10 @@ public class WaveletSampleImage {
   /* Reads a JPEG image, convert to grayscale text data. */
   public static void imageToData(String inputFile, String outputFile,
                                  boolean textOutput) {
+    if (VERBOSE_OUTPUT) {
+      System.out.println("Read image");
+      System.out.flush();
+    }
     BufferedImage image;
     try {
       image = ImageIO.read(new File(inputFile));
@@ -127,6 +134,10 @@ public class WaveletSampleImage {
     }
 
     // crop image to be square
+    if (VERBOSE_OUTPUT) {
+      System.out.println("Crop");
+      System.out.flush();
+    }
     int size = image.getWidth();
     if (image.getWidth() > image.getHeight()) {
       size = image.getHeight();
@@ -142,6 +153,10 @@ public class WaveletSampleImage {
     }
 
     // rescale the image the to next smaller power of 2
+    if (VERBOSE_OUTPUT) {
+      System.out.println("Rescale");
+      System.out.flush();
+    }
     int newSize = Integer.highestOneBit(size);
     float scaleFactor = (float)newSize / size;
     // System.out.printf("Rescale %d to %d: %f\n", size, newSize, scaleFactor);
@@ -171,9 +186,16 @@ public class WaveletSampleImage {
     }
 
     // convert to grayscale
-    ColorSpace cs = ColorSpace.getInstance(ColorSpace.CS_GRAY);  
-    ColorConvertOp op = new ColorConvertOp(cs, null);  
-    image = op.filter(image, null);  
+    if (VERBOSE_OUTPUT) {
+      System.out.println("Convert to grayscale");
+      System.out.flush();
+    }
+    BufferedImage grayImage = new BufferedImage
+      (newSize, newSize, BufferedImage.TYPE_BYTE_GRAY);
+    Graphics g = grayImage.getGraphics();
+    g.drawImage(image, 0, 0, null);
+    g.dispose();
+    image = grayImage;
 
     /*
     try {
@@ -183,6 +205,10 @@ public class WaveletSampleImage {
     }
     */
 
+    if (VERBOSE_OUTPUT) {
+      System.out.println("Write data");
+      System.out.flush();
+    }
     try {
       long startNano = System.nanoTime();
       if (textOutput)
@@ -283,7 +309,6 @@ public class WaveletSampleImage {
     for (int y=0; y < height; y++) {
       for (int x=0; x < width; x++) {
         int color = (int)(data[i++] * 255 + .5);
-        // int color = (int)(data[i++] + .5);
         color = color | (color  << 8) | (color  << 16);
         image.setRGB(x, y, color);
       }
@@ -378,7 +403,8 @@ public class WaveletSampleImage {
 
     data.width = reverseBytes(in.readInt());
     data.height = reverseBytes(in.readInt());
-    System.out.printf("binary size %d x %d\n", data.width, data.height);
+    if (VERBOSE_OUTPUT)
+      System.out.printf("binary size %d x %d\n", data.width, data.height);
     int size = data.width * data.height;
     data.data = new float[size];
     for (int i=0; i < size; i++) {
