@@ -11,3 +11,5 @@
 *.class
 haar
 test_haar_cpu
+haar.exe
+test_haar_cpu.exe
