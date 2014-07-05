@@ -84,8 +84,9 @@ int main(int argc, char **argv) {
   memcpy(data_gpu, data_cpu, sizeof(float)*height*width);
 
   // run the CPU version of the algorithm
+  printf("CPU: "); fflush(stdout);
   elapsed = haar_not_lifting_2d(size, data_cpu, inverse, stepCount);
-  printf("CPU: %.6f ms\n", elapsed);
+  printf("%.6f ms\n", elapsed);
 
   // run the GPU version of the algorithm
   elapsed = haar_not_lifting_2d_cuda(size, data_gpu, inverse, stepCount);

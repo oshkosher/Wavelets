@@ -94,25 +94,28 @@ float elapsed(cudaEvent_t ev1, cudaEvent_t ev2) {
 float haar_not_lifting_2d_cuda
 (int size, float *data, bool inverse, int stepCount) {
 
-  float *dummy;
-  CUCHECK(cudaMalloc((void**) &dummy, 100));
-
   int maxSteps = dwtMaximumSteps(size);
   if (stepCount < 1 || stepCount > maxSteps)
     stepCount = maxSteps;
 
   // create timers
-  cudaEvent_t startEvent, eventCopyTo, eventCopyFrom,
-    eventTransform1, eventTransform2,
-    eventTranspose1, eventTranspose2;
+  cudaEvent_t eventStart, eventEnd, eventCopyToStart, eventCopyToEnd,
+    eventCopyFromStart, eventCopyFromEnd;
+  cudaEvent_t *transformEvents, *transposeEvents;
+  transformEvents = new cudaEvent_t[stepCount*4];
+  transposeEvents = new cudaEvent_t[stepCount*4];
 
-  CUCHECK(cudaEventCreate(&startEvent));
-  CUCHECK(cudaEventCreate(&eventCopyTo));
-  CUCHECK(cudaEventCreate(&eventTransform1));
-  CUCHECK(cudaEventCreate(&eventTransform2));
-  CUCHECK(cudaEventCreate(&eventTranspose1));
-  CUCHECK(cudaEventCreate(&eventTranspose2));
-  CUCHECK(cudaEventCreate(&eventCopyFrom));
+  CUCHECK(cudaEventCreate(&eventStart));
+  CUCHECK(cudaEventCreate(&eventEnd));
+  CUCHECK(cudaEventCreate(&eventCopyToStart));
+  CUCHECK(cudaEventCreate(&eventCopyToEnd));
+  CUCHECK(cudaEventCreate(&eventCopyFromStart));
+  CUCHECK(cudaEventCreate(&eventCopyFromEnd));
+
+  for (int i=0; i < stepCount*4; i++) {
+    CUCHECK(cudaEventCreate(transformEvents+i));
+    CUCHECK(cudaEventCreate(transposeEvents+i));
+  }
 
   // allocate memory for the data and the temp space on the GPU
   float *data_dev, *temp_dev;
@@ -126,36 +129,45 @@ float haar_not_lifting_2d_cuda
   CUCHECK(cudaStreamCreate(&stream));
 
   // start the timer
-  double startTimeCPU = NixTimer::time();
-  CUCHECK(cudaEventRecord(startEvent, stream));
+  // double startTimeCPU = NixTimer::time();
+  CUCHECK(cudaEventRecord(eventStart, stream));
 
   // copy the data to the GPU
   // CUCHECK(cudaMemcpy(data_dev, data, totalBytes, cudaMemcpyHostToDevice));
+  CUCHECK(cudaEventRecord(eventCopyToStart, stream));
   CUCHECK(cudaMemcpyAsync(data_dev, data, totalBytes, cudaMemcpyHostToDevice,
                           stream));
-  CUCHECK(cudaEventRecord(eventCopyTo, stream));
+  CUCHECK(cudaEventRecord(eventCopyToEnd, stream));
 
   int transformLength;
 
   if (inverse) {
 
     // inverse
-    transformLength = 2;
+    transformLength = size >> (stepCount - 1);
     for (int i=0; i < stepCount; i++) {
 
+      // transpose the matrix into temp_dev
+      CUCHECK(cudaEventRecord(transposeEvents[i*4], stream));
       gpuTranspose(size, transformLength, data_dev, temp_dev, stream);
-      CUCHECK(cudaEventRecord(eventTranspose1, stream));
+      CUCHECK(cudaEventRecord(transposeEvents[i*4+1], stream));
 
+      // transform columns in temp_dev
+      CUCHECK(cudaEventRecord(transformEvents[i*4], stream));
       haar_inv_not_lifting_2d_kernel<<<transformLength, BLOCK_SIZE, 0, stream>>>
         (size, transformLength, temp_dev, data_dev);
-      CUCHECK(cudaEventRecord(eventTransform1, stream));
+      CUCHECK(cudaEventRecord(transformEvents[i*4+1], stream));
 
+      // transpose the matrix into data_dev
+      CUCHECK(cudaEventRecord(transposeEvents[i*4+2], stream));
       gpuTranspose(size, transformLength, temp_dev, data_dev, stream);
-      CUCHECK(cudaEventRecord(eventTranspose2, stream));
+      CUCHECK(cudaEventRecord(transposeEvents[i*4+3], stream));
     
+      // transform rows in data_dev
+      CUCHECK(cudaEventRecord(transformEvents[i*4+2], stream));
       haar_inv_not_lifting_2d_kernel<<<transformLength, BLOCK_SIZE, 0, stream>>>
         (size, transformLength, data_dev, temp_dev);
-      CUCHECK(cudaEventRecord(eventTransform2, stream));
+      CUCHECK(cudaEventRecord(transformEvents[i*4+3], stream));
 
       transformLength <<= 1;
     }
@@ -165,26 +177,28 @@ float haar_not_lifting_2d_cuda
     // forward
     transformLength = size;
     for (int i=0; i < stepCount; i++) {
-
-      printf("%d of %d\n", transformLength, size);
       
       // do the wavelet transform on rows
+      CUCHECK(cudaEventRecord(transformEvents[i*4], stream));
       haar_not_lifting_2d_kernel<<<transformLength, BLOCK_SIZE, 0, stream>>>
         (size, transformLength, data_dev, temp_dev);
-      CUCHECK(cudaEventRecord(eventTransform1, stream));
+      CUCHECK(cudaEventRecord(transformEvents[i*4+1], stream));
     
       // transpose the matrix into temp_dev
+      CUCHECK(cudaEventRecord(transposeEvents[i*4], stream));
       gpuTranspose(size, transformLength, data_dev, temp_dev, stream);
-      CUCHECK(cudaEventRecord(eventTranspose1, stream));
+      CUCHECK(cudaEventRecord(transposeEvents[i*4+1], stream));
     
       // do the wavelet transform on columns
+      CUCHECK(cudaEventRecord(transformEvents[i*4+2], stream));
       haar_not_lifting_2d_kernel<<<transformLength, BLOCK_SIZE, 0, stream>>>
         (size, transformLength, temp_dev, data_dev);
-      CUCHECK(cudaEventRecord(eventTransform2, stream));
+      CUCHECK(cudaEventRecord(transformEvents[i*4+3], stream));
     
       // transpose the matrix back into data_dev
+      CUCHECK(cudaEventRecord(transposeEvents[i*4+2], stream));
       gpuTranspose(size, transformLength, temp_dev, data_dev, stream);
-      CUCHECK(cudaEventRecord(eventTranspose2, stream));
+      CUCHECK(cudaEventRecord(transposeEvents[i*4+3], stream));
 
       transformLength >>= 1;
     }
@@ -192,51 +206,55 @@ float haar_not_lifting_2d_cuda
   }
 
   // copy the data back from the GPU
+  CUCHECK(cudaEventRecord(eventCopyFromStart, stream));
   CUCHECK(cudaMemcpyAsync(data, data_dev, totalBytes, cudaMemcpyDeviceToHost,
                           stream));
-  double endTimeCPU = NixTimer::time();
-  printf("Time elapsed during GPU processing: %.6f ms\n",
-         1000*(endTimeCPU - startTimeCPU));
+  CUCHECK(cudaEventRecord(eventCopyFromEnd, stream));
+
+  // double endTimeCPU = NixTimer::time();
+  // printf("Time elapsed during GPU processing: %.6f ms\n",
+  // 1000*(endTimeCPU - startTimeCPU));
 
   // stop the timer
-  CUCHECK(cudaEventRecord(eventCopyFrom, stream));
-  CUCHECK(cudaEventSynchronize(eventCopyFrom));
+  CUCHECK(cudaEventRecord(eventEnd, stream));
+  CUCHECK(cudaEventSynchronize(eventEnd));
 
   // check for errors
   CUCHECK(cudaGetLastError());
 
   printf("Times:\n");
-  printf("  Copy data to GPU: %.6f ms\n", elapsed(startEvent, eventCopyTo));
-  cudaEvent_t lastEvent;
-  if (inverse) {
-    printf("  Transpose: %.6f ms\n", elapsed(eventCopyTo, eventTranspose1));
-    printf("  Transform: %.6f ms\n", elapsed(eventTranspose1, eventTransform1));
-    printf("  Transpose: %.6f ms\n", elapsed(eventTransform1, eventTranspose2));
-    printf("  Transform: %.6f ms\n", elapsed(eventTranspose2, eventTransform2));
-    lastEvent = eventTransform2;
-  } else {
-    printf("  Transform: %.6f ms\n", elapsed(eventCopyTo, eventTransform1));
-    printf("  Transpose: %.6f ms\n", elapsed(eventTransform1, eventTranspose1));
-    printf("  Transform: %.6f ms\n", elapsed(eventTranspose1, eventTransform2));
-    printf("  Transpose: %.6f ms\n", elapsed(eventTransform2, eventTranspose2));
-    lastEvent = eventTranspose2;
+  float transformTime = 0, transposeTime = 0;
+  for (int i=0; i < stepCount*2; i++) {
+    transformTime += elapsed(transformEvents[i*2], transformEvents[i*2+1]);
+    transposeTime += elapsed(transposeEvents[i*2], transposeEvents[i*2+1]);
   }
-  printf("  Copy data from GPU: %.6f ms\n", elapsed(lastEvent, eventCopyFrom));
+
+  printf("  Copy data to GPU:   %9.3f ms\n", 
+         elapsed(eventCopyToStart, eventCopyToEnd));
+  printf("  Transform time:     %9.3f ms (%d calls)\n",
+         transformTime, stepCount*2);
+  printf("  Transpose time:     %9.3f ms (%d calls)\n", 
+         transposeTime, stepCount*2);
+  printf("  Copy data from GPU: %9.3f ms\n", 
+         elapsed(eventCopyFromStart, eventCopyFromEnd));
 
   // deallocate GPU memory
   CUCHECK(cudaFree(data_dev));
   CUCHECK(cudaFree(temp_dev));
 
-  float totalTime = elapsed(startEvent, eventCopyFrom);
+  float totalTime = elapsed(eventStart, eventEnd);
 
-  // deallocate timer event
-  CUCHECK(cudaEventDestroy(startEvent));
-  CUCHECK(cudaEventDestroy(eventCopyTo));
-  CUCHECK(cudaEventDestroy(eventTransform1));
-  CUCHECK(cudaEventDestroy(eventTransform2));
-  CUCHECK(cudaEventDestroy(eventTranspose1));
-  CUCHECK(cudaEventDestroy(eventTranspose2));
-  CUCHECK(cudaEventDestroy(eventCopyFrom));
+  // deallocate timer events
+  CUCHECK(cudaEventDestroy(eventStart));
+  CUCHECK(cudaEventDestroy(eventEnd));
+  CUCHECK(cudaEventDestroy(eventCopyToStart));
+  CUCHECK(cudaEventDestroy(eventCopyToEnd));
+  CUCHECK(cudaEventDestroy(eventCopyFromStart));
+  CUCHECK(cudaEventDestroy(eventCopyFromEnd));
+  for (int i=0; i < stepCount*4; i++) {
+    CUCHECK(cudaEventDestroy(transformEvents[i]));
+    CUCHECK(cudaEventDestroy(transposeEvents[i]));
+  }
 
   return totalTime;
 }
