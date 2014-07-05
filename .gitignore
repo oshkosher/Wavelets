@@ -11,5 +11,8 @@
 *.class
 haar
 test_haar_cpu
+normalize
 haar.exe
 test_haar_cpu.exe
+normalize.exe
+*.stackdump

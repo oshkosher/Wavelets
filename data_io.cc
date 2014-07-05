@@ -47,7 +47,7 @@ static bool readBinaryDataFile(const char *filename, float **data,
     return false;
   }
 
-  *data = new float[cells];
+  *data = new float[(int)cells];
   if (!*data) {
     fprintf(stderr, "Out of memory allocating %d x %d image\n",
             *width, *height);
@@ -55,7 +55,7 @@ static bool readBinaryDataFile(const char *filename, float **data,
     return false;
   }
 
-  fread(*data, 4, cells, inf);
+  fread(*data, 4, (int)cells, inf);
   fclose(inf);
 
   return true;

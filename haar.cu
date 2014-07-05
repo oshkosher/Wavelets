@@ -15,17 +15,18 @@ bool similar(float a, float b) {
 void printHelp() {
   fprintf(stderr, 
           "\n"
-          "  haar [-inverse] [-text] <input datafile> <output datafile>\n"
+          "  haar [-inverse] [-text] <input datafile> <output datafile> [steps]\n"
           "  Do a Haar discrete wavelet transform.\n"
           "    -inverse : invert the transform\n"
           "    -text : output data in text format rather than binary\n"
+          "  By default, one transformation step will be done.\n"
           "\n");
   exit(1);
 }
 
 
 int main(int argc, char **argv) {
-  if (argc < 3 || argc > 4) printHelp();
+  if (argc < 3) printHelp();
 
   bool inverse = false, textOutput = false;
   int argNo = 1;
@@ -50,6 +51,17 @@ int main(int argc, char **argv) {
   // read the input file
   const char *inputFilename = argv[argNo++];
   const char *outputFilename = argv[argNo++];
+  int stepCount = 1;
+
+  if (argNo < argc) {
+    const char *stepsArg = argv[argNo++];
+    if (1 != sscanf(stepsArg, "%d", &stepCount)) {
+      printf("Invalid step count: \"%s\"\n", stepsArg);
+      return 1;
+    }
+  }
+  if (argNo < argc) printHelp();
+
   float *data_cpu, *data_gpu, elapsed;
   int width, height;
   printf("Reading %s...", inputFilename);
@@ -58,30 +70,39 @@ int main(int argc, char **argv) {
   printf("%d x %d\n", width, height);
   fflush(stdout);
 
+  if (width != height) {
+    printf("Error: only square data is currently supported.\n");
+    return 1;
+  }
+
+  int size = width;
+  
+  CUCHECK(cudaSetDevice(0));
+
   // make a copy of the data for the GPU to use
   data_gpu = new float[height*width];
   memcpy(data_gpu, data_cpu, sizeof(float)*height*width);
 
   // run the CPU version of the algorithm
-  elapsed = haar_not_lifting_2d(width, height, data_cpu, inverse);
+  elapsed = haar_not_lifting_2d(size, data_cpu, inverse, stepCount);
   printf("CPU: %.6f ms\n", elapsed);
 
   // run the GPU version of the algorithm
-  elapsed = haar_not_lifting_2d_cuda(width, height, data_gpu, inverse);
+  elapsed = haar_not_lifting_2d_cuda(size, data_gpu, inverse, stepCount);
   printf("CUDA: %.6f ms\n", elapsed);
 
   double totalErr = 0;
-  for (int i=0; i < height*width; i++) {
+  for (int i=0; i < size*size; i++) {
     totalErr += fabs(data_cpu[i] - data_gpu[i]);
   }
   
-  double averageErr = totalErr / (width*height);
+  double averageErr = totalErr / (size*size);
 
   if (averageErr < 0.000001) {
 
     // if the CPU version and the GPU version produced similar results,
     // output the requested file.
-    writeDataFile(outputFilename, data_gpu, width, height, !textOutput);
+    writeDataFile(outputFilename, data_gpu, size, size, !textOutput);
     printf("Wrote %s\n", outputFilename);
 
   } else {
@@ -98,8 +119,8 @@ int main(int argc, char **argv) {
       printMatrix(width, height, data_gpu);
     */
     
-    writeDataFile("err_cpu.data", data_cpu, width, height, !textOutput);
-    writeDataFile("err_gpu.data", data_gpu, width, height, !textOutput);
+    writeDataFile("err_cpu.data", data_cpu, size, size, !textOutput);
+    writeDataFile("err_gpu.data", data_gpu, size, size, !textOutput);
     printf("Wrote err_cpu.data and err_gpu.data\n");
   }
 

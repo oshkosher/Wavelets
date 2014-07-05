@@ -5,22 +5,44 @@
   Simple implementation of a discrete wavelet transform using the CPU.
 */
 
-// transpose a square matrix in place
-void transpose_inplace(int width, int height, float data[]);
+// Returns the maximum number of steps a DWT can take for a given input length
+// Is essentially ceil(log2(length))
+int dwtMaximumSteps(int length);
+
+
+// Transpose a square matrix.
+void transpose_square(int size, float data[]);
+
+/*
+  Transpose an upper-left square of a square matrix.
+
+  transpose_square_submatrix(4, 2, data):  
+    a b . .       a c . .
+    c d . .   ->  b d . .
+    . . . .       . . . .
+    . . . .       . . . .
+
+    All "." cells would be unchanged.
+*/
+void transpose_square_submatrix(int total_size, int submatrix_size,
+                                float data[]);
 
 // print a matrix (for debugging purposes)
 void print_matrix(int width, int height, float *data);
 
 // Haar wavelet filter on one row of data, and the inverse.
-void haar_not_lifting(int length, float data[]);
-void haar_inv_not_lifting(int length, float data[]);
+// stepCount is the number of passes over the data. Values <= 0 will
+// result in ceil(log2(data)) passes.
+void haar_not_lifting(int length, float data[], bool inverse = false,
+                      int stepCount = -1);
+// void haar_inv_not_lifting(int length, float data[], int stepCount = -1);
 
-// Haar wavelet filter on multiple rows of data
-float haar_not_lifting_2d(int width, int height, float *data,
-                          bool inverse = false);
+// Haar wavelet filter on a 2-d square of data
+float haar_not_lifting_2d(int size, float *data,
+                          bool inverse = false, int stepCount = -1);
 
 // Lifting implementation (not tested much)
-void haar_lifting(int length, float data[]);
+void haar_lifting(int length, float data[], int stepCount = -1);
 
 
 

@@ -34,8 +34,49 @@ public class WaveletSampleImage {
   static class Matrix {
     float[] data;
     int width, height;
+
+    float get(int x, int y) {
+      return data[y*width + x];
+    }
   }
 
+  interface MatrixToGrayscale {
+    int getRGB(float value);
+  }
+
+  static class MatrixToGrayscaleFlat implements MatrixToGrayscale {
+    public int getRGB(float value) {
+      int color = (int)(value * 255);
+      color = color & 0xff;
+      return color | (color << 8) | (color << 16);
+    }
+  }
+
+
+  static class MatrixToGrayscaleUniform implements MatrixToGrayscale {
+    float scale, offset;
+
+    MatrixToGrayscaleUniform(Matrix m) {
+      float min, max;
+      min = max = m.data[0];
+      for (int y=0; y < m.height; y++) {
+        for (int x=0; x < m.width; x++) {
+          float v = m.get(x, y);
+          min = Math.min(min, v);
+          max = Math.max(max, v);
+        }
+      }
+      offset = -min;
+      scale = 255 / (max-min);
+    }
+
+    public int getRGB(float value) {
+      int gray = (int) ((value + offset) * scale);
+      return gray | (gray << 8) | (gray << 16);
+    }
+  }
+    
+  
 
   public static void main(String args[]) {
     if (args.length < 1) printHelp();
@@ -219,28 +260,26 @@ public class WaveletSampleImage {
 
   /* Read a text data file, convert to a grayscale JPEG. */
   public static void matrixToImage(String inputFile, String outputFile) {
-    float data[];
-    int width, height;
+    Matrix m = null;
 
     try {
-      Matrix rawData = readMatrix(inputFile);
-      data = rawData.data;
-      width = rawData.width;
-      height = rawData.height;
+      m = readMatrix(inputFile);
     } catch (IOException e) {
       System.err.println("Error reading \"" + inputFile + "\": " + e);
       return;
     }
 
+    // MatrixToGrayscale toGray = new MatrixToGrayscaleUniform(m);
+    MatrixToGrayscale toGray = new MatrixToGrayscaleFlat();
+
     // save the data as a grayscale image
     BufferedImage image = new BufferedImage
-      (width, height, BufferedImage.TYPE_BYTE_GRAY);
+      (m.width, m.height, BufferedImage.TYPE_BYTE_GRAY);
 
     int i = 0;
-    for (int y=0; y < height; y++) {
-      for (int x=0; x < width; x++) {
-        int color = (int)(data[i++] * 255 + .5);
-        color = color | (color  << 8) | (color  << 16);
+    for (int y=0; y < m.height; y++) {
+      for (int x=0; x < m.width; x++) {
+        int color = toGray.getRGB(m.get(x, y));
         image.setRGB(x, y, color);
       }
     }
@@ -252,7 +291,7 @@ public class WaveletSampleImage {
     }
 
     System.out.printf("%d x %d image written to \"%s\".\n",
-                      width, height, outputFile);
+                      m.width, m.height, outputFile);
   }
 
 
