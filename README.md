@@ -29,31 +29,26 @@ There are two main tools:
    
    For example, to convert an image into a data file:
 
-    % java WaveletSampleImage Images/squirrel.jpg
-     
-     output:
-       2048 x 2048 grayscale data written to "Images/squirrel.data" in 0.535 sec
+    % java WaveletSampleImage Images/haleakala_orig.jpg
+    2048 x 2048 grayscale data written to "Images/haleakala_orig.data" in 0.444 sec
 
    To convert the data file back to an image:
 
-     % java WaveletSampleImage Images/squirrel.data squirrel2.jpg
+    % java WaveletSampleImage Images/haleakala_orig.data haleakala2.jpg
+    2048 x 2048 image written to "haleakala2.jpg".
 
-     output:
-       binary size 2048 x 2048
-       2048 x 2048 image written to "squirrel2.jpg".
-
-   The data files are in a binary format by default. Add the command
-   line parameter "-text" to generate text files. See data_io.h for
-   format details.
+   By default, the data files are in a binary format for best
+   performance.  Add the command line parameter "-text" to generate
+   text files. See data_io.h for format details.
    
 2) haar.cu
 
    This implements the Haar discrete wavelet transform on a 2-d data file.
-   (or at least some broken version of the transform; it inverts correctly,
-   but I don't know if it's doing the transform correctly).
    Give it an input data file and an output data file, and it performs
    the 2-d transform. Add the "-inverse" command line flag and it performs
-   the inverse.
+   the inverse. By default it will just do a single step of the transform.
+   Add an integer argument after the filenames to specify a different number
+   of steps.
    
    It does every transform on the CPU and the GPU, and compares the
    timing and the results.  The implementations of each are in
@@ -61,24 +56,34 @@ There are two main tools:
    
    Example:
 
-    % ./haar squirrel.data squirrel2.data
-    Reading squirrel.data...2048 x 2048
-    CPU: 130.714783 ms
-    CUDA: 11.234272 ms
-    Wrote squirrel2.data
-   
-    % ./haar -inverse squirrel2.data squirrel3.data
-    Reading squirrel2.data...2048 x 2048
-    CPU: 132.840942 ms
-    CUDA: 11.967424 ms
-    Wrote squirrel3.data
-   
-    % java WaveletSampleImage squirrel2.data
-    binary size 2048 x 2048
-    2048 x 2048 image written to "squirrel2.jpg".
+    % java WaveletSampleImage Images/hubble4096.jpg hubble.data
+    4096 x 4096 grayscale data written to "hubble.data" in 1.730 sec
     
-    % java WaveletSampleImage squirrel3.data
-    binary size 2048 x 2048
-    2048 x 2048 image written to "squirrel3.jpg".
-
+    % ./haar hubble.data hubble2.data 3
+    Reading hubble.data...4096 x 4096
+    CPU: 539.509521 ms
+    Times:
+      Copy data to GPU:      10.391 ms
+      Transform time:         7.597 ms (6 calls)
+      Transpose time:         6.776 ms (6 calls)
+      Copy data from GPU:    10.360 ms
+    CUDA: 35.140831 ms
+    Wrote hubble2.data
+    
+    % java WaveletSampleImage hubble2.data
+    4096 x 4096 image written to "hubble2.jpg".
+    
+    % ./haar -inverse hubble2.data hubble3.data 3
+    Reading hubble2.data...4096 x 4096
+    CPU: 516.411377 ms
+    Times:
+      Copy data to GPU:      10.412 ms
+      Transform time:         8.872 ms (6 calls)
+      Transpose time:         7.022 ms (6 calls)
+      Copy data from GPU:    10.511 ms
+    CUDA: 36.833439 ms
+    Wrote hubble3.data
+    
+    % java WaveletSampleImage hubble3.data
+    4096 x 4096 image written to "hubble3.jpg".
    
