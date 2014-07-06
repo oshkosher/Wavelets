@@ -80,7 +80,7 @@ int main(int argc, char **argv) {
   CUCHECK(cudaSetDevice(0));
 
   // make a copy of the data for the GPU to use
-  data_gpu = new float[height*width];
+  data_gpu = new float[size*size];
   memcpy(data_gpu, data_cpu, sizeof(float)*height*width);
 
   // run the CPU version of the algorithm
@@ -91,6 +91,20 @@ int main(int argc, char **argv) {
   // run the GPU version of the algorithm
   elapsed = haar_not_lifting_2d_cuda(size, data_gpu, inverse, stepCount);
   printf("CUDA: %.6f ms\n", elapsed);
+
+  /*
+    // try a variety of thread block sizes
+  float *data_gpu_copy = new float[size*size];
+  memcpy(data_gpu_copy, data_gpu, sizeof(float)*height*width);
+  for (int threadBlockSize = 32; threadBlockSize <= 1024; threadBlockSize*=2) {
+    printf("Thread block size: %d\n", threadBlockSize);
+    memcpy(data_gpu, data_gpu_copy, sizeof(float)*height*width);
+    elapsed = haar_not_lifting_2d_cuda(size, data_gpu, inverse, stepCount,
+                                       threadBlockSize);
+    printf("CUDA: %.6f ms\n", elapsed);
+  }
+  delete[] data_gpu_copy
+  */
 
   double totalErr = 0;
   for (int i=0; i < size*size; i++) {

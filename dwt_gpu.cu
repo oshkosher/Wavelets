@@ -4,7 +4,6 @@
 #include "cucheck.h"
 #include "nixtimer.h"
 
-#define BLOCK_SIZE 32
 #define SQRT2     1.4142135623730950488f
 #define INV_SQRT2 0.70710678118654752440f
 
@@ -92,7 +91,7 @@ float elapsed(cudaEvent_t ev1, cudaEvent_t ev2) {
 
 // Wrapper function that handles the CUDA details.
 float haar_not_lifting_2d_cuda
-(int size, float *data, bool inverse, int stepCount) {
+(int size, float *data, bool inverse, int stepCount, int threadBlockSize) {
 
   int maxSteps = dwtMaximumSteps(size);
   if (stepCount < 1 || stepCount > maxSteps)
@@ -154,7 +153,8 @@ float haar_not_lifting_2d_cuda
 
       // transform columns in temp_dev
       CUCHECK(cudaEventRecord(transformEvents[i*4], stream));
-      haar_inv_not_lifting_2d_kernel<<<transformLength, BLOCK_SIZE, 0, stream>>>
+      haar_inv_not_lifting_2d_kernel
+        <<<transformLength, threadBlockSize, 0, stream>>>
         (size, transformLength, temp_dev, data_dev);
       CUCHECK(cudaEventRecord(transformEvents[i*4+1], stream));
 
@@ -165,7 +165,8 @@ float haar_not_lifting_2d_cuda
     
       // transform rows in data_dev
       CUCHECK(cudaEventRecord(transformEvents[i*4+2], stream));
-      haar_inv_not_lifting_2d_kernel<<<transformLength, BLOCK_SIZE, 0, stream>>>
+      haar_inv_not_lifting_2d_kernel
+        <<<transformLength, threadBlockSize, 0, stream>>>
         (size, transformLength, data_dev, temp_dev);
       CUCHECK(cudaEventRecord(transformEvents[i*4+3], stream));
 
@@ -180,7 +181,8 @@ float haar_not_lifting_2d_cuda
       
       // do the wavelet transform on rows
       CUCHECK(cudaEventRecord(transformEvents[i*4], stream));
-      haar_not_lifting_2d_kernel<<<transformLength, BLOCK_SIZE, 0, stream>>>
+      haar_not_lifting_2d_kernel
+        <<<transformLength, threadBlockSize, 0, stream>>>
         (size, transformLength, data_dev, temp_dev);
       CUCHECK(cudaEventRecord(transformEvents[i*4+1], stream));
     
@@ -191,7 +193,8 @@ float haar_not_lifting_2d_cuda
     
       // do the wavelet transform on columns
       CUCHECK(cudaEventRecord(transformEvents[i*4+2], stream));
-      haar_not_lifting_2d_kernel<<<transformLength, BLOCK_SIZE, 0, stream>>>
+      haar_not_lifting_2d_kernel
+        <<<transformLength, threadBlockSize, 0, stream>>>
         (size, transformLength, temp_dev, data_dev);
       CUCHECK(cudaEventRecord(transformEvents[i*4+3], stream));
     
