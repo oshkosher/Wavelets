@@ -13,19 +13,20 @@ surface<void, cudaSurfaceType2D> surfRef;
   This does a Haar discrete wavelet transform on each row of
   a 2-d array. Each thread block processes one row.
   This version does not use lifting, and all data is in global memory.
+  Input data is in data[], results will be in result[].
 */
 __global__ void haar_not_lifting_2d_kernel
-(int arrayWidth, int transformLength, float *data, float *temp) {
+(int arrayWidth, int transformLength, float *data, float *result) {
 
   // each thread block processes one row of data
   int y = blockIdx.x;
 
-  // adjust 'data' and 'temp' so they point at my row
+  // make pointers to my row of data
   float *inputRow = data + y * arrayWidth;
-  float *tempRow  = temp + y * arrayWidth;
+  float *outputRow = result + y * arrayWidth;
 
-  // Set s to point to my row in the temporary data
-  float *s = tempRow;
+  // Set s to point to my row in the output data
+  float *s = outputRow;
 
   int half = transformLength >> 1;
   
@@ -37,13 +38,6 @@ __global__ void haar_not_lifting_2d_kernel
     d[i] = (a - b) * INV_SQRT2;
     s[i] = (a + b) * INV_SQRT2;
   }
-
-  // sync before other threads read from s[i] and d[i]
-  __syncthreads();
-
-  // copy the results back to data[]
-  for (int i=threadIdx.x; i < transformLength; i += blockDim.x)
-    inputRow[i] = tempRow[i];
 }
 
 
@@ -100,17 +94,17 @@ __global__ void haar_not_lifting_2d_surfacedata_kernel
 
 /* Inverse Haar wavelet transform. */
 __global__ void haar_inv_not_lifting_2d_kernel
-(int arrayWidth, int transformLength, float *data, float *temp) {
+(int arrayWidth, int transformLength, float *data, float *result) {
 
   // each thread block processes one row of data
   int y = blockIdx.x;
 
-  // adjust 'data' and 'temp' so they point at my row
-  data += y * arrayWidth;
-  temp += y * arrayWidth;
+  // make pointers to my row of data
+  float *inputRow = data + y * arrayWidth;
+  float *outputRow = result + y * arrayWidth;
 
-  // Set s to point to my row in the temporary data
-  float *s = data;
+  // Set s to point to my row in the input data
+  float *s = inputRow;
 
   int half = transformLength >> 1;
 
@@ -118,16 +112,9 @@ __global__ void haar_inv_not_lifting_2d_kernel
   float *d = s + half;
 
   for (int i=threadIdx.x; i < half; i += blockDim.x) {
-    temp[2*i]   = INV_SQRT2 * (s[i] + d[i]);
-    temp[2*i+1] = INV_SQRT2 * (s[i] - d[i]);
+    outputRow[2*i]   = INV_SQRT2 * (s[i] + d[i]);
+    outputRow[2*i+1] = INV_SQRT2 * (s[i] - d[i]);
   }
-
-  // sync before other threads read from s[i] and d[i]
-  __syncthreads();
-
-  // copy the results back to data[]
-  for (int i=threadIdx.x; i < transformLength; i += blockDim.x)
-    data[i] = temp[i];
 }
 
 
@@ -166,10 +153,10 @@ float haar_not_lifting_2d_cuda
   }
 
   // allocate memory for the data and the temp space on the GPU
-  float *data_dev, *temp_dev;
+  float *data1_dev, *data2_dev;
   size_t totalBytes = size * size * sizeof(float);
-  CUCHECK(cudaMalloc((void**) &data_dev, totalBytes));
-  CUCHECK(cudaMalloc((void**) &temp_dev, totalBytes));
+  CUCHECK(cudaMalloc((void**) &data1_dev, totalBytes));
+  CUCHECK(cudaMalloc((void**) &data2_dev, totalBytes));
 
   // Create a stream to enable asynchronous operation, to minimize
   // time between kernel calls.
@@ -182,7 +169,7 @@ float haar_not_lifting_2d_cuda
 
   // copy the data to the GPU
   CUCHECK(cudaEventRecord(eventCopyToStart, stream));
-  CUCHECK(cudaMemcpyAsync(data_dev, data, totalBytes, cudaMemcpyHostToDevice,
+  CUCHECK(cudaMemcpyAsync(data1_dev, data, totalBytes, cudaMemcpyHostToDevice,
                           stream));
   CUCHECK(cudaEventRecord(eventCopyToEnd, stream));
 
@@ -196,27 +183,29 @@ float haar_not_lifting_2d_cuda
 
       // transpose the matrix into temp_dev
       CUCHECK(cudaEventRecord(transposeEvents[i*4], stream));
-      gpuTranspose(size, transformLength, data_dev, temp_dev, stream);
+      gpuTranspose(size, transformLength, data1_dev, data2_dev, stream);
       CUCHECK(cudaEventRecord(transposeEvents[i*4+1], stream));
 
       // transform columns in temp_dev
       CUCHECK(cudaEventRecord(transformEvents[i*4], stream));
       haar_inv_not_lifting_2d_kernel
         <<<transformLength, threadBlockSize, 0, stream>>>
-        (size, transformLength, temp_dev, data_dev);
+        (size, transformLength, data2_dev, data1_dev);
       CUCHECK(cudaEventRecord(transformEvents[i*4+1], stream));
 
       // transpose the matrix into data_dev
       CUCHECK(cudaEventRecord(transposeEvents[i*4+2], stream));
-      gpuTranspose(size, transformLength, temp_dev, data_dev, stream);
+      gpuTranspose(size, transformLength, data1_dev, data2_dev, stream);
       CUCHECK(cudaEventRecord(transposeEvents[i*4+3], stream));
     
       // transform rows in data_dev
       CUCHECK(cudaEventRecord(transformEvents[i*4+2], stream));
       haar_inv_not_lifting_2d_kernel
         <<<transformLength, threadBlockSize, 0, stream>>>
-        (size, transformLength, data_dev, temp_dev);
+        (size, transformLength, data2_dev, data1_dev);
       CUCHECK(cudaEventRecord(transformEvents[i*4+3], stream));
+
+      // results are in data1_dev
 
       transformLength <<= 1;
     }
@@ -231,25 +220,27 @@ float haar_not_lifting_2d_cuda
       CUCHECK(cudaEventRecord(transformEvents[i*4], stream));
       haar_not_lifting_2d_kernel
         <<<transformLength, threadBlockSize, 0, stream>>>
-        (size, transformLength, data_dev, temp_dev);
+        (size, transformLength, data1_dev, data2_dev);
       CUCHECK(cudaEventRecord(transformEvents[i*4+1], stream));
     
       // transpose the matrix into temp_dev
       CUCHECK(cudaEventRecord(transposeEvents[i*4], stream));
-      gpuTranspose(size, transformLength, data_dev, temp_dev, stream);
+      gpuTranspose(size, transformLength, data2_dev, data1_dev, stream);
       CUCHECK(cudaEventRecord(transposeEvents[i*4+1], stream));
     
       // do the wavelet transform on columns
       CUCHECK(cudaEventRecord(transformEvents[i*4+2], stream));
       haar_not_lifting_2d_kernel
         <<<transformLength, threadBlockSize, 0, stream>>>
-        (size, transformLength, temp_dev, data_dev);
+        (size, transformLength, data1_dev, data2_dev);
       CUCHECK(cudaEventRecord(transformEvents[i*4+3], stream));
     
       // transpose the matrix back into data_dev
       CUCHECK(cudaEventRecord(transposeEvents[i*4+2], stream));
-      gpuTranspose(size, transformLength, temp_dev, data_dev, stream);
+      gpuTranspose(size, transformLength, data2_dev, data1_dev, stream);
       CUCHECK(cudaEventRecord(transposeEvents[i*4+3], stream));
+
+      // results are in data1_dev
 
       transformLength >>= 1;
     }
@@ -258,7 +249,7 @@ float haar_not_lifting_2d_cuda
 
   // copy the data back from the GPU
   CUCHECK(cudaEventRecord(eventCopyFromStart, stream));
-  CUCHECK(cudaMemcpyAsync(data, data_dev, totalBytes, cudaMemcpyDeviceToHost,
+  CUCHECK(cudaMemcpyAsync(data, data1_dev, totalBytes, cudaMemcpyDeviceToHost,
                           stream));
   CUCHECK(cudaEventRecord(eventCopyFromEnd, stream));
 
@@ -295,8 +286,8 @@ float haar_not_lifting_2d_cuda
          elapsed(eventCopyFromStart, eventCopyFromEnd));
 
   // deallocate GPU memory
-  CUCHECK(cudaFree(data_dev));
-  CUCHECK(cudaFree(temp_dev));
+  CUCHECK(cudaFree(data1_dev));
+  CUCHECK(cudaFree(data2_dev));
 
   float totalTime = elapsed(eventStart, eventEnd);
 
