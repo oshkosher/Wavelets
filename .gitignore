@@ -18,3 +18,4 @@ normalize.exe
 test_haar_cpu
 test_haar_cpu.exe
 *.stackdump
+convert
