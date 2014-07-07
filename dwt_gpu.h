@@ -14,16 +14,26 @@
   1024x1024 array, arrayWidth would be 1024 and transformLength would
   be 256, and array elements [0..255][0..255] would be modified.
 */
+template<typename NUM>
 __global__ void haar_not_lifting_2d_kernel
-(int arrayWidth, int transformLength, float *data, float *temp);
+(int arrayWidth, int transformLength, NUM *data, NUM *temp);
 
 // Same as haar_not_lifting_2d_kernel, but the inverse transform
+template<typename NUM>
 __global__ void haar_inv_not_lifting_2d_kernel
-  (int arrayWidth, int transformLength, float *data, float *temp);
+  (int arrayWidth, int transformLength, NUM *data, NUM *temp);
 
-// Wrapper function that calls the CUDA functions above.
-float haar_not_lifting_2d_cuda
+// Wrapper functions that call the CUDA functions above.
+// Even though the functions above can be called with NUM as any type,
+// use these wrappers to make it difficult to use them for anything other
+// than floats or doubles, since those are they only things that have
+// been tested.
+float haar_not_lifting_2d_cuda_float
 (int size, float *data, bool inverse = false, int stepCount = -1,
+ int threadBlockSize = 128);
+
+float haar_not_lifting_2d_cuda_double
+(int size, double *data, bool inverse = false, int stepCount = -1,
  int threadBlockSize = 128);
 
 float haar_not_lifting_2d_cuda_surfaces

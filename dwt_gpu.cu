@@ -9,32 +9,38 @@
 
 surface<void, cudaSurfaceType2D> surfRef;
 
+template<typename NUM>
+static float haar_not_lifting_2d_cuda_internal
+(int size, NUM *data, bool inverse, int stepCount, int threadBlockSize);
+
+
 /*
   This does a Haar discrete wavelet transform on each row of
   a 2-d array. Each thread block processes one row.
   This version does not use lifting, and all data is in global memory.
   Input data is in data[], results will be in result[].
 */
+template<typename NUM>
 __global__ void haar_not_lifting_2d_kernel
-(int arrayWidth, int transformLength, float *data, float *result) {
+(int arrayWidth, int transformLength, NUM *data, NUM *result) {
 
   // each thread block processes one row of data
   int y = blockIdx.x;
 
   // make pointers to my row of data
-  float *inputRow = data + y * arrayWidth;
-  float *outputRow = result + y * arrayWidth;
+  NUM *inputRow = data + y * arrayWidth;
+  NUM *outputRow = result + y * arrayWidth;
 
   // Set s to point to my row in the output data
-  float *s = outputRow;
+  NUM *s = outputRow;
 
   int half = transformLength >> 1;
   
   // point d at the second half of the temporary row
-  float *d = s + half;
+  NUM *d = s + half;
   
   for (int i=threadIdx.x; i < half; i += blockDim.x) {
-    float a = inputRow[2*i], b = inputRow[2*i + 1];
+    NUM a = inputRow[2*i], b = inputRow[2*i + 1];
     d[i] = (a - b) * INV_SQRT2;
     s[i] = (a + b) * INV_SQRT2;
   }
@@ -93,23 +99,24 @@ __global__ void haar_not_lifting_2d_surfacedata_kernel
 
 
 /* Inverse Haar wavelet transform. */
+template<typename NUM>
 __global__ void haar_inv_not_lifting_2d_kernel
-(int arrayWidth, int transformLength, float *data, float *result) {
+(int arrayWidth, int transformLength, NUM *data, NUM *result) {
 
   // each thread block processes one row of data
   int y = blockIdx.x;
 
   // make pointers to my row of data
-  float *inputRow = data + y * arrayWidth;
-  float *outputRow = result + y * arrayWidth;
+  NUM *inputRow = data + y * arrayWidth;
+  NUM *outputRow = result + y * arrayWidth;
 
   // Set s to point to my row in the input data
-  float *s = inputRow;
+  NUM *s = inputRow;
 
   int half = transformLength >> 1;
 
   // point d at the second half of the temporary row
-  float *d = s + half;
+  NUM *d = s + half;
 
   for (int i=threadIdx.x; i < half; i += blockDim.x) {
     outputRow[2*i]   = INV_SQRT2 * (s[i] + d[i]);
@@ -125,9 +132,24 @@ float elapsed(cudaEvent_t ev1, cudaEvent_t ev2) {
 }
 
 
+float haar_not_lifting_2d_cuda_float
+  (int size, float *data, bool inverse, int stepCount, int threadBlockSize) {
+  return haar_not_lifting_2d_cuda_internal
+    (size, data, inverse, stepCount, threadBlockSize);
+}     
+
+
+float haar_not_lifting_2d_cuda_double
+  (int size, double *data, bool inverse, int stepCount, int threadBlockSize) {
+  return haar_not_lifting_2d_cuda_internal
+    (size, data, inverse, stepCount, threadBlockSize);
+}     
+
+
 // Wrapper function that handles the CUDA details.
-float haar_not_lifting_2d_cuda
-(int size, float *data, bool inverse, int stepCount, int threadBlockSize) {
+template<typename NUM>
+float haar_not_lifting_2d_cuda_internal
+  (int size, NUM *data, bool inverse, int stepCount, int threadBlockSize) {
 
   int maxSteps = dwtMaximumSteps(size);
   if (stepCount < 1 || stepCount > maxSteps)
@@ -153,8 +175,8 @@ float haar_not_lifting_2d_cuda
   }
 
   // allocate memory for the data and the temp space on the GPU
-  float *data1_dev, *data2_dev;
-  size_t totalBytes = size * size * sizeof(float);
+  NUM *data1_dev, *data2_dev;
+  size_t totalBytes = size * size * sizeof(NUM);
   CUCHECK(cudaMalloc((void**) &data1_dev, totalBytes));
   CUCHECK(cudaMalloc((void**) &data2_dev, totalBytes));
 
