@@ -44,5 +44,6 @@ send: .senddevel
 	touch .senddevel
 
 clean:
-	rm -f *.class *.obj *.o *.exp *.lib *.pdb haar test_haar_cpu *~
+	rm -f *.class *.obj *.o *.exp *.lib *.pdb *~ \
+	  haar{,.exe} test_haar_cpu{,.exe} normalize{,.exe}
 
