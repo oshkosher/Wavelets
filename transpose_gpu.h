@@ -1,10 +1,16 @@
 #ifndef __TRANSPOSE_GPU_H__
 #define __TRANSPOSE_GPU_H__
 
-void gpuTranspose(int width, int height, float *matrix_d, float *matrixTx_d,
-                  cudaStream_t stream = 0);
+// Transpose the upper left square corner of the 2-d array.
 
-__global__ void gpuTransposeKernel(int width, int height, float *matrix,
-                                   float *matrixTx);
+// These are implemented via templates, so these wrappers just instatiate
+// the template for floats and doubles.
+void gpuTranspose(int fullWidth, int transposeSize,
+                  float *matrix_d, float *matrixTx_d,
+                  cudaStream_t stream);
+
+void gpuTranspose(int fullWidth, int transposeSize,
+                  double *matrix_d, double *matrixTx_d,
+                  cudaStream_t stream);
 
 #endif // __TRANSPOSE_GPU_H__

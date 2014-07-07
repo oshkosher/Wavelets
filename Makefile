@@ -1,4 +1,4 @@
-all: WaveletSampleImage.class haar
+all: WaveletSampleImage.class haar test_haar_cpu normalize
 
 NVCC=nvcc -arch sm_20
 
@@ -32,7 +32,10 @@ haar: $(HAAR_OBJS)
 	nvcc -arch sm_30 -g $^ -o $@
 
 test_haar_cpu: test_haar_cpu.cc dwt_cpu.cc data_io.cc
-	gcc -Wall $^ -o $@ -lstdc++ $(LIBS)
+	gcc -Wall -g $^ -o $@ -lstdc++ $(LIBS)
+
+normalize: normalize.cc data_io.cc
+	gcc -Wall -g $^ -o $@ -lstdc++ $(LIBS)
 
 send: .senddevel
 

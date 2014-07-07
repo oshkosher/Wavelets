@@ -2,24 +2,6 @@
 
 #define TX_BLOCK_SIZE 16
 
-/* Given the width and height of the input matrix, transpose it
-   into the given output matrix.
-
-   blockSize is the size of the square thread block that will process
-   each tile.
-*/
-void gpuTranspose(int width, int height, float *matrix_d, float *matrixTx_d,
-                  cudaStream_t stream) {
-                  
-
-  dim3 gridSize, blockSize(TX_BLOCK_SIZE, TX_BLOCK_SIZE);
-  gridSize.x = ceil(width-1) / TX_BLOCK_SIZE + 1;
-  gridSize.y = ceil(height-1) / TX_BLOCK_SIZE + 1;
-
-  gpuTransposeKernel<<<gridSize, blockSize, 0, stream>>>
-    (width, height, matrix_d, matrixTx_d);
-}
-
 
 /* gpuTransposeTiledKernel
    Copy one 16x16 tile (one element per thread) from the first matrix
@@ -27,10 +9,12 @@ void gpuTranspose(int width, int height, float *matrix_d, float *matrixTx_d,
    Be sure to structure the global memory accesses so that consecutive
    threads access consecutive memory.
 */
-__global__ void gpuTransposeKernel(int width, int height, float *matrix,
-                                   float *matrixTx) {
+template<typename NUM>
+__global__ void gpuTransposeKernel(int fullWidth, int transposeSize,
+                                   NUM *matrix, NUM *matrixTx) {
+                                   
 
-  __shared__ float cache[TX_BLOCK_SIZE+1][TX_BLOCK_SIZE+1];
+  __shared__ NUM cache[TX_BLOCK_SIZE+1][TX_BLOCK_SIZE+1];
   int tileTop = blockIdx.y * blockDim.y;
   int tileLeft = blockIdx.x * blockDim.x;
 
@@ -41,8 +25,8 @@ __global__ void gpuTransposeKernel(int width, int height, float *matrix,
   int row = tileTop + threadIdx.y;
   int col = tileLeft + threadIdx.x;
   
-  if (row < width && col < height)
-    cache[threadIdx.y][threadIdx.x] = matrix[row * width + col];
+  if (row < transposeSize && col < transposeSize)
+    cache[threadIdx.y][threadIdx.x] = matrix[row * fullWidth + col];
 
   // Sync is necessary because the thread that wrote to a shared memory
   // entry won't always be the one that reads from it.
@@ -50,6 +34,40 @@ __global__ void gpuTransposeKernel(int width, int height, float *matrix,
 
   row = tileLeft + threadIdx.y;
   col = tileTop + threadIdx.x;
-  if (row < width && col < height)
-    matrixTx[row * height + col] = cache[threadIdx.x][threadIdx.y];
+  if (row < transposeSize && col < transposeSize)
+    matrixTx[row * fullWidth + col] = cache[threadIdx.x][threadIdx.y];
+}
+
+
+/* Given the width and height of the input matrix, transpose it
+   into the given output matrix.
+
+   blockSize is the size of the square thread block that will process
+   each tile.
+*/
+template<typename NUM>
+void gpuTransposeInternal(int fullWidth, int transposeSize,
+                          NUM *matrix_d, NUM *matrixTx_d,
+                          cudaStream_t stream) {
+
+  dim3 gridSize, blockSize(TX_BLOCK_SIZE, TX_BLOCK_SIZE);
+  gridSize.x = ceil(transposeSize-1) / TX_BLOCK_SIZE + 1;
+  gridSize.y = gridSize.x;
+
+  gpuTransposeKernel<<<gridSize, blockSize, 0, stream>>>
+    (fullWidth, transposeSize, matrix_d, matrixTx_d);
+}
+
+
+void gpuTranspose(int fullWidth, int transposeSize,
+                  float *matrix_d, float *matrixTx_d,
+                  cudaStream_t stream) {
+  gpuTransposeInternal(fullWidth, transposeSize, matrix_d, matrixTx_d, stream);
+}
+
+
+void gpuTranspose(int fullWidth, int transposeSize,
+                  double *matrix_d, double *matrixTx_d,
+                  cudaStream_t stream) {
+  gpuTransposeInternal(fullWidth, transposeSize, matrix_d, matrixTx_d, stream);
 }

@@ -11,6 +11,8 @@
     1. Convert each value to a grayscale pixel.
     2. Output as a JPEG.
 
+  Binary data format is described in data_io.h
+
   Ed Karrels, June 2014
 */
 
@@ -24,13 +26,57 @@ import java.text.*;
 import java.util.*;
 import javax.imageio.*;
 
+
 public class WaveletSampleImage {
 
-  static class Data {
+  private static final boolean VERBOSE_OUTPUT = false;
+
+  static class Matrix {
     float[] data;
     int width, height;
+
+    float get(int x, int y) {
+      return data[y*width + x];
+    }
   }
 
+  interface MatrixToGrayscale {
+    int getRGB(float value);
+  }
+
+  static class MatrixToGrayscaleFlat implements MatrixToGrayscale {
+    public int getRGB(float value) {
+      int color = (int)(value * 255);
+      color = color & 0xff;
+      return color | (color << 8) | (color << 16);
+    }
+  }
+
+
+  static class MatrixToGrayscaleUniform implements MatrixToGrayscale {
+    float scale, offset;
+
+    MatrixToGrayscaleUniform(Matrix m) {
+      float min, max;
+      min = max = m.data[0];
+      for (int y=0; y < m.height; y++) {
+        for (int x=0; x < m.width; x++) {
+          float v = m.get(x, y);
+          min = Math.min(min, v);
+          max = Math.max(max, v);
+        }
+      }
+      offset = -min;
+      scale = 255 / (max-min);
+    }
+
+    public int getRGB(float value) {
+      int gray = (int) ((value + offset) * scale);
+      return gray | (gray << 8) | (gray << 16);
+    }
+  }
+    
+  
 
   public static void main(String args[]) {
     if (args.length < 1) printHelp();
@@ -90,9 +136,9 @@ public class WaveletSampleImage {
     }
 
     if (sourceIsImage) {
-      imageToData(inputFile, outputFile, textOutput);
+      imageToMatrix(inputFile, outputFile, textOutput);
     } else {
-      dataToImage(inputFile, outputFile);
+      matrixToImage(inputFile, outputFile);
     }
   }
 
@@ -116,8 +162,12 @@ public class WaveletSampleImage {
 
 
   /* Reads a JPEG image, convert to grayscale text data. */
-  public static void imageToData(String inputFile, String outputFile,
-                                 boolean textOutput) {
+  public static void imageToMatrix(String inputFile, String outputFile,
+                                   boolean textOutput) {
+    if (VERBOSE_OUTPUT) {
+      System.out.println("Read image");
+      System.out.flush();
+    }
     BufferedImage image;
     try {
       image = ImageIO.read(new File(inputFile));
@@ -127,6 +177,10 @@ public class WaveletSampleImage {
     }
 
     // crop image to be square
+    if (VERBOSE_OUTPUT) {
+      System.out.println("Crop");
+      System.out.flush();
+    }
     int size = image.getWidth();
     if (image.getWidth() > image.getHeight()) {
       size = image.getHeight();
@@ -142,6 +196,10 @@ public class WaveletSampleImage {
     }
 
     // rescale the image the to next smaller power of 2
+    if (VERBOSE_OUTPUT) {
+      System.out.println("Rescale");
+      System.out.flush();
+    }
     int newSize = Integer.highestOneBit(size);
     float scaleFactor = (float)newSize / size;
     // System.out.printf("Rescale %d to %d: %f\n", size, newSize, scaleFactor);
@@ -152,17 +210,7 @@ public class WaveletSampleImage {
       AffineTransformOp rescaleOp = new AffineTransformOp
         (rescaleXform, AffineTransformOp.TYPE_BICUBIC);
 
-      // fails: java.awt.image.ImagingOpException: Unable to transform src image
-      // BufferedImage newImage = new BufferedImage
-      // (newSize, newSize, BufferedImage.TYPE_INT_RGB);
-
-      // fails
-      // BufferedImage newImage = rescaleOp.createCompatibleDestImage
-      // (image, image.getColorModel());
-
-      // produces JPG with bad colors
-      // BufferedImage newImage = rescaleOp.filter(image, null);
-
+      // must match the image type of the input image
       BufferedImage newImage = new BufferedImage
         (newSize, newSize, image.getType());
 
@@ -171,10 +219,18 @@ public class WaveletSampleImage {
     }
 
     // convert to grayscale
-    ColorSpace cs = ColorSpace.getInstance(ColorSpace.CS_GRAY);  
-    ColorConvertOp op = new ColorConvertOp(cs, null);  
-    image = op.filter(image, null);  
+    if (VERBOSE_OUTPUT) {
+      System.out.println("Convert to grayscale");
+      System.out.flush();
+    }
+    BufferedImage grayImage = new BufferedImage
+      (newSize, newSize, BufferedImage.TYPE_BYTE_GRAY);
+    Graphics g = grayImage.getGraphics();
+    g.drawImage(image, 0, 0, null);
+    g.dispose();
+    image = grayImage;
 
+    // enable this to output a grayscale jpg
     /*
     try {
       ImageIO.write(image, "jpeg", new File("output.jpg"));
@@ -183,12 +239,13 @@ public class WaveletSampleImage {
     }
     */
 
+    if (VERBOSE_OUTPUT) {
+      System.out.println("Write data");
+      System.out.flush();
+    }
     try {
       long startNano = System.nanoTime();
-      if (textOutput)
-        writeAsText(image, outputFile);
-      else
-        writeAsBinary(image, outputFile);
+      writeMatrix(image, outputFile, !textOutput);
       double elapsed = (System.nanoTime() - startNano) / 1e9;
       System.out.printf("%d x %d grayscale data written to \"%s\" " +
                         "in %.3f sec\n",
@@ -201,8 +258,65 @@ public class WaveletSampleImage {
   }
 
 
-  private static void writeAsText(BufferedImage image, String outputFile)
-  throws IOException {
+  /* Read a text data file, convert to a grayscale JPEG. */
+  public static void matrixToImage(String inputFile, String outputFile) {
+    Matrix m = null;
+
+    try {
+      m = readMatrix(inputFile);
+    } catch (IOException e) {
+      System.err.println("Error reading \"" + inputFile + "\": " + e);
+      return;
+    }
+
+    // MatrixToGrayscale toGray = new MatrixToGrayscaleUniform(m);
+    MatrixToGrayscale toGray = new MatrixToGrayscaleFlat();
+
+    // save the data as a grayscale image
+    BufferedImage image = new BufferedImage
+      (m.width, m.height, BufferedImage.TYPE_BYTE_GRAY);
+
+    int i = 0;
+    for (int y=0; y < m.height; y++) {
+      for (int x=0; x < m.width; x++) {
+        int color = toGray.getRGB(m.get(x, y));
+        image.setRGB(x, y, color);
+      }
+    }
+
+    try {
+      ImageIO.write(image, "jpeg", new File(outputFile));
+    } catch (IOException e) {
+      System.err.println("Error saving image: " + e);
+    }
+
+    System.out.printf("%d x %d image written to \"%s\".\n",
+                      m.width, m.height, outputFile);
+  }
+
+
+  public static void writeMatrix(BufferedImage image, String outputFile,
+                                  boolean binaryFormat)
+    throws IOException {
+
+    if (binaryFormat)
+      writeMatrixBinary(image, outputFile);
+    else
+      writeMatrixText(image, outputFile);
+  }
+
+
+  public static Matrix readMatrix(String inputFile) throws IOException {
+    if (isBinaryFile(inputFile)) {
+      return readMatrixBinary(inputFile);
+    } else {
+      return readMatrixText(inputFile);
+    }
+  }    
+
+
+  public static void writeMatrixText(BufferedImage image, String outputFile)
+    throws IOException {
 
     DecimalFormat formatter = new DecimalFormat("0.00000");
     
@@ -223,21 +337,12 @@ public class WaveletSampleImage {
     }
     out.close();
   }
-
-
-  private static final int reverseBytes(final int x) {
-    return
-      ((x & 0xff) << 24) |
-      ((x & 0xff00) << 8) |
-      ((x & 0xff0000) >>> 8) |
-      ((x & 0xff000000) >>> 24);
-  }
       
 
 
-  // write in little-endian order
-  private static void writeAsBinary(BufferedImage image, String outputFile)
-  throws IOException {
+  // Write in little-endian order
+  private static void writeMatrixBinary(BufferedImage image, String outputFile)
+    throws IOException {
 
     DataOutputStream out = new DataOutputStream
       (new BufferedOutputStream(new FileOutputStream(outputFile)));
@@ -260,56 +365,16 @@ public class WaveletSampleImage {
   }    
 
 
-  /* Read a text data file, convert to a grayscale JPEG. */
-  public static void dataToImage(String inputFile, String outputFile) {
-    float data[];
-    int width, height;
-
-    try {
-      Data rawData = readData(inputFile);
-      data = rawData.data;
-      width = rawData.width;
-      height = rawData.height;
-    } catch (IOException e) {
-      System.err.println("Error reading \"" + inputFile + "\": " + e);
-      return;
-    }
-
-    // save the data as a grayscale image
-    BufferedImage image = new BufferedImage
-      (width, height, BufferedImage.TYPE_BYTE_GRAY);
-
-    int i = 0;
-    for (int y=0; y < height; y++) {
-      for (int x=0; x < width; x++) {
-        int color = (int)(data[i++] * 255 + .5);
-        // int color = (int)(data[i++] + .5);
-        color = color | (color  << 8) | (color  << 16);
-        image.setRGB(x, y, color);
-      }
-    }
-
-    try {
-      ImageIO.write(image, "jpeg", new File(outputFile));
-    } catch (IOException e) {
-      System.err.println("Error saving image: " + e);
-    }
-
-    System.out.printf("%d x %d image written to \"%s\".\n",
-                      width, height, outputFile);
+  private static final int reverseBytes(final int x) {
+    return
+      ((x & 0xff) << 24) |
+      ((x & 0xff00) << 8) |
+      ((x & 0xff0000) >>> 8) |
+      ((x & 0xff000000) >>> 24);
   }
 
 
-  public static Data readData(String inputFile) throws IOException {
-    if (isBinaryFile(inputFile)) {
-      return readBinaryData(inputFile);
-    } else {
-      return readTextData(inputFile);
-    }
-  }    
-
-
-  private static boolean isBinaryFile(String filename) throws IOException {
+  public static boolean isBinaryFile(String filename) throws IOException {
     FileInputStream in = new FileInputStream(filename);
     byte buf[] = new byte[8];
 
@@ -322,9 +387,9 @@ public class WaveletSampleImage {
   }
 
 
-  private static Data readTextData(String inputFile) throws IOException {
+  private static Matrix readMatrixText(String inputFile) throws IOException {
     Scanner in = new Scanner(new File(inputFile));
-    Data data = new Data();
+    Matrix data = new Matrix();
 
     if (!in.hasNextInt()) {
       System.out.println("Bad header row");
@@ -367,8 +432,8 @@ public class WaveletSampleImage {
   }
 
 
-  private static Data readBinaryData(String inputFile) throws IOException {
-    Data data = new Data();
+  private static Matrix readMatrixBinary(String inputFile) throws IOException {
+    Matrix data = new Matrix();
 
     DataInputStream in = new DataInputStream
       (new BufferedInputStream(new FileInputStream(inputFile)));
@@ -378,7 +443,8 @@ public class WaveletSampleImage {
 
     data.width = reverseBytes(in.readInt());
     data.height = reverseBytes(in.readInt());
-    System.out.printf("binary size %d x %d\n", data.width, data.height);
+    if (VERBOSE_OUTPUT)
+      System.out.printf("binary size %d x %d\n", data.width, data.height);
     int size = data.width * data.height;
     data.data = new float[size];
     for (int i=0; i < size; i++) {
@@ -388,38 +454,5 @@ public class WaveletSampleImage {
 
     return data;
   }
-
-
-  
-  private static float[] readFloatLine(BufferedReader in) throws IOException {
-    String line = in.readLine();
-    if (line == null) return null;
-
-    String[] words = line.split(" +");
-    float[] numbers = new float[words.length];
-    String word = null;
-    try {
-      for (int i=0; i < words.length; i++) {
-        word = words[i];
-        numbers[i] = Float.parseFloat(word);
-      }
-    } catch (NumberFormatException e) {
-      throw new IOException("Not a number: \"" + word + "\"");
-    }
-
-    return numbers;
-  }
-
-
-  /*
-  public static BufferedImage cropImage
-    (BufferedImage inputImage, int x, int y, int width, int height) {
-    
-    BufferedImage outputImage = new BufferedImage
-      (width, height, BufferedImage.TYPE_INT_RGB);
-
-    Graphics2D g = outputImage.createGraphics();
-
-    }*/
 }
     

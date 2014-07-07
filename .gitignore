@@ -10,8 +10,11 @@
 .senddevel
 *.class
 haar
-test_haar_cpu
-list_values
 haar.exe
-test_haar_cpu.exe
+list_values
 list_values.exe
+normalize
+normalize.exe
+test_haar_cpu
+test_haar_cpu.exe
+*.stackdump
