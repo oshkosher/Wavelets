@@ -26,7 +26,8 @@ float haar_not_lifting_2d_cuda
 (int size, float *data, bool inverse = false, int stepCount = -1,
  int threadBlockSize = 128);
 
-
+float haar_not_lifting_2d_cuda_surfaces
+(int size, float *data, bool inverse, int stepCount, int threadBlockSize=128);
 
 
 #endif // __DWT_GPU_H__

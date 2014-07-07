@@ -80,7 +80,11 @@ int main(int argc, char **argv) {
   CUCHECK(cudaSetDevice(0));
 
   // make a copy of the data for the GPU to use
-  data_gpu = new float[size*size];
+  // allocate page-locked memory (that won't be moved from its position
+  // in physical memory) so the data can be copied to the GPU via DMA
+  // This approximately double the throughput.
+  // Just be sure to free the data with cudaFreeHost() rather than delete[].
+  CUCHECK(cudaMallocHost((void**)&data_gpu, size*size*sizeof(float)));
   memcpy(data_gpu, data_cpu, sizeof(float)*height*width);
 
   // run the CPU version of the algorithm
@@ -90,6 +94,10 @@ int main(int argc, char **argv) {
 
   // run the GPU version of the algorithm
   elapsed = haar_not_lifting_2d_cuda(size, data_gpu, inverse, stepCount);
+
+  // alternative implementation using surfaces
+  // elapsed = haar_not_lifting_2d_cuda_surfaces(size, data_gpu, inverse, stepCount);
+
   printf("CUDA: %.6f ms\n", elapsed);
 
   /*
@@ -138,6 +146,9 @@ int main(int argc, char **argv) {
     writeDataFile("err_gpu.data", data_gpu, size, size, !textOutput);
     printf("Wrote err_cpu.data and err_gpu.data\n");
   }
+
+  delete[] data_cpu;
+  CUCHECK(cudaFreeHost(data_gpu));
 
   return 0;
 }
