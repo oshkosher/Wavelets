@@ -42,8 +42,7 @@ normalize: normalize.cc data_io.cc
 convert: Makefile
 	@echo Write $@ wrapper for \"java WaveletSampleImage\"
 	@echo '#!/bin/sh' > convert
-	@echo java -cp \"$(CLASSPATH_DIR)\" WaveletSampleImage \"\$$@\" >> conve\
-rt
+	@echo java -cp \"$(CLASSPATH_DIR)\" WaveletSampleImage \"\$$@\" >> convert
 	chmod 755 convert
 
 send: .senddevel
