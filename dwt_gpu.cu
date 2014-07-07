@@ -50,7 +50,7 @@ __global__ void haar_not_lifting_2d_kernel
 
 __global__ void haar_not_lifting_2d_surfacedata_kernel
 (int arrayWidth, int transformLength, float *temp,
- boolean transposed) {
+ bool transposed) {
   // each thread block processes one row of data
   int y = blockIdx.x;
 
