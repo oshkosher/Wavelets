@@ -1,3 +1,4 @@
+#include <cmath>
 #include "cuda.h"
 #include "cucheck.h"
 #include "data_io.h"
@@ -15,13 +16,26 @@ bool similar(float a, float b) {
 void printHelp() {
   fprintf(stderr, 
           "\n"
-          "  haar [-inverse] [-text] <input datafile> <output datafile> [steps]\n"
+          "  haar [-inverse] [-text] [-blocksize]<input datafile> <output datafile> [steps]\n"
           "  Do a Haar discrete wavelet transform.\n"
           "    -inverse : invert the transform\n"
           "    -text : output data in text format rather than binary\n"
+          "    -blocksize : specify the thread block size\n"
           "  By default, one transformation step will be done.\n"
           "\n");
   exit(1);
+}
+
+
+int getBestThreadBlockSize(int imageSize) {
+  if (imageSize >= 4096) {
+    return 1024;
+  } else if (imageSize < 512) {
+    return 128;
+  } else {
+    // round imageSize/4 to the nearest power of 2
+    return 1 << (int)(log2((double)imageSize) - 2 + .5);
+  }
 }
 
 
@@ -29,7 +43,7 @@ int main(int argc, char **argv) {
   if (argc < 3) printHelp();
 
   bool inverse = false, textOutput = false;
-  int argNo = 1;
+  int argNo = 1, blockSize = -1;
 
   while (argNo < argc && argv[argNo][0] == '-') {
     if (!strcmp(argv[argNo], "-inverse")) {
@@ -39,6 +53,16 @@ int main(int argc, char **argv) {
 
     else if (!strcmp(argv[argNo], "-text")) {
       textOutput = true;
+      argNo++;
+    }
+
+    else if (!strcmp(argv[argNo], "-blocksize")) {
+      if (argNo >= argc) printHelp();
+      if (1 != sscanf(argv[++argNo], "%d", &blockSize) ||
+          blockSize < 1) {
+        printf("Invalid block size \"%s\"\n", argv[argNo]);
+        return 1;
+      }
       argNo++;
     }
 
@@ -79,24 +103,29 @@ int main(int argc, char **argv) {
   
   CUCHECK(cudaSetDevice(0));
 
-  // make a copy of the data for the GPU to use
-  // allocate page-locked memory (that won't be moved from its position
-  // in physical memory) so the data can be copied to the GPU via DMA
-  // This approximately double the throughput.
-  // Just be sure to free the data with cudaFreeHost() rather than delete[].
+  // Make a copy of the data for the GPU to use.
+  // Allocate page-locked virtual memory (that won't be moved from its
+  // position in physical memory) so the data can be copied to the GPU
+  // via DMA This approximately double the throughput.  Just be sure
+  // to free the data with cudaFreeHost() rather than delete[].
   CUCHECK(cudaMallocHost((void**)&data_gpu, size*size*sizeof(float)));
-  memcpy(data_gpu, data_cpu, sizeof(float)*height*width);
+  memcpy(data_gpu, data_cpu, sizeof(float)*size*size);
 
   // run the CPU version of the algorithm
   printf("CPU: "); fflush(stdout);
   elapsed = haar_not_lifting_2d(size, data_cpu, inverse, stepCount);
-  printf("%.6f ms\n", elapsed);
+  printf("%.3f ms\n", elapsed);
 
   // run the GPU version of the algorithm
-  elapsed = haar_not_lifting_2d_cuda(size, data_gpu, inverse, stepCount);
+  if (blockSize == -1) blockSize = getBestThreadBlockSize(size);
 
-  // alternative implementation using surfaces
-  // elapsed = haar_not_lifting_2d_cuda_surfaces(size, data_gpu, inverse, stepCount);
+  elapsed = haar_not_lifting_2d_cuda(size, data_gpu, inverse, stepCount,
+                                     blockSize);
+
+  // Alternative implementation using surfaces.
+  // For all inputs I tested, this is slightly slower.
+  // elapsed = haar_not_lifting_2d_cuda_surfaces(size, data_gpu, inverse,
+  // stepCount, blockSize);
 
   printf("CUDA: %.6f ms\n", elapsed);
 

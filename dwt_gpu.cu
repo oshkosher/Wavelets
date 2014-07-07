@@ -33,7 +33,6 @@ __global__ void haar_not_lifting_2d_kernel
   float *d = s + half;
   
   for (int i=threadIdx.x; i < half; i += blockDim.x) {
-    // possible optimization: read these with a float2
     float a = inputRow[2*i], b = inputRow[2*i + 1];
     d[i] = (a - b) * INV_SQRT2;
     s[i] = (a + b) * INV_SQRT2;
@@ -433,7 +432,7 @@ float haar_not_lifting_2d_cuda_surfaces
   CUCHECK(cudaEventRecord(eventCopyFromEnd, stream));
 
   double endTimeCPU = NixTimer::time();
-  printf("Time elapsed during GPU processing: %.6f ms\n",
+  printf("Time elapsed creating GPU tasks: %.6f ms\n",
          1000*(endTimeCPU - startTimeCPU));
   fflush(stdout);
 
