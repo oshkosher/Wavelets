@@ -28,9 +28,19 @@
 // with new[]. The caller is responsible for calling delete[] on it.
 bool readDataFile(const char *filename, float **data, int *width, int *height);
 
+// Same as the function above, but returns an array of doubles.
+// NOTE: the data is currenly still stored as floats.
+bool readDataFile(const char *filename, double **data, 
+                  int *width, int *height);
+
 // Write a 2-d array of float data. 'isBinary' specifies whether the
 // to use the binary format or not.
 bool writeDataFile(const char *filename, float *data, int width, int height,
+                   bool isBinary = true);
+
+// Same as above, but takes an array of doubles.
+// NOTE: the data is currenly still stored as floats.
+bool writeDataFile(const char *filename, double *data, int width, int height,
                    bool isBinary = true);
   
 

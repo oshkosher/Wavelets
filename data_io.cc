@@ -62,16 +62,9 @@ static bool readBinaryDataFile(const char *filename, float **data,
 }
 
 
-// Read a file of data, automatically detecting whether it's in
-// text or binary format.
-// On error, print it to stderr and return false.
-// Caller is responsible for calling 'delete[]' on *data.
-bool readDataFile(const char *filename, float **data, int *width, int *height) {
+static bool readTextDataFile(const char *filename, float **data,
+                             int *width, int *height) {
 
-  if (isBinary(filename)) {
-    return readBinaryDataFile(filename, data, width, height);
-  }
-  
   FILE *inf = fopen(filename, "rt");
   if (!inf) {
     fprintf(stderr, "Failed to open \"%s\" for reading.\n", filename);
@@ -103,6 +96,48 @@ bool readDataFile(const char *filename, float **data, int *width, int *height) {
   }
 
   fclose(inf);
+  return true;
+}
+
+
+// Read a file of data, automatically detecting whether it's in
+// text or binary format.
+// On error, print it to stderr and return false.
+// Caller is responsible for calling 'delete[]' on *data.
+bool readDataFile(const char *filename, float **data, int *width, int *height) {
+  bool success;
+
+  if (isBinary(filename)) {
+    success = readBinaryDataFile(filename, data, width, height);
+  } else {
+    success = readTextDataFile(filename, data, width, height);
+  }
+
+  return success;
+}
+
+
+// Read data as doubles.
+bool readDataFile(const char *filename, double **data,
+                  int *width, int *height) {
+  bool success;
+  float *floatData;
+
+  if (isBinary(filename)) {
+    success = readBinaryDataFile(filename, &floatData, width, height);
+  } else {
+    success = readTextDataFile(filename, &floatData, width, height);
+  }
+
+  if (!success) return false;
+
+  int size = *width * *height;
+  *data = new double[size];
+  for (int i=0; i < size; i++)
+    (*data)[i] = floatData[i];
+
+  delete[] floatData;
+
   return true;
 }
 
@@ -139,6 +174,17 @@ static bool writeBinaryDataFile(const char *filename, float *data,
     return false;
   }
   return true;
+}
+
+bool writeDataFile(const char *filename, double *dataDoubles,
+                   int width, int height, bool isBinary) {
+                   
+  float *data = new float[width*height];
+  for (int i=0; i < width*height; i++)
+    data[i] = (float)dataDoubles[i];
+  bool success = writeDataFile(filename, data, width, height, isBinary);
+  delete[] data;
+  return success;
 }
 
 
