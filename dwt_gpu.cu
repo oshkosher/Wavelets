@@ -132,14 +132,14 @@ float elapsed(cudaEvent_t ev1, cudaEvent_t ev2) {
 }
 
 
-float haar_not_lifting_2d_cuda_float
+float haar_not_lifting_2d_cuda
   (int size, float *data, bool inverse, int stepCount, int threadBlockSize) {
   return haar_not_lifting_2d_cuda_internal
     (size, data, inverse, stepCount, threadBlockSize);
 }     
 
 
-float haar_not_lifting_2d_cuda_double
+float haar_not_lifting_2d_cuda
   (int size, double *data, bool inverse, int stepCount, int threadBlockSize) {
   return haar_not_lifting_2d_cuda_internal
     (size, data, inverse, stepCount, threadBlockSize);

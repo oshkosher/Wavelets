@@ -11,14 +11,18 @@
 
 // This is different from the externally visible haar_not_lifting() function
 // in that no sanity check is done on the stepCount argument.
+template<typename T>
 static void haar_not_lifting_internal
-  (int length, float data[], int stepCount);
+  (int length, T data[], int stepCount);
 
+template<typename T>
 static void haar_inv_not_lifting
-  (int length, float data[], int stepCount);
+  (int length, T data[], int stepCount);
 
 
-static float haar_inv_not_lifting_2d(int size, float *data, int stepCount);
+template<typename T>
+static float haar_inv_not_lifting_2d(int size, T *data, int stepCount);
+
 
 int dwtMaximumSteps(int length) {
   int steps = 0;
@@ -41,8 +45,9 @@ void print_matrix(int width, int height, float *data) {
 }
 
 
-void haar_not_lifting(int length, float data[],
-                      bool inverse, int stepCount) {
+template<typename T>
+void haar_not_lifting_t(int length, T data[],
+                        bool inverse, int stepCount) {
 
   // check that stepCount is valid
   int maxSteps = dwtMaximumSteps(length);
@@ -55,12 +60,23 @@ void haar_not_lifting(int length, float data[],
     haar_inv_not_lifting(length, data, stepCount);
 }
 
+void haar_not_lifting(int length, float data[],
+                      bool inverse, int stepCount) {
+  haar_not_lifting_t(length, data, inverse, stepCount);
+}
 
-static void haar_not_lifting_internal(int length, float data[],
+void haar_not_lifting(int length, double data[],
+                      bool inverse, int stepCount) {
+  haar_not_lifting_t(length, data, inverse, stepCount);
+}
+
+
+template<typename T>
+static void haar_not_lifting_internal(int length, T data[],
                                       int stepCount) {
                    
-  float *temp = new float[length];
-  float *s, *d;
+  T *temp = new T[length];
+  T *s, *d;
   unsigned sampleCount = (unsigned) length;
 
   s = temp;
@@ -75,7 +91,7 @@ static void haar_not_lifting_internal(int length, float data[],
       d[i] = (data[2*i] - data[2*i + 1]) * INV_SQRT2;
       s[i] = (data[2*i] + data[2*i + 1]) * INV_SQRT2;
     }
-    memcpy(data, temp, sizeof(float) * sampleCount);
+    memcpy(data, temp, sizeof(T) * sampleCount);
     // print_matrix(length, 1, data);
 
     sampleCount = half;
@@ -84,9 +100,10 @@ static void haar_not_lifting_internal(int length, float data[],
 }
 
 
-static void haar_inv_not_lifting(int length, float data[], int stepCount) {
-  float *temp = new float[length];
-  float *s, *d;
+template<typename T>
+static void haar_inv_not_lifting(int length, T data[], int stepCount) {
+  T *temp = new T[length];
+  T *s, *d;
 
   int sampleCount = length << (stepCount - 1);
 
@@ -101,7 +118,7 @@ static void haar_inv_not_lifting(int length, float data[], int stepCount) {
       temp[2*i]   = INV_SQRT2 * (s[i] + d[i]);
       temp[2*i+1] = INV_SQRT2 * (s[i] - d[i]);
     }
-    memcpy(data, temp, sizeof(float) * sampleCount);
+    memcpy(data, temp, sizeof(T) * sampleCount);
     // print_matrix(length, 1, data);
 
     sampleCount <<= 1;
@@ -111,31 +128,50 @@ static void haar_inv_not_lifting(int length, float data[], int stepCount) {
 
 
 // Transpose a square matrix.
-void transpose_square(int size, float data[]) {
+template<typename T>
+static void transpose_square_t(int size, T data[]) {
   for (int y=1; y < size; y++) {
     for (int x=0; x < y; x++) {
-      float *p1 = data + y*size + x, *p2 = data + x*size + y;
-      float tmp = *p1;
+      T *p1 = data + y*size + x, *p2 = data + x*size + y;
+      T tmp = *p1;
       *p1 = *p2;
       *p2 = tmp;
     }
   }
 }
 
+void transpose_square(int size, float data[]) {
+  transpose_square_t(size, data);
+}
+
+void transpose_square(int size, double data[]) {
+  transpose_square_t(size, data);
+}
+
+
+template<typename T>
+static void transpose_square_submatrix_t(int total_size, int submatrix_size,
+                                         T data[]) {
+  for (int y=1; y < submatrix_size; y++) {
+    for (int x=0; x < y; x++) {
+      T *p1 = data + y*total_size + x, *p2 = data + x*total_size + y;
+      T tmp = *p1;
+      *p1 = *p2;
+      *p2 = tmp;
+    }
+  }
+
+}
 
 void transpose_square_submatrix(int total_size, int submatrix_size,
                                 float data[]) {
-  for (int y=1; y < submatrix_size; y++) {
-    for (int x=0; x < y; x++) {
-      float *p1 = data + y*total_size + x, *p2 = data + x*total_size + y;
-      float tmp = *p1;
-      *p1 = *p2;
-      *p2 = tmp;
-    }
-  }
-
+  transpose_square_submatrix_t(total_size, submatrix_size, data);
 }
 
+void transpose_square_submatrix(int total_size, int submatrix_size,
+                                double data[]) {
+  transpose_square_submatrix_t(total_size, submatrix_size, data);
+}
 
 
 void haar_lifting(int length, float data[]) {
@@ -154,8 +190,9 @@ void haar_lifting(int length, float data[]) {
   Do inverse transform iff 'inverse' is true.
   Returns the number of milliseconds elapsed.
 */
-float haar_not_lifting_2d(int size, float *data, bool inverse,
-                          int stepCount) {
+template<typename T>
+static float haar_not_lifting_2d_t(int size, T *data, bool inverse,
+                                   int stepCount) {
 
   // check that stepCount is valid
   int maxSteps = dwtMaximumSteps(size);
@@ -171,7 +208,7 @@ float haar_not_lifting_2d(int size, float *data, bool inverse,
   for (int step = 0; step < stepCount; step++) {
 
     // transform rows
-    float *p = data;
+    T *p = data;
     for (int row=0; row < stepLength; row++) {
       haar_not_lifting_internal(stepLength, p, 1);
       p += size;
@@ -194,8 +231,19 @@ float haar_not_lifting_2d(int size, float *data, bool inverse,
   return (float) (1000 * (NixTimer::time() - startSec));
 }
 
+float haar_not_lifting_2d(int size, float *data, bool inverse,
+                          int stepCount) {
+  return haar_not_lifting_2d_t(size, data, inverse, stepCount);
+}
 
-static float haar_inv_not_lifting_2d(int size, float *data,
+float haar_not_lifting_2d(int size, double *data, bool inverse,
+                          int stepCount) {
+  return haar_not_lifting_2d_t(size, data, inverse, stepCount);
+}
+
+
+template<typename T>
+static float haar_inv_not_lifting_2d(int size, T *data,
                                      int stepCount) {
 
   double startSec = NixTimer::time();
@@ -206,7 +254,7 @@ static float haar_inv_not_lifting_2d(int size, float *data,
     transpose_square_submatrix(size, stepLength, data);
 
     // transform columns
-    float *p = data;
+    T *p = data;
     for (int row=0; row < stepLength; row++) {
       haar_inv_not_lifting(stepLength, p, 1);
       p += size;

@@ -28,11 +28,11 @@ __global__ void haar_inv_not_lifting_2d_kernel
 // use these wrappers to make it difficult to use them for anything other
 // than floats or doubles, since those are they only things that have
 // been tested.
-float haar_not_lifting_2d_cuda_float
+float haar_not_lifting_2d_cuda
 (int size, float *data, bool inverse = false, int stepCount = -1,
  int threadBlockSize = 128);
 
-float haar_not_lifting_2d_cuda_double
+float haar_not_lifting_2d_cuda
 (int size, double *data, bool inverse = false, int stepCount = -1,
  int threadBlockSize = 128);
 

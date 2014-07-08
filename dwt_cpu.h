@@ -12,6 +12,7 @@ int dwtMaximumSteps(int length);
 
 // Transpose a square matrix.
 void transpose_square(int size, float data[]);
+void transpose_square(int size, double data[]);
 
 /*
   Transpose an upper-left square of a square matrix.
@@ -35,10 +36,14 @@ void print_matrix(int width, int height, float *data);
 // result in ceil(log2(data)) passes.
 void haar_not_lifting(int length, float data[], bool inverse = false,
                       int stepCount = -1);
-// void haar_inv_not_lifting(int length, float data[], int stepCount = -1);
+void haar_not_lifting(int length, double data[], bool inverse = false,
+                      int stepCount = -1);
 
 // Haar wavelet filter on a 2-d square of data
 float haar_not_lifting_2d(int size, float *data,
+                          bool inverse = false, int stepCount = -1);
+
+float haar_not_lifting_2d(int size, double *data,
                           bool inverse = false, int stepCount = -1);
 
 // Lifting implementation (not tested much)
