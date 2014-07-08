@@ -50,9 +50,9 @@ void haar_not_lifting(int length, float data[],
     stepCount = maxSteps;
 
   if (inverse)
-    haar_not_lifting_internal(length, data, stepCount);
-  else
     haar_inv_not_lifting(length, data, stepCount);
+  else
+    haar_not_lifting_internal(length, data, stepCount);
 }
 
 
@@ -138,11 +138,39 @@ void transpose_square_submatrix(int total_size, int submatrix_size,
 
 
 
-void haar_lifting(int length, float data[]) {
-  for (int skip = 1; skip < length; skip *= 2) {
+void haar_lifting(int length, float data[], int stepCount) {
+
+  // check that stepCount is valid
+  int maxSteps = dwtMaximumSteps(length);
+  if (stepCount < 1 || stepCount > maxSteps)
+    stepCount = maxSteps;
+
+  int maxSkip = 1 << (stepCount-1);
+
+  for (int skip = 1; skip <= maxSkip; skip *= 2) {
     for (int i = 0; i < length; i += skip*2) {
-      data[i+skip] -= data[i]; // diff
-      data[i] += data[i+skip] / 2;  // signal
+      data[i+skip] -= data[i];
+      data[i] += data[i+skip] * .5f;
+      data[i] *= SQRT2;
+      data[i+skip] *= INV_SQRT2;
+    }
+    // printArray(data);
+  }
+}    
+
+void haar_inv_lifting(int length, float data[], int stepCount) {
+
+  // check that stepCount is valid
+  int maxSteps = dwtMaximumSteps(length);
+  if (stepCount < 1 || stepCount > maxSteps)
+    stepCount = maxSteps;
+
+  for (int skip = 1 << (stepCount-1); skip >= 1; skip >>= 1) {
+    for (int i = 0; i < length; i += skip*2) {
+      data[i+skip] *= SQRT2;
+      data[i] *= INV_SQRT2;
+      data[i] -= data[i+skip] / 2;  // signal
+      data[i+skip] += data[i]; // diff
     }
     // printArray(data);
   }

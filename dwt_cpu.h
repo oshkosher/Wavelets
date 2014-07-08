@@ -43,7 +43,7 @@ float haar_not_lifting_2d(int size, float *data,
 
 // Lifting implementation (not tested much)
 void haar_lifting(int length, float data[], int stepCount = -1);
-
+void haar_inv_lifting(int length, float data[], int stepCount = -1);
 
 
 
