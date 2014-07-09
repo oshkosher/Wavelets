@@ -11,7 +11,15 @@ surface<void, cudaSurfaceType2D> surfRef;
 
 template<typename NUM>
 static float haar_not_lifting_2d_cuda_internal
-(int size, NUM *data, bool inverse, int stepCount, int threadBlockSize);
+  (int size, NUM *data, bool inverse, int stepCount, int threadBlockSize);
+
+// Returns the time in milliseconds between ev1 and ev2 (where ev1
+// happened first.
+static float elapsed(cudaEvent_t ev1, cudaEvent_t ev2) {
+  float ms;
+  CUCHECK(cudaEventElapsedTime(&ms, ev1, ev2));
+  return ms;
+}
 
 
 /*
@@ -122,13 +130,6 @@ __global__ void haar_inv_not_lifting_2d_kernel
     outputRow[2*i]   = INV_SQRT2 * (s[i] + d[i]);
     outputRow[2*i+1] = INV_SQRT2 * (s[i] - d[i]);
   }
-}
-
-
-float elapsed(cudaEvent_t ev1, cudaEvent_t ev2) {
-  float ms;
-  CUCHECK(cudaEventElapsedTime(&ms, ev1, ev2));
-  return ms;
 }
 
 
@@ -244,7 +245,7 @@ float haar_not_lifting_2d_cuda_internal
         <<<transformLength, threadBlockSize, 0, stream>>>
         (size, transformLength, data1_dev, data2_dev);
       CUCHECK(cudaEventRecord(transformEvents[i*4+1], stream));
-    
+
       // transpose the matrix into temp_dev
       CUCHECK(cudaEventRecord(transposeEvents[i*4], stream));
       gpuTranspose(size, transformLength, data2_dev, data1_dev, stream);
@@ -490,4 +491,53 @@ float haar_not_lifting_2d_cuda_surfaces
   }
 
   return totalTime;
+}
+
+
+/*
+  Do Haar DWT on columns rather than rows.
+  This is equivalent to:
+    transpose
+    haar_not_lifting_2d_kernel
+    transpose
+  This just demonstrates the importance of the memory access pattern.
+  It is approximately 20x slower than accessing the data by rows.
+    Row transform:         20.382 ms (1 call)
+    Column transform:     407.445 ms (1 call)
+
+  Compared to rows-transpose-rows-transpose:
+    Transform time:        40.730 ms (2 calls)
+    Transpose time:        57.759 ms (2 calls)
+ */
+template<typename NUM>
+__global__ void haar_not_lifting_2d_columns_kernel
+(int arrayWidth, int transformLength, NUM *data, NUM *result) {
+
+  // each thread block processes one column of data
+  int x = blockIdx.x;
+
+  // make pointers to the first element in my column of data
+  NUM *inputCol = data + x;
+  NUM *outputCol = result + x;
+
+  // Set s to point to my row in the output data
+  NUM *s = outputCol;
+
+  int half = transformLength >> 1;
+  
+  // point d at the second half of the temporary row
+  NUM *d = s + half*arrayWidth;
+  
+  for (int i=threadIdx.x; i < half; i += blockDim.x) {
+    NUM a = inputCol[2*i*arrayWidth], b = inputCol[(2*i+1)*arrayWidth];
+    /*
+    int os = (s+i*arrayWidth) - result;
+    int od = (d+i*arrayWidth) - result;
+    printf("[%d,%d]  %d.%d %d.%d\n", blockIdx.x, threadIdx.x,
+           os/arrayWidth, os%arrayWidth,
+           od/arrayWidth, od%arrayWidth);
+    */
+    d[i*arrayWidth] = (a - b) * INV_SQRT2;
+    s[i*arrayWidth] = (a + b) * INV_SQRT2;
+  }
 }
