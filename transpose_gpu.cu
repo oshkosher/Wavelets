@@ -51,7 +51,7 @@ void gpuTransposeInternal(int fullWidth, int transposeSize,
                           cudaStream_t stream) {
 
   dim3 gridSize, blockSize(TX_BLOCK_SIZE, TX_BLOCK_SIZE);
-  gridSize.x = ceil(transposeSize-1) / TX_BLOCK_SIZE + 1;
+  gridSize.x = ceil((float)(transposeSize-1)) / TX_BLOCK_SIZE + 1;
   gridSize.y = gridSize.x;
 
   gpuTransposeKernel<<<gridSize, blockSize, 0, stream>>>
