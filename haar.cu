@@ -160,7 +160,7 @@ int main(int argc, char **argv) {
   if (blockSize == -1) blockSize = getBestThreadBlockSize(size);
 
   elapsed = haar_not_lifting_2d_cuda(size, data_gpu, inverse, stepCount,
-                                     blockSize);
+                                     blockSize, true);
 
   // Alternative implementation using surfaces.
   // For all inputs I tested, this is slightly slower.
