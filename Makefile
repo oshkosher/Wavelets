@@ -1,6 +1,12 @@
 all: WaveletSampleImage.class test_haar_cpu normalize convert haar
 
-NVCC=nvcc -arch sm_20
+# enable this to generate code for multiple card generations
+NVCC=nvcc -gencode arch=compute_20,code=sm_20 -gencode arch=compute_30,code=sm_30
+
+# enable one of these to generate code for just one generation of GPU
+# (reduces compile time by 30%)
+# NVCC=nvcc -arch sm_20
+# NVCC=nvcc -arch sm_30
 
 WaveletSampleImage.class: WaveletSampleImage.java
 	javac $<
@@ -31,7 +37,7 @@ CLASSPATH_DIR=$(CURDIR)
 endif
 
 haar: $(HAAR_OBJS)
-	nvcc -arch sm_30 -g $^ -o $@
+	$(NVCC) -g $^ -o $@
 
 test_haar_cpu: test_haar_cpu.cc dwt_cpu.cc data_io.cc
 	gcc -Wall -g $^ -o $@ -lstdc++ $(LIBS)
@@ -50,6 +56,12 @@ send: .senddevel
 .senddevel: *.cu *.cc *.h *.java Makefile
 	scp $? devel:tmp/Wavelets
 	touch .senddevel
+
+sendscu: .sendscu
+
+.sendscu: *.cu *.cc *.h *.java Makefile
+	scp $? scu:Wavelets
+	touch .sendscu
 
 clean:
 	rm -f *.class *.obj *.o *.exp *.lib *.pdb *~ convert \

@@ -8,17 +8,6 @@
 #define SQRT2     1.4142135623730950488f
 #define INV_SQRT2 0.70710678118654752440f
 
-// width and height of one tile in the Haar-transpose algorithm
-// Best setting:
-//   GTX 480: 16
-//   GTX 570: 16
-//   GTX 680: 32
-//   K2000M: 16
-//   Tesla K20c: 32
-#ifndef HT_TILE_SIZE
-#define HT_TILE_SIZE 16
-#endif
-
 surface<void, cudaSurfaceType2D> surfRef;
 
 template<typename NUM>
@@ -206,22 +195,30 @@ After:
 
 template<typename NUM>
 __global__ void haar_transpose_2d_kernel
-(int arrayWidth, int transformLength, NUM *data, NUM *result) {
-  __shared__ NUM sums [HT_TILE_SIZE][HT_TILE_SIZE+1];
-  __shared__ NUM diffs[HT_TILE_SIZE][HT_TILE_SIZE+1];
+(int arrayWidth, int transformLength, NUM *data, NUM *result,
+ int tileSize) {
+
+  // dynamically-sized shared memory
+  extern __shared__ int shared[];
+
+  // assign parts of shared memory to my arrays
+  NUM *sums, *diffs;
+  sums = (NUM*) shared;
+  diffs = sums + tileSize * (tileSize+1);
 
   int inputx = (blockIdx.x*blockDim.x + threadIdx.x) * 2;
   int inputy = blockIdx.y*blockDim.y + threadIdx.y;
   
-  // read a tile 2*HT_TILE_SIZE wide, HT_TILE_SIZE tall, compute
+  // read a tile 2*tileSize wide, tileSize tall, compute
   // the sum and difference coefficients, and store those coefficients
   // transposed in the sums and diffs shared memory arrays.
   int readIdx = inputy * arrayWidth + inputx;
-  // (inputx < (transformLength<<1) ??
+
   if (inputx+1 < transformLength && inputy < transformLength) {
     NUM a = data[readIdx], b = data[readIdx+1];
-    sums [threadIdx.x][threadIdx.y] = (a + b) * INV_SQRT2;
-    diffs[threadIdx.x][threadIdx.y] = (a - b) * INV_SQRT2;
+    int shidx = threadIdx.x + threadIdx.y*(tileSize+1);
+    sums [shidx] = (a + b) * INV_SQRT2;
+    diffs[shidx] = (a - b) * INV_SQRT2;
   }
 
   __syncthreads();
@@ -232,44 +229,53 @@ __global__ void haar_transpose_2d_kernel
   int writex = blockIdx.y*blockDim.y + threadIdx.x;
   if (writex < transformLength && writey*2 < transformLength) {
     int writeIdx = writey * arrayWidth + writex;
-    result[writeIdx] = sums[threadIdx.y][threadIdx.x];
+    int shidx = threadIdx.y + threadIdx.x*(tileSize+1);
+    result[writeIdx] = sums[shidx];
     writeIdx += arrayWidth*(transformLength>>1);
-    result[writeIdx] = diffs[threadIdx.y][threadIdx.x];
+    result[writeIdx] = diffs[shidx];
   }
 }
 
 template<typename NUM>
 __global__ void haar_inv_transpose_2d_kernel
-(int arrayWidth, int transformLength, NUM *data, NUM *result) {
-  __shared__ NUM sums [HT_TILE_SIZE][HT_TILE_SIZE];
-  __shared__ NUM diffs[HT_TILE_SIZE][HT_TILE_SIZE];
+(int arrayWidth, int transformLength, NUM *data, NUM *result, int tileSize) {
+
+  // dynamically-sized shared memory
+  extern __shared__ int shared[];
+
+  // assign parts of shared memory to my arrays
+  NUM *v1, *v2;
+  v1 = (NUM*) shared;
+  v2 = v1 + tileSize * (tileSize+1);
 
   int inputx = blockIdx.x*blockDim.x + threadIdx.x;
   int inputy = blockIdx.y*blockDim.y + threadIdx.y;
-  
-  // read a tile 2*HT_TILE_SIZE wide, HT_TILE_SIZE tall, compute
-  // the sum and difference coefficients, and store those coefficients
-  // transposed in the sums and diffs shared memory arrays.
+
+  // Read the sum and difference coefficients, where the difference coeff
+  // is in the second half of the array. Compute the original values v1 and v2,
+  // and store them in two shared memory arrays.
   int readIdx1 = inputy * arrayWidth + inputx;
   int readIdx2 = readIdx1 + (transformLength>>1);
   if (inputx < (transformLength>>1) && inputy < transformLength) {
     NUM s = data[readIdx1], d = data[readIdx2];
-    sums [threadIdx.x][threadIdx.y] = (s + d) * INV_SQRT2;
-    diffs[threadIdx.x][threadIdx.y] = (s - d) * INV_SQRT2;
+    int shidx = threadIdx.x * (tileSize+1) + threadIdx.y;
+    v1[shidx] = (s + d) * INV_SQRT2;
+    v2[shidx] = (s - d) * INV_SQRT2;
   }
 
   __syncthreads();
 
-  // Read the transposed sums and diffs shared memory arrays,
-  // and write the data to a tile whose position has been transposed
+  // Read the transposed pair of values v1 and v2 from the transposed
+  // shared memory arrays, and write the values to a tile tileSize wide
+  // and tileSize*2 tall.
   int writex = blockIdx.y*blockDim.y + threadIdx.x;
   int writey = (blockIdx.x*blockDim.x + threadIdx.y) * 2;
   if (writex < transformLength && writey+1 < transformLength) {
     int writeIdx1 = writey * arrayWidth + writex;
     int writeIdx2 = writeIdx1 + arrayWidth;
-
-    result[writeIdx1] = sums[threadIdx.y][threadIdx.x];
-    result[writeIdx2] = diffs[threadIdx.y][threadIdx.x];
+    int shidx = threadIdx.y * (tileSize+1) + threadIdx.x;
+    result[writeIdx1] = v1[shidx];
+    result[writeIdx2] = v2[shidx];
   }
 }
 
@@ -287,7 +293,35 @@ float haar_not_lifting_2d_cuda
    bool useCombinedTranspose) {
   return haar_not_lifting_2d_cuda_internal
     (size, data, inverse, stepCount, threadBlockSize, useCombinedTranspose);
-}     
+}
+
+
+// haar_transpose_2d_kernel and haar_inv_transpose_2d_kernel use tiles
+// to optimize the memory access pattern. After testing tile sizes from
+// 8x8 to 32x32 on a few different GPUs, here are the sizes that produced
+// the best performance:
+//
+//   GTX 480: 16     (compute level 2.0)
+//   GTX 570: 16     (compute level 2.0)
+//   K2000M: 16      (compute level 3.0, laptop)
+//   GTX 680: 32     (compute level 3.0)
+//   GTX 690: 32     (compute level 3.0)
+//   Tesla K20c: 32  (compute level 3.5)
+//
+int bestTileSize() {
+  int gpuId;
+  cudaDeviceProp prop;
+  CUCHECK(cudaGetDevice(&gpuId));
+  CUCHECK(cudaGetDeviceProperties(&prop, gpuId));
+
+  // Based on the tests listed above, older (Fermi) and smaller (laptop)
+  // GPUs seem to work better with 16x16 tiles, but newer regular GPUs
+  // are faster with 32x32 tiles.
+  if (prop.major <= 2 || prop.multiProcessorCount <= 2)
+    return 16;
+  else
+    return 32;
+}
 
 
 // Wrapper function that handles the CUDA details.
@@ -296,7 +330,10 @@ float haar_not_lifting_2d_cuda_internal
 (int size, NUM *data, bool inverse, int stepCount, int threadBlockSize,
  bool useCombinedTranspose) {
 
-  // printf("Tile size %d\n", HT_TILE_SIZE);
+  int tileSize = bestTileSize();
+
+  if (useCombinedTranspose) printf("Tile size %dx%d\n", tileSize, tileSize);
+
   int maxSteps = dwtMaximumSteps(size);
   if (stepCount < 1 || stepCount > maxSteps)
     stepCount = maxSteps;
@@ -326,6 +363,9 @@ float haar_not_lifting_2d_cuda_internal
                           stream));
   copyToTimer.end(stream);
 
+  size_t sharedMemSize = tileSize * (tileSize+1)
+    * 2 * sizeof(float);
+  
   int transformLength;
 
   if (inverse) {
@@ -334,24 +374,24 @@ float haar_not_lifting_2d_cuda_internal
     transformLength = size >> (stepCount - 1);
     for (int i=0; i < stepCount; i++) {
 
-      dim3 gridDim((transformLength - 1) / (HT_TILE_SIZE*2) + 1,
-                   (transformLength - 1) / (HT_TILE_SIZE) + 1);
-      dim3 blockDim(HT_TILE_SIZE, HT_TILE_SIZE);
+      dim3 gridDim((transformLength - 1) / (tileSize*2) + 1,
+                   (transformLength - 1) / (tileSize) + 1);
+      dim3 blockDim(tileSize, tileSize);
 
       if (useCombinedTranspose) {
 
         // transform columns and transpose
         transformTimer.start(stream);
         haar_inv_transpose_2d_kernel
-          <<<gridDim, blockDim, 0, stream>>>
-          (size, transformLength, data1_dev, data2_dev);
+          <<<gridDim, blockDim, sharedMemSize, stream>>>
+          (size, transformLength, data1_dev, data2_dev, tileSize);
         transformTimer.end(stream);
     
         // transform rows and transpose
         transformTimer.start(stream);
         haar_inv_transpose_2d_kernel
-          <<<gridDim, blockDim, 0, stream>>>
-          (size, transformLength, data2_dev, data1_dev);
+          <<<gridDim, blockDim, sharedMemSize, stream>>>
+          (size, transformLength, data2_dev, data1_dev, tileSize);
         transformTimer.end(stream);
 
       } else {
@@ -394,24 +434,24 @@ float haar_not_lifting_2d_cuda_internal
     
     for (int i=0; i < stepCount; i++) {
 
-      dim3 gridDim((transformLength - 1) / (HT_TILE_SIZE*2) + 1,
-                   (transformLength - 1) / (HT_TILE_SIZE) + 1);
-      dim3 blockDim(HT_TILE_SIZE, HT_TILE_SIZE);
+      dim3 gridDim((transformLength - 1) / (tileSize*2) + 1,
+                   (transformLength - 1) / (tileSize) + 1);
+      dim3 blockDim(tileSize, tileSize);
     
       if (useCombinedTranspose) {
 
         // do the wavelet transform on rows
         transformTimer.start(stream);
         haar_transpose_2d_kernel
-          <<<gridDim, blockDim, 0, stream>>>
-          (size, transformLength, data1_dev, data2_dev);
+          <<<gridDim, blockDim, sharedMemSize, stream>>>
+          (size, transformLength, data1_dev, data2_dev, tileSize);
         transformTimer.end(stream);
 
         // do the wavelet transform on columns
         transformTimer.start(stream);
         haar_transpose_2d_kernel
-          <<<gridDim, blockDim, 0, stream>>>
-          (size, transformLength, data2_dev, data1_dev);
+          <<<gridDim, blockDim, sharedMemSize, stream>>>
+          (size, transformLength, data2_dev, data1_dev, tileSize);
         transformTimer.end(stream);
 
       } else {
