@@ -7,7 +7,7 @@
 *.exp
 *.lib
 *.pdb
-.senddevel
+.send*
 *.class
 haar
 haar.exe

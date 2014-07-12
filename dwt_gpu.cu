@@ -9,6 +9,12 @@
 #define INV_SQRT2 0.70710678118654752440f
 
 // width and height of one tile in the Haar-transpose algorithm
+// Best setting:
+//   GTX 480: 16
+//   GTX 570: 16
+//   GTX 680: 32
+//   K2000M: 16
+//   Tesla K20c: 32
 #ifndef HT_TILE_SIZE
 #define HT_TILE_SIZE 16
 #endif
@@ -201,8 +207,8 @@ After:
 template<typename NUM>
 __global__ void haar_transpose_2d_kernel
 (int arrayWidth, int transformLength, NUM *data, NUM *result) {
-  __shared__ NUM sums [HT_TILE_SIZE][HT_TILE_SIZE];
-  __shared__ NUM diffs[HT_TILE_SIZE][HT_TILE_SIZE];
+  __shared__ NUM sums [HT_TILE_SIZE][HT_TILE_SIZE+1];
+  __shared__ NUM diffs[HT_TILE_SIZE][HT_TILE_SIZE+1];
 
   int inputx = (blockIdx.x*blockDim.x + threadIdx.x) * 2;
   int inputy = blockIdx.y*blockDim.y + threadIdx.y;
@@ -212,7 +218,7 @@ __global__ void haar_transpose_2d_kernel
   // transposed in the sums and diffs shared memory arrays.
   int readIdx = inputy * arrayWidth + inputx;
   // (inputx < (transformLength<<1) ??
-  if (inputx < transformLength && inputy < transformLength) {
+  if (inputx+1 < transformLength && inputy < transformLength) {
     NUM a = data[readIdx], b = data[readIdx+1];
     sums [threadIdx.x][threadIdx.y] = (a + b) * INV_SQRT2;
     diffs[threadIdx.x][threadIdx.y] = (a - b) * INV_SQRT2;
@@ -224,7 +230,7 @@ __global__ void haar_transpose_2d_kernel
   // and write the data to a tile whose position has been transposed
   int writey = blockIdx.x*blockDim.x + threadIdx.y;
   int writex = blockIdx.y*blockDim.y + threadIdx.x;
-  if (writex < transformLength && writey < transformLength) {
+  if (writex < transformLength && writey*2 < transformLength) {
     int writeIdx = writey * arrayWidth + writex;
     result[writeIdx] = sums[threadIdx.y][threadIdx.x];
     writeIdx += arrayWidth*(transformLength>>1);
@@ -246,7 +252,7 @@ __global__ void haar_inv_transpose_2d_kernel
   // transposed in the sums and diffs shared memory arrays.
   int readIdx1 = inputy * arrayWidth + inputx;
   int readIdx2 = readIdx1 + (transformLength>>1);
-  if (inputx < transformLength && inputy < transformLength) {
+  if (inputx < (transformLength>>1) && inputy < transformLength) {
     NUM s = data[readIdx1], d = data[readIdx2];
     sums [threadIdx.x][threadIdx.y] = (s + d) * INV_SQRT2;
     diffs[threadIdx.x][threadIdx.y] = (s - d) * INV_SQRT2;
@@ -258,7 +264,7 @@ __global__ void haar_inv_transpose_2d_kernel
   // and write the data to a tile whose position has been transposed
   int writex = blockIdx.y*blockDim.y + threadIdx.x;
   int writey = (blockIdx.x*blockDim.x + threadIdx.y) * 2;
-  if (writex < transformLength && writey < (transformLength<<1)) {
+  if (writex < transformLength && writey+1 < transformLength) {
     int writeIdx1 = writey * arrayWidth + writex;
     int writeIdx2 = writeIdx1 + arrayWidth;
 
