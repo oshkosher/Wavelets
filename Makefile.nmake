@@ -1,0 +1,42 @@
+all: WaveletSampleImage.class haar.exe test_haar_cpu.exe normalize.exe
+
+HAAR_OBJS = haar.obj dwt_cpu.obj dwt_gpu.obj data_io.obj transpose_gpu.obj nixtimer.obj
+
+NVCC = nvcc -gencode arch=compute_20,code=sm_20 -gencode arch=compute_30,code=sm_30 -m32
+
+MSVC = cl /EHsc /nologo
+
+haar.obj: haar.cu
+	$(NVCC) -c haar.cu
+
+dwt_cpu.obj: dwt_cpu.cc dwt_cpu.h
+	$(NVCC) -c dwt_cpu.cc
+
+dwt_gpu.obj: dwt_gpu.cu dwt_gpu.h
+	$(NVCC) -c dwt_gpu.cu
+
+data_io.obj: data_io.cc data_io.h
+	$(NVCC) -c data_io.cc
+
+transpose_gpu.obj: transpose_gpu.cu transpose_gpu.h
+	$(NVCC) -c transpose_gpu.cu
+
+nixtimer.obj: nixtimer.cc nixtimer.h
+	$(NVCC) -c nixtimer.cc
+
+haar.exe: $(HAAR_OBJS)
+	$(NVCC) -g $(HAAR_OBJS) -o $@
+
+test_haar_cpu.exe: test_haar_cpu.cc dwt_cpu.cc dwt_cpu.h data_io.cc data_io.h \
+	  nixtimer.cc nixtimer.h
+	$(MSVC) test_haar_cpu.cc dwt_cpu.cc data_io.cc nixtimer.cc
+
+normalize.exe: normalize.cc data_io.cc data_io.h
+	$(MSVC) normalize.cc data_io.cc
+
+WaveletSampleImage.class: WaveletSampleImage.java
+	javac WaveletSampleImage.java
+
+clean:
+	del *.class *.obj *.o *.exp *.lib *.pdb *~ \
+	  haar.exe test_haar_cpu.exe normalize.exe
