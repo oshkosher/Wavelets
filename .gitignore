@@ -19,3 +19,5 @@ test_haar_cpu
 test_haar_cpu.exe
 *.stackdump
 convert
+libwaveletcuda.so
+cudahaar.oct
