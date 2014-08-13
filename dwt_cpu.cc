@@ -114,7 +114,7 @@ static void haar_not_lifting_internal(int length, T data[],
 
     sampleCount = half;
   }
-  delete temp;
+  delete[] temp;
 }
 
 

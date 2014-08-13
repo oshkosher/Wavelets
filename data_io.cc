@@ -173,6 +173,7 @@ static bool writeBinaryDataFile(const char *filename, float *data,
     fclose(outf);
     return false;
   }
+  fclose(outf);
   return true;
 }
 

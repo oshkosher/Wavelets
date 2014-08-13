@@ -123,6 +123,8 @@ int main_full(int argc, char **argv) {
   fflush(stdout);
   if (writeDataFile(outputFile, data, size, size, true))
     printf("%s written\n", outputFile);
+
+  delete[] data;
   
   return 0;
 }
