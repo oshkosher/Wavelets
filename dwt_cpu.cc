@@ -8,6 +8,7 @@
 #define SQRT2     1.4142135623730950488f
 #define INV_SQRT2 0.70710678118654752440f
 
+#define MIN(x,y) (((x) < (y)) ? (x) : (y))
 
 // This is different from the externally visible haar_not_lifting() function
 // in that no sanity check is done on the stepCount argument.
@@ -24,13 +25,30 @@ template<typename T>
 static float haar_inv_not_lifting_2d(int size, T *data, int stepCount);
 
 
+// return the number of high-order zero bits in a 32 bit integer
+unsigned countLeadingZeros(unsigned x) {
+  unsigned y, n;
+  n = 32;
+  y = x >> 16; if (y != 0) {n-=16; x=y;}
+  y = x >>  8; if (y != 0) {n-= 8; x=y;}
+  y = x >>  4; if (y != 0) {n-= 4; x=y;}
+  y = x >>  2; if (y != 0) {n-= 2; x=y;}
+  y = x >>  1; if (y != 0) return n - 2;
+  return n - x;
+}
+
+
+// Return ceil(log2(x)), or the log2 of the smallest power of two
+// that is greater than or equal to x.
+unsigned ceilLog2(unsigned x) {
+  if (x == 0) return 0;
+  return 32 - countLeadingZeros(x-1);
+}
+
+
+// Returns the maximum number of steps a DWT can take for a given input length
 int dwtMaximumSteps(int length) {
-  int steps = 0;
-  while (length >= 2) {
-    steps++;
-    length >>= 1;
-  }
-  return steps;
+  return ceilLog2(length) - 1;
 }
 
 
@@ -98,6 +116,208 @@ static void haar_not_lifting_internal(int length, T data[],
   }
   delete temp;
 }
+
+
+/*
+  Given an input length, return that length rounded up to a length
+  compatible with 'stepCount' steps of discrete wavelet transforms.
+  If powerOfTwo is true, round up to a power of two. Otherwise,
+  round up to a multiple of 2^stepCount. Return the rounded up length.
+*/
+int dwt_padded_length(int length, int stepCount, bool powerOfTwo) {
+  if (powerOfTwo) {
+    return 1 << ceilLog2(length);
+  } else {
+    int mod = 1 << stepCount;
+    return mod * ((length-1) / mod + 1);
+  }
+}
+
+
+/*
+  Pad an array to the given length with the given padding method.
+
+  The output array is returned. If output is NULL, a new array will be
+  allocated. If inputLen==0, then the output array will be zero-filled.
+*/
+template<typename T>
+static T *dwt_pad_t(int inputLen, T input[], 
+		    int outputLen, T *output,
+		    DWTPadding pad) {
+
+  // allocate output array, if necessary
+  if (output == NULL) {
+    output = new T[outputLen];
+  }
+
+  // if the input array is not the same as the output array, copy the first
+  // 'inputLen' elements to the output array.
+  if (input != output) {
+    for (int i=0; i < inputLen; i++) output[i] = input[i];
+  }
+
+  // If the length is zero, there's nothing to copy, so might as well
+  // fill it with zeros. If there's only one element, reflecting is the
+  // same as repeating, so just repeat.
+  if (inputLen == 0) {
+    pad = ZERO_FILL;
+  } else if (inputLen == 1 && pad == REFLECT) {
+    pad = REPEAT;
+  }
+
+  switch (pad) {
+  case ZERO_FILL:
+    for (int i=inputLen; i < outputLen; i++) {
+      output[i] = 0;
+    }
+    break;
+
+  case REPEAT:
+    T repeatValue;
+    repeatValue = output[inputLen-1];
+    for (int i=inputLen; i < outputLen; i++) {
+      output[i] = repeatValue;
+    }
+    break;
+
+  case REFLECT:
+    // if the input array is less than half the length of the output array,
+    // multiple passes will be needed. For example:
+    // input: abc, output length 8
+    // pass 1: abcba
+    // pass 2: abcbabcb
+    int writePos = inputLen;
+    do {
+      int iters = MIN(inputLen-1, outputLen - inputLen);
+      int readPos = inputLen-2;
+      for (int i=0; i < iters; i++) {
+	output[writePos++] = output[readPos--];
+      }
+      inputLen = writePos;
+    } while (writePos < outputLen);
+    break;
+  }
+    
+
+  return output;
+}
+
+
+float *dwt_pad(int inputLen, float input[], 
+	       int outputLen, float *output,
+	       DWTPadding pad) {
+  return dwt_pad_t(inputLen, input, outputLen, output, pad);
+}
+
+double *dwt_pad(int inputLen, double input[], 
+		int outputLen, double *output,
+		DWTPadding pad) {
+  return dwt_pad_t(inputLen, input, outputLen, output, pad);
+}
+
+
+template<typename T>
+static void copyRow(T *dest, int destRow, int destPitch,
+		    T *src,  int srcRow,  int srcPitch,
+		    int cols) {
+  memcpy(dest + destRow * destPitch,
+	 src  + srcRow  * srcPitch,
+	 sizeof(T) * cols);
+}
+
+template<typename T>
+static T *dwt_pad_2d_t(int inputRows,  int inputCols, 
+		     int inputPitch, T *input,
+		     int outputRows, int outputCols,
+		     int outputPitch, T *output, 
+		     DWTPadding pad) {
+
+  // allocate output array, if necessary
+  if (output == NULL) {
+    output = new T[outputRows * outputPitch];
+  }
+
+  // if the input array is not the same as the output array, copy the first
+  // 'inputLen' elements to the output array.
+  if (input != output) {
+    for (int i=0; i < inputRows; i++) {
+      copyRow(output, i, outputPitch, input, i, inputPitch, inputCols);
+    }
+  }
+  
+  // pad each row
+  for (int i=0; i < inputRows; i++) {
+    dwt_pad(inputCols,  input  + i*inputPitch,
+	    outputCols, output + i*outputPitch, pad);
+  }
+  
+  // pad columns by copying rows
+
+  // If the length is zero, there's nothing to copy, so might as well
+  // fill it with zeros. If there's only one element, reflecting is the
+  // same as repeating, so just repeat.
+  if (inputRows == 0) {
+    pad = ZERO_FILL;
+  } else if (inputRows == 1 && pad == REFLECT) {
+    pad = REPEAT;
+  }
+
+  switch (pad) {
+  case ZERO_FILL:
+    for (int i=inputRows; i < outputRows; i++) {
+      // fill the row with zeros
+      memset(output + i*outputPitch, 0, sizeof(T) * outputCols);
+    }
+    break;
+
+  case REPEAT:
+    for (int i=inputRows; i < outputRows; i++) {
+      copyRow(output, i, outputPitch,
+	      output, inputRows-1, outputPitch, outputCols);
+    }
+    break;
+
+  case REFLECT:
+    // if the input array is less than half the length of the output array,
+    // multiple passes will be needed. For example:
+    // input: abc, output length 8
+    // pass 1: abcba
+    // pass 2: abcbabcb
+    int inputLen = inputRows;
+    int writePos = inputLen;
+    do {
+      int iters = MIN(inputLen-1, outputRows - inputLen);
+      int readPos = inputLen-2;
+      for (int i=0; i < iters; i++) {
+	copyRow(output, writePos++, outputPitch,
+		output, readPos--,  outputPitch, outputCols);
+      }
+      inputLen = writePos;
+    } while (writePos < outputRows);
+    break;
+  }
+
+  return output;
+}
+
+float *dwt_pad_2d(int inputRows,  int inputCols, 
+		     int inputPitch, float *input,
+		     int outputRows, int outputCols,
+		     int outputPitch, float *output, 
+		     DWTPadding pad) {
+  return dwt_pad_2d_t(inputRows, inputCols, inputPitch, input,
+		      outputRows, outputCols, outputPitch, output, pad);
+}
+
+double *dwt_pad_2d(int inputRows,  int inputCols, 
+		     int inputPitch, double *input,
+		     int outputRows, int outputCols,
+		     int outputPitch, double *output, 
+		     DWTPadding pad) {
+  return dwt_pad_2d_t(inputRows, inputCols, inputPitch, input,
+		      outputRows, outputCols, outputPitch, output, pad);
+}
+
 
 
 template<typename T>
@@ -300,3 +520,5 @@ static float haar_inv_not_lifting_2d(int size, T *data,
 
   return (float) (1000 * (NixTimer::time() - startSec));
 }
+
+

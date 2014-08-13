@@ -82,10 +82,16 @@ public class WaveletSampleImage {
     if (args.length < 1) printHelp();
 
     boolean textOutput = false;
+    boolean doResize = true;
     int argNo = 0;
     while (argNo < args.length && args[argNo].charAt(0)=='-') {
       if (args[argNo].equals("-text")) {
         textOutput = true;
+        argNo++;
+      }
+
+      else if (args[argNo].equals("-noresize")) {
+        doResize = false;
         argNo++;
       }
 
@@ -136,7 +142,7 @@ public class WaveletSampleImage {
     }
 
     if (sourceIsImage) {
-      imageToMatrix(inputFile, outputFile, textOutput);
+      imageToMatrix(inputFile, outputFile, textOutput, doResize);
     } else {
       matrixToImage(inputFile, outputFile);
     }
@@ -149,7 +155,8 @@ public class WaveletSampleImage {
        "  If src is a jpeg image, convert it to grayscale data, cropped and\n" +
        "    resized so the width and height are equal and a power of two.\n" +
        "  If src is data, convert the float data into a grayscale image\n" +
-       "  -text : output in text format rather than binary.\n"
+       "  -text : output in text format rather than binary.\n" +
+       "  -noresize : just turn to grayscale, no resizing\n"
        );
     System.exit(0);
   }
@@ -163,7 +170,7 @@ public class WaveletSampleImage {
 
   /* Reads a JPEG image, convert to grayscale text data. */
   public static void imageToMatrix(String inputFile, String outputFile,
-                                   boolean textOutput) {
+                                   boolean textOutput, boolean doResize) {
     if (VERBOSE_OUTPUT) {
       System.out.println("Read image");
       System.out.flush();
@@ -175,47 +182,53 @@ public class WaveletSampleImage {
       System.err.println("Error reading \"" + inputFile + "\": " + e);
       return;
     }
+    int outputWidth = image.getWidth();
+    int outputHeight = image.getHeight();
 
-    // crop image to be square
-    if (VERBOSE_OUTPUT) {
-      System.out.println("Crop");
-      System.out.flush();
-    }
-    int size = image.getWidth();
-    if (image.getWidth() > image.getHeight()) {
-      size = image.getHeight();
-      int leftCrop = (image.getWidth() - image.getHeight()) / 2;
+    if (doResize) {
+      // crop image to be square
+      if (VERBOSE_OUTPUT) {
+	System.out.println("Crop");
+	System.out.flush();
+      }
+      int size = image.getWidth();
+      if (image.getWidth() > image.getHeight()) {
+	size = image.getHeight();
+	int leftCrop = (image.getWidth() - image.getHeight()) / 2;
 
-      image = image.getSubimage(leftCrop, 0, image.getHeight(),
-                                image.getHeight());
+	image = image.getSubimage(leftCrop, 0, image.getHeight(),
+				  image.getHeight());
 
-    } else if (image.getHeight() > image.getWidth()) {
-      int topCrop = (image.getHeight() - image.getWidth()) / 2;
-      image = image.getSubimage(0, topCrop, image.getWidth(),
-                                image.getWidth());
-    }
+      } else if (image.getHeight() > image.getWidth()) {
+	int topCrop = (image.getHeight() - image.getWidth()) / 2;
+	image = image.getSubimage(0, topCrop, image.getWidth(),
+				  image.getWidth());
+      }
 
-    // rescale the image the to next smaller power of 2
-    if (VERBOSE_OUTPUT) {
-      System.out.println("Rescale");
-      System.out.flush();
-    }
-    int newSize = Integer.highestOneBit(size);
-    float scaleFactor = (float)newSize / size;
-    // System.out.printf("Rescale %d to %d: %f\n", size, newSize, scaleFactor);
+      // rescale the image the to next smaller power of 2
+      if (VERBOSE_OUTPUT) {
+	System.out.println("Rescale");
+	System.out.flush();
+      }
+      int newSize = Integer.highestOneBit(size);
+      float scaleFactor = (float)newSize / size;
+      // System.out.printf("Rescale %d to %d: %f\n", size, newSize, scaleFactor);
 
-    if (newSize != size) {
-      AffineTransform rescaleXform = AffineTransform.getScaleInstance
-        (scaleFactor, scaleFactor);
-      AffineTransformOp rescaleOp = new AffineTransformOp
-        (rescaleXform, AffineTransformOp.TYPE_BICUBIC);
+      if (newSize != size) {
+	AffineTransform rescaleXform = AffineTransform.getScaleInstance
+	  (scaleFactor, scaleFactor);
+	AffineTransformOp rescaleOp = new AffineTransformOp
+	  (rescaleXform, AffineTransformOp.TYPE_BICUBIC);
 
-      // must match the image type of the input image
-      BufferedImage newImage = new BufferedImage
-        (newSize, newSize, image.getType());
+	// must match the image type of the input image
+	BufferedImage newImage = new BufferedImage
+	  (newSize, newSize, image.getType());
 
-      rescaleOp.filter(image, newImage);
-      image = newImage;
+	rescaleOp.filter(image, newImage);
+	image = newImage;
+      }
+
+      outputWidth = outputHeight = newSize;
     }
 
     // convert to grayscale
@@ -224,7 +237,7 @@ public class WaveletSampleImage {
       System.out.flush();
     }
     BufferedImage grayImage = new BufferedImage
-      (newSize, newSize, BufferedImage.TYPE_BYTE_GRAY);
+      (outputWidth, outputHeight, BufferedImage.TYPE_BYTE_GRAY);
     Graphics g = grayImage.getGraphics();
     g.drawImage(image, 0, 0, null);
     g.dispose();

@@ -5,6 +5,9 @@
   Simple implementation of a discrete wavelet transform using the CPU.
 */
 
+unsigned countLeadingZeros(unsigned x);
+unsigned ceilLog2(unsigned x);
+
 // Returns the maximum number of steps a DWT can take for a given input length
 // Is essentially ceil(log2(length))
 int dwtMaximumSteps(int length);
@@ -50,6 +53,41 @@ float haar_not_lifting_2d(int size, double *data,
 void haar_lifting(int length, float data[], int stepCount = -1);
 void haar_inv_lifting(int length, float data[], int stepCount = -1);
 
+typedef enum {
+  ZERO_FILL,  // fill pad elements with zero
+  REFLECT,    // fill with reflection: abcde -> abcdedcb
+  REPEAT      // fill with copies of last value: abcde->abcdeeee
+} DWTPadding;
+
+
+/*
+  Given an input length, return that length rounded up to a length
+  compatible with 'stepCount' steps of discrete wavelet transforms.
+  If powerOfTwo is true, round up to a power of two. Otherwise,
+  round up to a multiple of 2^stepCount. Return the rounded up length.
+*/
+int dwt_padded_length(int length, int stepCount, bool powerOfTwo);
+
+
+/*
+  Pad an array to the given length with the given padding method.
+
+  The output array is returned. If output is NULL, a new array will be
+  allocated. If inputLen==0, then the output array will be zero-filled.
+*/
+float *dwt_pad(int inputLen, float input[], 
+	       int outputLen, float *output,
+	       DWTPadding pad);
+double *dwt_pad(int inputLen, double input[], 
+		int outputLen, double *output,
+		DWTPadding pad);
+
+float *dwt_pad_2d(int rows, int cols, int rowPitch, float *input,
+		  int outputRows, int outputCols, int outputPitch,
+		  float *output, DWTPadding pad);
+double *dwt_pad_2d(int rows, int cols, int rowPitch, double *input,
+		   int outputRows, int outputCols, int outputPitch,
+		   double *output, DWTPadding pad);
 
 
 #endif // __DWT_CPU_H__
