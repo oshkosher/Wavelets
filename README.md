@@ -5,10 +5,11 @@ SCU GPU Wavelet Project
 
 To build:
   You'll need to have CUDA and Java installed.
-  I've tested the tools on Linux and on Windows (inside Cygwin).
-  At the command line, just run "make".
+  If you're using Linux or Cygwin, just run "make".
+  If you're using Visual Studio, open a visual studio command prompt
+  and run "nm". (this is a batch file that calls "nmake" on Makefile.nmake.
   
-  I haven't tried integrating it in an IDE like Visual Studio yet.
+  I haven't tried integrating it into the Visual Studio IDE yet.
 
 There are two main tools:
 
@@ -61,13 +62,15 @@ There are two main tools:
     
     % ./haar hubble.data hubble2.data 3
     Reading hubble.data...4096 x 4096
-    CPU: 539.509521 ms
+    GPU 0: GeForce GTX 680
+    CPU: 593.847 ms
+    Tile size 32x32
+    Time elapsed creating GPU tasks: 0.164 ms
     Times:
-      Copy data to GPU:      10.391 ms
-      Transform time:         7.597 ms (6 calls)
-      Transpose time:         6.776 ms (6 calls)
-      Copy data from GPU:    10.360 ms
-    CUDA: 35.140831 ms
+      Copy data to GPU:      10.275 ms
+      Transform time:         4.359 ms (6 calls)
+      Copy data from GPU:    10.359 ms
+    CUDA: 25.003168 ms
     Wrote hubble2.data
     
     % java WaveletSampleImage hubble2.data
@@ -75,13 +78,15 @@ There are two main tools:
     
     % ./haar -inverse hubble2.data hubble3.data 3
     Reading hubble2.data...4096 x 4096
-    CPU: 516.411377 ms
+    GPU 0: GeForce GTX 680
+    CPU: 601.198 ms
+    Tile size 32x32
+    Time elapsed creating GPU tasks: 0.150 ms
     Times:
-      Copy data to GPU:      10.412 ms
-      Transform time:         8.872 ms (6 calls)
-      Transpose time:         7.022 ms (6 calls)
-      Copy data from GPU:    10.511 ms
-    CUDA: 36.833439 ms
+      Copy data to GPU:      10.275 ms
+      Transform time:         4.290 ms (6 calls)
+      Copy data from GPU:    10.153 ms
+    CUDA: 24.728704 ms
     Wrote hubble3.data
     
     % java WaveletSampleImage hubble3.data
