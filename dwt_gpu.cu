@@ -8,7 +8,7 @@
 #define SQRT2     1.4142135623730950488f
 #define INV_SQRT2 0.70710678118654752440f
 
-surface<void, cudaSurfaceType2D> surfRef;
+//surface<void, cudaSurfaceType2D> surfRef;
 
 template<typename NUM>
 float haar_not_lifting_2d_cuda_internal
@@ -56,7 +56,7 @@ __global__ void haar_not_lifting_2d_kernel
   }
 }
 
-
+/*
 __global__ void haar_not_lifting_2d_surfacedata_kernel
 (int arrayWidth, int transformLength, float *temp,
  bool transposed) {
@@ -106,7 +106,7 @@ __global__ void haar_not_lifting_2d_surfacedata_kernel
       surf2Dwrite(tempRow[i], surfRef, i * sizeof(float), y);
   }
 }
-
+*/
 
 /* Inverse Haar wavelet transform. */
 template<typename NUM>
@@ -527,7 +527,7 @@ float haar_not_lifting_2d_cuda_internal
   return overallTimer.time();
 }
 
-
+/*
 // like haar_not_lifting_2d_cuda, but using surfaces
 float haar_not_lifting_2d_cuda_surfaces
 (int size, float *data, bool inverse, int stepCount, int threadBlockSize) {
@@ -592,20 +592,20 @@ float haar_not_lifting_2d_cuda_surfaces
 
       // transform columns in temp_dev
       CUCHECK(cudaEventRecord(transformEvents[i*4], stream));
-      /*
-      haar_inv_not_lifting_2d_kernel
-        <<<transformLength, threadBlockSize, 0, stream>>>
-        (size, transformLength, temp_dev, data_dev);
-      */
+      
+      //haar_inv_not_lifting_2d_kernel
+      //  <<<transformLength, threadBlockSize, 0, stream>>>
+      //  (size, transformLength, temp_dev, data_dev);
+      
       CUCHECK(cudaEventRecord(transformEvents[i*4+1], stream));
     
       // transform rows in data_dev
       CUCHECK(cudaEventRecord(transformEvents[i*4+2], stream));
-      /*
-      haar_inv_not_lifting_2d_kernel
-        <<<transformLength, threadBlockSize, 0, stream>>>
-        (size, transformLength, data_dev, temp_dev);
-      */
+      
+      //haar_inv_not_lifting_2d_kernel
+      //  <<<transformLength, threadBlockSize, 0, stream>>>
+      //  (size, transformLength, data_dev, temp_dev);
+      
       CUCHECK(cudaEventRecord(transformEvents[i*4+3], stream));
 
       transformLength <<= 1;
@@ -690,7 +690,7 @@ float haar_not_lifting_2d_cuda_surfaces
 
   return totalTime;
 }
-
+*/
 
 /*
   Do Haar DWT on columns rather than rows.
