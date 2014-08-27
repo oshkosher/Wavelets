@@ -2,7 +2,7 @@
 %A=read_jpg('amth_image.jpg',256,256);len=256;
 %A=read_jpg('IMG1.jpg',256,256);len=256;
 %A=read_bmp('test_image.bmp',256,256);len=256;
-A=imread('museum.jpg');              % convert jpeg image to RGB matrices
+A=imread('../../Images/museum.jpg','jpg');              % convert jpeg image to RGB matrices
 A=rgb2gray(A);                       % convert to grayscale matrix
 dim1=256; dim2=256;                  % desired dimensions
 A=imresize(A,[dim1,dim2],'bicubic'); % set A to desired dimensions
@@ -13,7 +13,7 @@ figure(1);image(A);colormap gray(256);%axis equal;axis([1 256 1 256]);
 B = haar_encode(A);
 %B = d4_encode(A);
 
-figure(2);imagesc(B)
+%figure(2);imagesc(B)
 
 % Find threshold consistent with specified cutoff
 th = threshold(B,cutoff);
@@ -45,7 +45,7 @@ pcnt_zeros =100*mb/len^2; pcnt_err = rel_err*100; [pcnt_zeros,pcnt_err,PSNR]
 % Inverse transformation
 %AU = haar_decode(BU);
 % AU = d4_decode(BU);
-% figure(3);image(AU);colormap gray(256);title('Uniform Quant');%axis equal;axis([1 256 1 256]);
+% figure(2);image(AU);colormap gray(256);title('Uniform Quant');%axis equal;axis([1 256 1 256]);
         
 % Calculate error and percent zeros
 % abs_err = sqrt(sum((A(:)-AU(:)).^2));
