@@ -114,12 +114,13 @@ int main_full(int argc, char **argv) {
 
 	float maxVal, minVal;
 	float threshold = thresh_cpu(len, data, compRatio, &maxVal, &minVal);  // Calculate the threshold
-    quant_unif_cpu(len, data, bits, threshold, maxVal, minVal);            // Apply threshold and uniform quantization
-		
+    quant_unif_cpu(len, data, bits, threshold, maxVal);            // Apply threshold and uniform quantization
+	dquant_unif_cpu(len, data, bits, threshold, maxVal);      // reverse quantization
+	haar_not_lifting_2d(size, data, true, abs(stepCount));	  // Take the inverse transform
   // printMatrix(width, height, data);
   printf("Writing...\n");
   fflush(stdout);
-  if (writeDataFile(outputFile, data, size, size, true))
+  if (writeDataFile(outputFile, data, size, size, true))      // Write the reconstructed image!
     printf("%s written\n", outputFile);
 
   delete[] data;
