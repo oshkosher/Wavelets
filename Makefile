@@ -1,7 +1,9 @@
 default: haar
 
 all: haar WaveletSampleImage.class test_haar_cpu normalize convert \
-  cudahaar.mex
+  cudahaar.mex test_huffman
+
+java: WaveletSampleImage.class
 
 oct: cudahaar.mex
 
@@ -14,6 +16,8 @@ NVCC=nvcc --compiler-options -fPIC -gencode arch=compute_20,code=sm_20 \
 # (reduces compile time by 30%)
 # NVCC=nvcc -arch sm_20
 # NVCC=nvcc -arch sm_30
+
+CC = gcc -std=c++11 -Wall -g
 
 MKOCT=mkoctfile
 
@@ -56,6 +60,12 @@ test_haar_cpu: test_haar_cpu.cc dwt_cpu.cc data_io.cc
 normalize: normalize.cc data_io.cc
 	gcc -Wall -g $^ -o $@ -lstdc++ $(LIBS)
 
+test_rle: test_rle.cc rle.h data_io.cc data_io.h huffman.h huffman.cc
+	$(CC) test_rle.cc huffman.cc data_io.cc -o $@ -lstdc++ $(LIBS)
+
+test_huffman: test_huffman.cc huffman.cc huffman.h
+	$(CC) test_huffman.cc huffman.cc -o $@ -lstdc++ $(LIBS)
+
 libwaveletcuda.so: $(CUDA_OBJS) Octave/octave_wrapper.cu
 	$(NVCC) -I. -c Octave/octave_wrapper.cu
 	$(NVCC) -o $@ --shared $(CUDA_OBJS) octave_wrapper.o
@@ -63,7 +73,7 @@ libwaveletcuda.so: $(CUDA_OBJS) Octave/octave_wrapper.cu
 cudahaar.mex: Octave/cudahaar.cc libwaveletcuda.so
 	$(MKOCT) -L. -lwaveletcuda Octave/cudahaar.cc
 
-convert: Makefile
+convert: Makefile WaveletSampleImage.class
 	@echo Write $@ wrapper for \"java WaveletSampleImage\"
 	@echo '#!/bin/sh' > convert
 	@echo java -cp \"$(CLASSPATH_DIR)\" WaveletSampleImage \"\$$@\" >> convert
