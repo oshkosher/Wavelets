@@ -1,6 +1,8 @@
 #ifndef __QUANT_LOG_CPU__
 #define __QUANT_LOG_CPU__
 
+float log2(float x);
+
 // Applies the threshold such that values <= threshold are 0
 // Maps the remaining range of values to the values 0:(2^bits)-1
 // Overwrites data with the new values

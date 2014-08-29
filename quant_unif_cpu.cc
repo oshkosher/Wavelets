@@ -1,7 +1,4 @@
-#include <cstdio>
-#include <cstring>
-#include <cstdlib>
-#include <cassert>
+#include <stdio.h>
 #include <math.h>
 #include "dwt_cpu.h"
 
@@ -11,7 +8,7 @@
 void quant_unif_cpu(int len, float *data, int bits, float threshold, float maxVal)
 {
 	int count = len * len;
-	int base = pow(2,bits-1)-1;
+	int base = (int)(pow(2.0,bits-1)-1);
 
 	for (int idx = 0; idx < count; idx++ )
 	{
@@ -21,8 +18,8 @@ void quant_unif_cpu(int len, float *data, int bits, float threshold, float maxVa
 		}
 		else
 		{
-			sign=data[idx]/abs(data[idx]);
-			data[idx] = sign*ceil(base*((abs(data[idx])-threshold)/(maxVal-threshold));
+			int sign=data[idx]/abs(data[idx]);
+			data[idx] = sign*ceil(base*((abs(data[idx])-threshold)/(maxVal-threshold)));
 		}
 	}
 }

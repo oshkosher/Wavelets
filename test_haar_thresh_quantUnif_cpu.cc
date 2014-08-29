@@ -2,61 +2,15 @@
 #include <cassert>
 #include "dwt_cpu.h"
 #include "data_io.h"
+#include <stdio.h>
+#include <math.h>
+#include "dwt_cpu.h"
+#include "data_io.h"
 #include "thresh_cpu.h"
+
 #include "quant_unif_cpu.h"
-
-
-int testPad() {
+#include "dquant_unif_cpu.h"
  
-  float data[] = {
-    17,   14,    1,   16,   20,    6,    2,   11,
-    14,    9,    4,   10,    6,   16,   17,   13,
-     3,    7,   17,   11,   10,    5,    2,   16,
-     6,   12,   15,   13,   19,    7,   13,   20,
-    13,   19,    2,   13,    6,    8,   10,    8,
-    10,    8,   13,   15,    2,   15,   12,   11,
-    20,   13,   17,   20,   20,    2,   14,    3,
-     8,   12,    2,   19,   15,   14,    8,   16 
-  };
-
-  dwt_pad_2d(5, 5, 8, data, 8, 8, 8, data, REFLECT);
-  print_matrix(8, 8, data);
-
-  return 0;
-}
-
-
-
-int main2() {
-
-  // float data[] = {9, 7, 3, 5, 6, 10, 2, 6};
-  float data[] = {
-    17,   14,    1,   16,   20,    6,    2,   11,
-    14,    9,    4,   10,    6,   16,   17,   13,
-     3,    7,   17,   11,   10,    5,    2,   16,
-     6,   12,   15,   13,   19,    7,   13,   20,
-    13,   19,    2,   13,    6,    8,   10,    8,
-    10,    8,   13,   15,    2,   15,   12,   11,
-    20,   13,   17,   20,   20,    2,   14,    3,
-     8,   12,    2,   19,   15,   14,    8,   16 
-  };
-  int len = 8;
-
-  haar_not_lifting_2d(len, data, false, 1);
-  print_matrix(len, len, data);
-  float *absData = NULL;
-  thresh_cpu(len, data, compRatio, absData);
-  quant_unif_cpu(len, data, bits);
-
-  printf("\n");
-
-  haar_not_lifting_2d(len, data, true, 1);
-  print_matrix(len, len, data);
-
-  return 0;
-}
-  
-
 int main_full(int argc, char **argv) {
   if (argc != 6) {
     fprintf(stderr, "\n  test_haar_thresh_quantUnif_cpu <steps> <input data> <output data> compRatio bits\n"
@@ -113,9 +67,9 @@ int main_full(int argc, char **argv) {
     haar_not_lifting_2d(size, data, false, stepCount);
 
 	float maxVal, minVal;
-	float threshold = thresh_cpu(len, data, compRatio, &maxVal, &minVal);  // Calculate the threshold
-    quant_unif_cpu(len, data, bits, threshold, maxVal);            // Apply threshold and uniform quantization
-	dquant_unif_cpu(len, data, bits, threshold, maxVal);      // reverse quantization
+	float threshold = thresh_cpu(size, data, compRatio, &maxVal, &minVal);  // Calculate the threshold
+    quant_unif_cpu(size, data, bits, threshold, maxVal);            // Apply threshold and uniform quantization
+	dquant_unif_cpu(size, data, bits, threshold, maxVal);      // reverse quantization
 	haar_not_lifting_2d(size, data, true, abs(stepCount));	  // Take the inverse transform
   // printMatrix(width, height, data);
   printf("Writing...\n");
@@ -128,42 +82,6 @@ int main_full(int argc, char **argv) {
   return 0;
 }
 
-
-void testMisc() {
-  // test countLeadingZeros
-  assert(countLeadingZeros(0) == 32);
-  assert(countLeadingZeros(1) == 31);
-  assert(countLeadingZeros(2) == 30);
-  assert(countLeadingZeros(3) == 30);
-  assert(countLeadingZeros(0x7fffffff) == 1);
-  assert(countLeadingZeros(0xffffffff) == 0);
-
-  // test ceilLog2()
-  assert(ceilLog2(1) == 0);
-  assert(ceilLog2(2) == 1);
-  assert(ceilLog2(3) == 2);
-  assert(ceilLog2(4) == 2);
-  assert(ceilLog2(5) == 3);
-  assert(ceilLog2(6) == 3);
-  assert(ceilLog2(7) == 3);
-  assert(ceilLog2(8) == 3);
-  assert(ceilLog2(9) == 4);
-  assert(ceilLog2(511) == 9);
-  assert(ceilLog2(512) == 9);
-  assert(ceilLog2(513) == 10);
-
-  // test dwt_padded_length()
-  assert(dwt_padded_length(4, 1, false) == 4);
-  assert(dwt_padded_length(5, 1, false) == 6);
-  assert(dwt_padded_length(5, 2, false) == 8);
-  assert(dwt_padded_length(6, 1, false) == 6);
-  assert(dwt_padded_length(6, 2, false) == 8);
-  assert(dwt_padded_length(3, 0, true) == 4);
-  assert(dwt_padded_length(4, 0, true) == 4);
-  assert(dwt_padded_length(5, 0, true) == 8);
-
-  printf("OK.\n");
-}
 
 int main(int argc, char **argv) {
   // testMisc();

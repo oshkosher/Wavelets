@@ -8,21 +8,16 @@
 // Applies the threshold such that values <= threshold are 0
 // Maps the remaining range of values to the values 0:(2^bits)-1
 // Overwrites data with the new values
-float * dquant_unif_cpu(int len, float *data, int bits, float threshold, float maxVal)
+void dquant_unif_cpu(int len, float *data, int bits, float threshold, float maxVal)
 {
 	int count = len * len;
-	int base = pow(2,bits-1)-1;
-        outData = new float[count];
+	int base = pow(2.0,bits-1)-1;
 	for (int idx = 0; idx < count; idx++ )
 	{
-		if (data[idx] == (float)0.0)
+		if (data[idx] != (float)0.0)
 		{
-			outData[idx] = (float)0.0;
-		}
-		else
-		{
-			sign=data[idx]/abs(data[idx]);
-			outData[idx] = sign*((abs(data[idx])*(maxVal/base)));
+			int sign=data[idx]/abs(data[idx]);
+			data[idx] = sign*((abs(data[idx])*(maxVal/base)));			
 		}
 	}
 }
