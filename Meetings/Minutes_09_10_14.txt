@@ -1,0 +1,40 @@
+Meeting Minutes 09_14_2014
+
+Started the call with Bonnie, Ed, and David.  Later Anupam and Drazen joined.
+
+Question:  Are we planning to follow guidelines in the JP3D spec for the file format?  
+     Or are we just going to make our own?
+
+Question:  What types of data will be support?  We might start with metrology data, rather than an 
+       image acquisition system, that could be floats or doubles.  We have been using 8 bit integer
+	   pixel values for testing, but would we want 32 bit integers?  Let's itemize the supported
+	   combinations.
+
+We discussed some architectural issues that will come up later, like the implications of tiling, and
+the fact that we want as many operations to take place on data, rather than cycling through them again.
+For now it is simple, but we may add design documents after we get the initial chain working.
+
+	   
+Status:
+    Bonnie:
+		Checked in cpu thresholding and uniform and log quantization.  There is a bug in the log
+		version that turns some bright values to black.  When this is found, will go to GPU implementation.		 
+	Ed: 
+		Implemented Huffman encoding and run length encoding.  Will continue onto defining a file format.
+	David: 
+		Implemented Lloyd's algorithm and is checking against Matlab.  Will consider the implications of 
+		adding a codebook and will discuss at next meeting.
+
+Action Items:
+	Ed: 
+		Will convert the task list to text which will be more compatible with the repository than a binary file.
+	Bonnie:
+		Will incorporate some performance enhancements suggested by Ed. Will check in .sln and .vxproj files
+		for Visual Studio with Nsight development on Windows.
+	Anupam will setup Github account, and connect with Sergio about finding a volumetric application.
+
+Coordination policies:
+	.gitignore is set in a directory to prevent checkins of certain types.  We can add a LargeImages directory
+	that Ed will add to .gitignore.  Bonnie will add MSVC generated filenames to avoid checking those it.
+
+	
