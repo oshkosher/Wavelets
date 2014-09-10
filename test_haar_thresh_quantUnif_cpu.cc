@@ -3,6 +3,7 @@
 #include "dwt_cpu.h"
 #include "data_io.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 #include "dwt_cpu.h"
 #include "data_io.h"
@@ -62,15 +63,15 @@ int main_full(int argc, char **argv) {
   }
 
   if (stepCount < 0) 
-    haar_not_lifting_2d(size, data, true, -stepCount);
+    haar_2d(size, data, true, -stepCount);
   else
-    haar_not_lifting_2d(size, data, false, stepCount);
+    haar_2d(size, data, false, stepCount);
 
 	float maxVal, minVal;
 	float threshold = thresh_cpu(size, data, compRatio, &maxVal, &minVal);  // Calculate the threshold
     quant_unif_cpu(size, data, bits, threshold, maxVal);            // Apply threshold and uniform quantization
 	dquant_unif_cpu(size, data, bits, threshold, maxVal);      // reverse quantization
-	haar_not_lifting_2d(size, data, true, abs(stepCount));	  // Take the inverse transform
+	haar_2d(size, data, true, abs(stepCount));	           // Take the inverse transform
   // printMatrix(width, height, data);
   printf("Writing...\n");
   fflush(stdout);

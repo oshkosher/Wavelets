@@ -18,7 +18,7 @@ int testPad() {
   print_matrix(outputLen, 1, output);
 
   printf("\n");
-  haar_not_lifting(len, output, true, 1);
+  haar(len, output, true, 1);
   print_matrix(len, 1, output);
   */
 
@@ -58,17 +58,17 @@ int main2() {
 
 
   /*
-  haar_not_lifting(len, data);
+  haar(len, data);
   printf("\n");
-  haar_inv_not_lifting(len, data);
+  haar_inv(len, data);
   */
 
-  haar_not_lifting_2d(len, data, false, 1);
+  haar_2d(len, data, false, 1);
   print_matrix(len, len, data);
 
   printf("\n");
 
-  haar_not_lifting_2d(len, data, true, 1);
+  haar_2d(len, data, true, 1);
   print_matrix(len, len, data);
 
   return 0;
@@ -114,9 +114,9 @@ int main_full(int argc, char **argv) {
   }
 
   if (stepCount < 0) 
-    haar_not_lifting_2d(size, data, true, -stepCount);
+    haar_2d(size, data, true, -stepCount);
   else
-    haar_not_lifting_2d(size, data, false, stepCount);
+    haar_2d(size, data, false, stepCount);
   
   // printMatrix(width, height, data);
   printf("Writing...\n");

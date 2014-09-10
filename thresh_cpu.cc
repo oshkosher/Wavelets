@@ -11,7 +11,8 @@
 // Sorts absData.  Finds the index corresponding to the compRatio, and 
 // reads that element to get the threshold. Sets min and max values that 
 // remain above threshold  
-float thresh_cpu(int len, float *data, float compRatio, float *maxVal)
+float thresh_cpu(int len, float *data, float compRatio, float *maxVal,
+                 float *minVal)
 {
 	int count = len*len;	//Square matrix
 	float *absData = new float[count];
@@ -23,7 +24,8 @@ float thresh_cpu(int len, float *data, float compRatio, float *maxVal)
 	int threshIdx = floor(compRatio * count );
 	std::vector<float> dvec(absData, absData + count);
 	std::sort(dvec.begin(),dvec.end());
-	*maxVal = *(dvec.rbegin());  // get the largest value in the data
+	*maxVal = *(dvec.rbegin()); // get the largest value in the data
+        *minVal = dvec[0];          // get the smallest value
 	float threshold = dvec[threshIdx];
 
 	delete[] absData;

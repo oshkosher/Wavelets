@@ -34,8 +34,7 @@ int haar(float *output, float *input, int width, int steps, bool inverse, int bl
   // run the GPU version of the algorithm
   if (blockSize == -1) blockSize = getBestThreadBlockSize(width);
 
-  elapsed = haar_not_lifting_2d_cuda(width, plmemory, inverse, steps,
-                                     blockSize, true);
+  elapsed = haar_2d_cuda(width, plmemory, inverse, steps, blockSize, true);
 
   memcpy(output, plmemory, sizeof(float)*width*width);
 
@@ -45,6 +44,9 @@ int haar(float *output, float *input, int width, int steps, bool inverse, int bl
 
   return 0;
 }
+
+// double support was added in version 1.3
+#if !defined(__CUDA_ARCH__) || (__CUDA_ARCH__ >= 130)
 
 int haar(double *output, double *input, int width, int steps, bool inverse, int blockSize) {
 
@@ -66,8 +68,7 @@ int haar(double *output, double *input, int width, int steps, bool inverse, int 
   // run the GPU version of the algorithm
   if (blockSize == -1) blockSize = getBestThreadBlockSize(width);
 
-  elapsed = haar_not_lifting_2d_cuda(width, plmemory, inverse, steps,
-                                     blockSize, true);
+  elapsed = haar_2d_cuda(width, plmemory, inverse, steps, blockSize, true);
 
   memcpy(output, plmemory, sizeof(double)*width*width);
 
@@ -77,4 +78,5 @@ int haar(double *output, double *input, int width, int steps, bool inverse, int 
 
   return 0;
 }
+#endif // cuda 1.3
 
