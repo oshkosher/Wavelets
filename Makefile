@@ -1,7 +1,7 @@
 default: haar
 
 all: haar WaveletSampleImage.class test_haar_cpu normalize convert \
-  cudahaar.mex test_huffman test_haar_thresh_quantUnif_cpu
+  cudahaar.mex test_huffman test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu
 
 java: WaveletSampleImage.class
 
@@ -68,6 +68,14 @@ test_haar_thresh_quantUnif_cpu: test_haar_thresh_quantUnif_cpu.cc \
 	  nixtimer.cc thresh_cpu.cc quant_unif_cpu.cc dquant_unif_cpu.cc \
 	  -lstdc++ $(LIBS) -o $@
 
+test_haar_thresh_quantLog_cpu: test_haar_thresh_quantLog_cpu.cc \
+  dwt_cpu.cc dwt_cpu.h data_io.cc data_io.h nixtimer.cc nixtimer.h \
+  thresh_cpu.cc thresh_cpu.h quant_log_cpu.cc quant_log_cpu.h \
+  dquant_log_cpu.cc dquant_log_cpu.h
+	$(CC) test_haar_thresh_quantLog_cpu.cc dwt_cpu.cc data_io.cc \
+	  nixtimer.cc thresh_cpu.cc quant_log_cpu.cc dquant_log_cpu.cc \
+	  -lstdc++ $(LIBS) -o $@
+	  
 normalize: normalize.cc data_io.cc
 	gcc -Wall -g $^ -o $@ -lstdc++ $(LIBS)
 
