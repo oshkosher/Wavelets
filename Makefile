@@ -1,7 +1,7 @@
 default: haar
 
 all: haar WaveletSampleImage.class test_haar_cpu normalize convert \
-  cudahaar.mex test_huffman
+  cudahaar.mex test_huffman test_bit_stream
 
 java: WaveletSampleImage.class
 
@@ -17,7 +17,7 @@ NVCC=nvcc --compiler-options -fPIC -gencode arch=compute_20,code=sm_20 \
 # NVCC=nvcc -arch sm_20
 # NVCC=nvcc -arch sm_30
 
-CC = gcc -std=c++11 -Wall -g
+CC = gcc -Wall -g
 
 MKOCT=mkoctfile
 
@@ -65,6 +65,9 @@ test_rle: test_rle.cc rle.h data_io.cc data_io.h huffman.h huffman.cc
 
 test_huffman: test_huffman.cc huffman.cc huffman.h
 	$(CC) test_huffman.cc huffman.cc -o $@ -lstdc++ $(LIBS)
+
+test_bit_stream: test_bit_stream.cc bit_stream.h nixtimer.h nixtimer.cc
+	$(CC) test_bit_stream.cc nixtimer.cc -o $@ -lstdc++ $(LIBS)
 
 libwaveletcuda.so: $(CUDA_OBJS) Octave/octave_wrapper.cu
 	$(NVCC) -I. -c Octave/octave_wrapper.cu
