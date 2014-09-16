@@ -7,7 +7,7 @@ To build:
   You'll need to have CUDA and Java installed.
   If you're using Linux or Cygwin, just run "make".
   If you're using Visual Studio, open a visual studio command prompt
-  and run "nm". (this is a batch file that calls "nmake" on Makefile.nmake.
+  and run "make". (this is a batch file that calls "nmake" on Makefile.nmake.
   
   I haven't tried integrating it into the Visual Studio IDE yet.
 
