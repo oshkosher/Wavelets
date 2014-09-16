@@ -4,17 +4,18 @@
 #include "data_io.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <iostream>
 #include <math.h>
 #include "dwt_cpu.h"
 #include "data_io.h"
 #include "thresh_cpu.h"
 
-#include "quant_unif_cpu.h"
-#include "dquant_unif_cpu.h"
+#include "quant_log_cpu.h"
+#include "dquant_log_cpu.h"
  
 int main_full(int argc, char **argv) {
-  if (argc != 6) {
-    fprintf(stderr, "\n  test_haar_thresh_quantUnif_cpu <steps> <input data> <output data> compRatio bits\n"
+  if (argc != 7) {
+    fprintf(stderr, "\n  test_haar_thresh_quantLog_cpu <steps> <input data> <output1 data> <output2 data> compRatio bits\n"
             "  Negative steps does inverse transform\n\n");
     return 1;
   }
@@ -26,13 +27,13 @@ int main_full(int argc, char **argv) {
     return 1;
   }
   
-  const char *inputFile = argv[2], *outputFile = argv[3];
+  const char *inputFile = argv[2], *output1File = argv[3], *output2File = argv[4];
   
-  if (1 != sscanf(argv[4], "%g", &compRatio)) {
+  if (1 != sscanf(argv[5], "%g", &compRatio)) {
 	  printf("Invalid step count: \"%s\"\n", argv[4]);
 	  return 1;
   }
-  if (1 != sscanf(argv[5], "%d", &bits)) {
+  if (1 != sscanf(argv[6], "%d", &bits)) {
 	  printf("Invalid bits: \"%s\"\n", argv[5]);
 	  return 1;
   }
@@ -67,16 +68,23 @@ int main_full(int argc, char **argv) {
   else
     haar_2d(size, data, false, stepCount);
 
+	if (writeDataFile(output1File, data, size, size, true))      // Write the reconstructed image!
+	
+	for (int idx = 0; idx < 9; idx++)
+	{		
+		std::cout << "data[idx]:" << data[idx] << std::endl;	
+	}
+
 	float maxVal, minVal;
 	float threshold = thresh_cpu(size, data, compRatio, &maxVal, &minVal);  // Calculate the threshold
-    quant_unif_cpu(size, data, bits, threshold, maxVal);            // Apply threshold and uniform quantization
-	dquant_unif_cpu(size, data, bits, threshold, maxVal);      // reverse quantization
+        quant_log_cpu(size, data, bits, threshold, maxVal);            // Apply threshold and uniform quantization
+	dquant_log_cpu(size, data, bits, threshold, maxVal);      // reverse quantization
 	haar_2d(size, data, true, abs(stepCount));	           // Take the inverse transform
   // printMatrix(width, height, data);
   printf("Writing...\n");
   fflush(stdout);
-  if (writeDataFile(outputFile, data, size, size, true))      // Write the reconstructed image!
-    printf("%s written\n", outputFile);
+  if (writeDataFile(output2File, data, size, size, true))      // Write the reconstructed image!
+    printf("%s written\n", output2File);
 
   delete[] data;
   

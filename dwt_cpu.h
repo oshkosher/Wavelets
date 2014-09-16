@@ -37,21 +37,17 @@ void print_matrix(int width, int height, float *data);
 // Haar wavelet filter on one row of data, and the inverse.
 // stepCount is the number of passes over the data. Values <= 0 will
 // result in ceil(log2(data)) passes.
-void haar_not_lifting(int length, float data[], bool inverse = false,
-                      int stepCount = -1);
-void haar_not_lifting(int length, double data[], bool inverse = false,
-                      int stepCount = -1);
+void haar(int length, float data[], bool inverse = false,
+          int stepCount = -1);
+void haar(int length, double data[], bool inverse = false,
+          int stepCount = -1);
 
 // Haar wavelet filter on a 2-d square of data
-float haar_not_lifting_2d(int size, float *data,
-                          bool inverse = false, int stepCount = -1);
+float haar_2d(int size, float *data,
+              bool inverse = false, int stepCount = -1);
 
-float haar_not_lifting_2d(int size, double *data,
-                          bool inverse = false, int stepCount = -1);
-
-// Lifting implementation (not tested much)
-void haar_lifting(int length, float data[], int stepCount = -1);
-void haar_inv_lifting(int length, float data[], int stepCount = -1);
+float haar_2d(int size, double *data,
+              bool inverse = false, int stepCount = -1);
 
 typedef enum {
   ZERO_FILL,  // fill pad elements with zero

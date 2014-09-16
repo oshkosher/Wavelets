@@ -9,8 +9,11 @@ void gpuTranspose(int fullWidth, int transposeSize,
                   float *matrix_d, float *matrixTx_d,
                   cudaStream_t stream);
 
+// double support was added in version 1.3
+#if !defined(__CUDA_ARCH__) || (__CUDA_ARCH__ >= 130)
 void gpuTranspose(int fullWidth, int transposeSize,
                   double *matrix_d, double *matrixTx_d,
                   cudaStream_t stream);
+#endif
 
 #endif // __TRANSPOSE_GPU_H__

@@ -1,14 +1,17 @@
 default: haar
 
 all: haar WaveletSampleImage.class test_haar_cpu normalize convert \
-  cudahaar.mex test_huffman test_bit_stream
+  cudahaar.mex test_huffman test_haar_thresh_quantUnif_cpu \
+  test_haar_thresh_quantLog_cpu  test_bit_stream
 
 java: WaveletSampleImage.class
 
 oct: cudahaar.mex
 
 # enable this to generate code for multiple card generations
-NVCC=nvcc --compiler-options -fPIC -gencode arch=compute_20,code=sm_20 \
+NVCC=nvcc \
+  -gencode arch=compute_11,code=sm_11 \
+  -gencode arch=compute_20,code=sm_20 \
   -gencode arch=compute_30,code=sm_30 \
   -gencode arch=compute_35,code=sm_35
 
@@ -42,10 +45,11 @@ else
 
 CUDA_OBJS=dwt_cpu.o dwt_gpu.o data_io.o transpose_gpu.o nixtimer.o
 LIBS=-lrt
+NVCC_OCT_OPT=--compiler-options -fPIC
 %.o: %.cc
-	$(NVCC) -c $<
+	$(NVCC) $(NVCC_OCT_OPT) -c $<
 %.o: %.cu
-	$(NVCC) -c $<
+	$(NVCC) $(NVCC_OCT_OPT) -c $<
 CLASSPATH_DIR=$(CURDIR)
 
 endif
@@ -56,6 +60,22 @@ haar: $(CUDA_OBJS) haar.cu
 
 test_haar_cpu: test_haar_cpu.cc dwt_cpu.cc data_io.cc
 	gcc -Wall -g $^ -o $@ -lstdc++ $(LIBS)
+
+test_haar_thresh_quantUnif_cpu: test_haar_thresh_quantUnif_cpu.cc \
+  dwt_cpu.cc dwt_cpu.h data_io.cc data_io.h nixtimer.cc nixtimer.h \
+  thresh_cpu.cc thresh_cpu.h quant_unif_cpu.cc quant_unif_cpu.h \
+  dquant_unif_cpu.cc dquant_unif_cpu.h
+	$(CC) test_haar_thresh_quantUnif_cpu.cc dwt_cpu.cc data_io.cc \
+	  nixtimer.cc thresh_cpu.cc quant_unif_cpu.cc dquant_unif_cpu.cc \
+	  -lstdc++ $(LIBS) -o $@
+
+test_haar_thresh_quantLog_cpu: test_haar_thresh_quantLog_cpu.cc \
+  dwt_cpu.cc dwt_cpu.h data_io.cc data_io.h nixtimer.cc nixtimer.h \
+  thresh_cpu.cc thresh_cpu.h quant_log_cpu.cc quant_log_cpu.h \
+  dquant_log_cpu.cc dquant_log_cpu.h
+	$(CC) test_haar_thresh_quantLog_cpu.cc dwt_cpu.cc data_io.cc \
+	  nixtimer.cc thresh_cpu.cc quant_log_cpu.cc dquant_log_cpu.cc \
+	  -lstdc++ $(LIBS) -o $@
 
 normalize: normalize.cc data_io.cc
 	gcc -Wall -g $^ -o $@ -lstdc++ $(LIBS)
@@ -70,8 +90,8 @@ test_bit_stream: test_bit_stream.cc bit_stream.h nixtimer.h nixtimer.cc
 	$(CC) test_bit_stream.cc nixtimer.cc -o $@ -lstdc++ $(LIBS)
 
 libwaveletcuda.so: $(CUDA_OBJS) Octave/octave_wrapper.cu
-	$(NVCC) -I. -c Octave/octave_wrapper.cu
-	$(NVCC) -o $@ --shared $(CUDA_OBJS) octave_wrapper.o
+	$(NVCC) $(NVCC_OCT_OPT) -I. -c Octave/octave_wrapper.cu
+	$(NVCC) $(NVCC_OCT_OPT) -o $@ --shared $(CUDA_OBJS) octave_wrapper.o
 
 cudahaar.mex: Octave/cudahaar.cc libwaveletcuda.so
 	$(MKOCT) -L. -lwaveletcuda Octave/cudahaar.cc
