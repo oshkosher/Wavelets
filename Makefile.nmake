@@ -30,7 +30,7 @@ nixtimer.obj: nixtimer.cc nixtimer.h
 
 haar.exe: $(HAAR_OBJS)
 	$(NVCC) -g $(HAAR_OBJS) -o $@
-	
+
 thresh_cpu.obj: thresh_cpu.cc thresh_cpu.h
 	$(NVCC) -c thresh_cpu.cc
 
@@ -45,7 +45,7 @@ quant_log_cpu.obj: quant_log_cpu.cc quant_log_cpu.h
 
 dquant_log_cpu.obj: dquant_log_cpu.cc dquant_log_cpu.h
 	$(NVCC) -c dquant_log_cpu.cc
-	
+
 test_haar_cpu.exe: test_haar_cpu.cc dwt_cpu.cc dwt_cpu.h data_io.cc data_io.h \
 	  nixtimer.cc nixtimer.h
 	$(MSVC) test_haar_cpu.cc dwt_cpu.cc data_io.cc nixtimer.cc
@@ -59,7 +59,10 @@ test_haar_thresh_quantLog_cpu.exe: test_haar_thresh_quantLog_cpu.cc dwt_cpu.cc d
 	  nixtimer.cc nixtimer.h thresh_cpu.cc thresh_cpu.h quant_log_cpu.cc quant_log_cpu.h \
 	  dquant_log_cpu.cc dquant_log_cpu.h
 	$(MSVC) test_haar_thresh_quantLog_cpu.cc dwt_cpu.cc data_io.cc nixtimer.cc thresh_cpu.cc quant_log_cpu.cc dquant_log_cpu.cc
-	
+
+test_bit_stream.exe: test_bit_stream.cc bit_stream.h nixtimer.h nixtimer.cc
+	$(MSVC) test_bit_stream.cc nixtimer.cc
+
 normalize.exe: normalize.cc data_io.cc data_io.h
 	$(MSVC) normalize.cc data_io.cc
 
