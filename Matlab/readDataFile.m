@@ -1,3 +1,4 @@
+% XX = readDataFile("chicago_orig.data");
 function AA=readDataFile(filename)
 dataFl = fopen(filename,"r");
 [sss,ccc,err] = fscanf(dataFl,"%s\n","C");
