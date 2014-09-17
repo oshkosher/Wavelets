@@ -1,7 +1,8 @@
 default: haar
 
 all: haar WaveletSampleImage.class test_haar_cpu normalize convert \
-  cudahaar.mex test_huffman test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu
+  cudahaar.mex test_huffman test_haar_thresh_quantUnif_cpu \
+  test_haar_thresh_quantLog_cpu  test_bit_stream
 
 java: WaveletSampleImage.class
 
@@ -75,7 +76,7 @@ test_haar_thresh_quantLog_cpu: test_haar_thresh_quantLog_cpu.cc \
 	$(CC) test_haar_thresh_quantLog_cpu.cc dwt_cpu.cc data_io.cc \
 	  nixtimer.cc thresh_cpu.cc quant_log_cpu.cc dquant_log_cpu.cc \
 	  -lstdc++ $(LIBS) -o $@
-	  
+
 normalize: normalize.cc data_io.cc
 	gcc -Wall -g $^ -o $@ -lstdc++ $(LIBS)
 
@@ -84,6 +85,9 @@ test_rle: test_rle.cc rle.h data_io.cc data_io.h huffman.h huffman.cc
 
 test_huffman: test_huffman.cc huffman.cc huffman.h
 	$(CC) test_huffman.cc huffman.cc -o $@ -lstdc++ $(LIBS)
+
+test_bit_stream: test_bit_stream.cc bit_stream.h nixtimer.h nixtimer.cc
+	$(CC) test_bit_stream.cc nixtimer.cc -o $@ -lstdc++ $(LIBS)
 
 libwaveletcuda.so: $(CUDA_OBJS) Octave/octave_wrapper.cu
 	$(NVCC) $(NVCC_OCT_OPT) -I. -c Octave/octave_wrapper.cu

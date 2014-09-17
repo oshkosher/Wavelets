@@ -1,0 +1,155 @@
+/*********\
+* Phase 1 *
+\*********/
+
+  Compress image
+  +-------+    +-----------+    +----------+    +--------+    +------------+
+  | Image | -> | Wavelet   | -> | Quantize | -> | Encode | -> | Compressed |
+  +-------+    | transform |    +----------+    +--------+    | Image      |
+               +-----------+                                  +------------+
+
+
+  Decompress image
+  +------------+    +--------+    +-------------+    +-----------+    +-----------------+
+  | Compressed | -> | Decode | -> | Approximate | -> | Inverse   | -> | Round off to    |
+  | Image      |    +--------+    | wavelet     |    | wavelet   |    | integer values, |
+  +------------+                  | transform   |    | transform |    | create image    |
+                                  +-------------+    +-----------+    +-----------------+
+
+
+  For phase 1:
+    Work with square tiles.
+    Use Haar wavelet.
+    Quantization: uniform, or logarithmic, or Lloyd's algorithm?
+    File format: use our own (not JPEG 2000)
+    Compare performance of CPU vs. GPU
+    Report error of reconstruction
+
+  Parameters that will need to be in the file header:
+    size of tile
+    number of wavelet steps
+    threshold cutoff
+    quantization bit count
+
+  Task list
+
+  Who       Task                      Status
+  ---       ----                      ------
+  Ed        Haar wavelet transform    Working
+  Ed        Inverse Haar              Working
+  David     Call CUDA from Octave     Working
+  Bonnie    Threshold                 CPU working, GPU in progress
+  Bonnie    Quantizaion, uniform      CPU working, GPU in progress
+              & log
+  Bonnie    De-quantization,          In progress
+              uniform & log
+  Ed        Run length codec          CPU working, GPU in progress
+  Ed        File I/O                  In progress
+  Ed        Compare CPU
+  -         Compare original with
+              reconstructed image
+  -         Write abstract
+
+Overall goals (not really indepenent tasks)
+ - Document all interfaces (via Doxygen)
+ - Implement each component on CPU as well as GPU, and be able demonstrate
+ - Demonstrate difference between CPU performance and GPU performance
+ - Runtime options:
+     select forward (compress) or reverse (decompress)
+     size of tile
+     number of wavelet steps
+     threshold cutoff
+     quantization bit count
+     quantization method
+ - Write unit test for each component (recommend building them while the
+   component is being written).
+ - Write integration tests.
+
+I'm leaving out "compare CPU and GPU" as a task, since each component
+should do that for itself.
+
+/*********\
+* Phase 2 *
+\*********/
+
+  The main activity in phase 2 is to replace cutoff with an acceptable
+  error and number of bits.
+
+  We will use the definition of error to be the difference in the
+  energy of the image, in order to convert from acceptable error to
+  cutoff and output bits..
+
+  Energy of an image is the sum of the squares of pixel values.
+
+  Additional parameters:
+    acceptable error
+
+  Unchanged from phase 1:
+    use Haar wavelet
+    quantization algorithm: uniform, log, or Lloyd's
+    Encoding: run-length
+
+  Report statistics:
+    Speed of CPU vs GPU versions
+    Reconstruction error in terms of energy and mean square pixel delta
+
+  Who       Task                           Status
+  ---       ----                           ------
+            # of bits: figure out details  
+            Error reporting in energy
+            Add tests of acceptable error
+              (rather than cutoff)
+
+/*********\
+* Phase 3 *
+\*********/
+            
+  Who       Task                           Status
+  ---       ----                           ------
+            Decide what's done on CPU,
+              what's done on GPU
+  David     Lloyd's quant algorithm        In Progress
+            Add option to choose
+              quant algorithm
+            Design tile data structure
+              that supports serialization
+            Design file format:
+              multiple tiles
+              includes codebooks
+            Write compressed file
+            Read compressed file
+            Tests for codebook quant
+            Tests for tiling
+
+/*********\
+* Phase 4 *
+\*********/
+
+  3D compression
+
+  Can use Haar wavelet, but CDF 7/9 would be better.
+  Quantization: uniform, log, or codebook (Lloyd's)
+  Encoding: RLE
+  Add to file format:
+    wavelet algorithm
+
+  Report statistics:
+    Speed of CPU vs GPU versions
+    Reconstruction error in terms of energy and mean square pixel delta
+  
+  Who       Task                           Status
+  ---       ----                           ------
+
+
+/****************\
+* Non-code Tasks *
+\****************/
+
+  Who       Task                           Status
+  ---       ----                           ------
+            Find test images
+            Find compelling images for
+              the conference
+            Write the abstract
+  Sergio    Write the paper
+            Define Octave API
