@@ -2,6 +2,7 @@
 #define __BIT_STREAM_H__
 
 #include <cstdio>
+#include <cstring>
 
 
 /**
