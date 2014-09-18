@@ -99,6 +99,7 @@ cudahaar.mex: Octave/cudahaar.cc libwaveletcuda.so
 convert: Makefile WaveletSampleImage.class
 	@echo Write $@ wrapper for \"java WaveletSampleImage\"
 	@echo '#!/bin/sh' > convert
+	@echo 'unset DISPLAY' >> convert
 	@echo java -cp \"$(CLASSPATH_DIR)\" WaveletSampleImage \"\$$@\" >> convert
 	chmod 755 convert
 
