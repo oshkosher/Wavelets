@@ -1,5 +1,63 @@
+SCU Wavelet Project
+
+General policies for code
+
+  Write a CPU and GPU version for all functionality.
+    The CPU version will generally be easier to write but
+    slower. Having both lets us compare the GPU version
+    against the CPU version to check for correctness and
+    performance.
+  Write Matlab for all functionality, if it doesn't yet exist.
+  Directory tree?
+    Images/
+      Put small images in "Images/" subdirectory, and check them
+      into GitHub. Don't check large images or other data files
+      into GitHub.
+    LargeImages/
+      We will distribute instructions on how to download
+      them (probably via FTP). Put them in the "LargeImages" directory.
+      This directory has been configured so that GitHub will ignore
+      it, and not try to check in files placed there.
+  Testing?
+  Documentation?
+  End of phase review by team.
+
+  Use float* data for intermediate data manipulations. The final
+  output for will be integers (or a structured stream of bits).
+
+  Must have Makefile for Linux-type builds, as well as Makefile.nmake
+  for building with Microsoft nmake. Solution and project files
+  for GUI MSVC may be added as desired.
+
+  Set the CUDA compiler to generate code for CUDA 1.1, 2.0, and 3.0.
+  Note that CUDA 1.1 doesn't support double-precision floating point.
+
+Assignments
+
+  When you finish a task, select another from the list and put your
+  name on it and check it back in.
+
+  Update status after milestones.
+
+  We are expected to finish a phase, and keep this on a branch tag,
+  before going onto a new phase.
+
+Open issues	
+  Which pieces run on host?
+  What granularity of API do we want to supply for Octave?
+  Should we use doxygen?
+    Ed K: I haven't used it before, but I have used Javadoc, which is
+    very similar. Inline documentation like this makes it easy to
+    provide useful documentation with minimal effort.  I'm in favor of
+    it.
+  Is CUDA both C and C++?  Can we use classes?
+    Ed K: Yes, CUDA supports C++ and classes. Avoid dynamically allocating
+    memory though. It is supported, but unless it is data that will be
+    accessed by all threads simultaneously, accessing it will be inefficient.
+
+
 /*********\
-* Phase 1 *
+* Phase 1 * 
 \*********/
 
   Compress image
@@ -95,7 +153,7 @@ should do that for itself.
 
   Who       Task                           Status
   ---       ----                           ------
-            # of bits: figure out details  
+            # of bits: figure out details
             Error reporting in energy
             Add tests of acceptable error
               (rather than cutoff)
@@ -103,7 +161,7 @@ should do that for itself.
 /*********\
 * Phase 3 *
 \*********/
-            
+
   Who       Task                           Status
   ---       ----                           ------
             Decide what's done on CPU,
@@ -111,15 +169,15 @@ should do that for itself.
   David     Lloyd's quant algorithm        In Progress
             Add option to choose
               quant algorithm
-            Design tile data structure
+  Anupam    Design tile data structure
               that supports serialization
-            Design file format:
+  Anupam    Design file format:
               multiple tiles
               includes codebooks
             Write compressed file
             Read compressed file
-            Tests for codebook quant
-            Tests for tiling
+  Anupam    Tests for codebook quant
+  Anupam    Tests for tiling
 
 /*********\
 * Phase 4 *
@@ -136,7 +194,7 @@ should do that for itself.
   Report statistics:
     Speed of CPU vs GPU versions
     Reconstruction error in terms of energy and mean square pixel delta
-  
+
   Who       Task                           Status
   ---       ----                           ------
 
