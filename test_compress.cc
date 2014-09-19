@@ -28,17 +28,17 @@
 using namespace std;
 
 typedef enum {
-  UNKNOWN = -1,
-  UNIFORM = 1,
-  LOG = 2,
-  LLOYD = 3
+  QUANT_ALG_UNKNOWN = -1,
+  QUANT_ALG_UNIFORM = 1,
+  QUANT_ALG_LOG = 2,
+  QUANT_ALG_LLOYD = 3
 } QuantizeAlgorithm;
 
 
 #define DEFAULT_WAVELET_STEPS 3
 #define DEFAULT_THRESHOLD_FRACTION .1
 #define DEFAULT_QUANTIZE_BITS 8
-#define DEFAULT_QUANTIZE_ALGORITHM QuantizeAlgorithm::UNIFORM
+#define DEFAULT_QUANTIZE_ALGORITHM QUANT_ALG_UNIFORM
 
 struct Options {
   // alternative is to decompress
@@ -47,8 +47,6 @@ struct Options {
   int waveletSteps;
   float thresholdFraction;
   int quantizeBits;
-
-  // one of QUANT_ALG_UNIFORM, QUANT_ALG_LOG, or QUANT_ALG_LLOYD
   QuantizeAlgorithm quantizeAlgorithm;
 };
 
@@ -60,13 +58,11 @@ struct FileData {
   int quantizeBits;
   float threshold;  // threshold value, not the proportion
   float quantMaxVal;
-
-  // one of QUANT_ALG_UNIFORM, QUANT_ALG_LOG, or QUANT_ALG_LLOYD
   QuantizeAlgorithm quantizeAlgorithm;
 
   // default constructor - invalid values
   FileData() : data(NULL), width(-1), height(-1), waveletSteps(0),
-		  quantizeBits(0), quantizeAlgorithm(UNKNOWN) {}
+		  quantizeBits(0), quantizeAlgorithm(QUANT_ALG_UNKNOWN) {}
 
   // alternative constructor - copy the options that make sense to
   // copy from 'Options'
@@ -281,13 +277,13 @@ bool compressFile(const char *inputFile, const char *outputFile,
   // quantize the data
   startTime = NixTimer::time();
   switch (opt.quantizeAlgorithm) {
-  case UNIFORM:
+  case QUANT_ALG_UNIFORM:
     quant_unif_cpu(size, data, opt.quantizeBits, threshold, maxVal);
     break;
-  case LOG:
+  case QUANT_ALG_LOG:
     quant_log_cpu(size, data, opt.quantizeBits, threshold, maxVal);
     break;
-  case LLOYD:
+  case QUANT_ALG_LLOYD:
     fprintf(stderr, "Lloyd's algorithm not integrated yet.\n");
     return false;
   default:
@@ -471,18 +467,18 @@ bool readQuantDataSimple(const char *filename, FileData &f) {
 
 
 QuantizeAlgorithm quantAlgName2Id(const char *name) {
-  if (!strcmp(name, "uniform")) return UNIFORM;
-  if (!strcmp(name, "log")) return LOG;
-  if (!strcmp(name, "lloyd")) return LLOYD;
-  return UNKNOWN;
+  if (!strcmp(name, "uniform")) return QUANT_ALG_UNIFORM;
+  if (!strcmp(name, "log")) return QUANT_ALG_LOG;
+  if (!strcmp(name, "lloyd")) return QUANT_ALG_LLOYD;
+  return QUANT_ALG_UNKNOWN;
 }
   
 
 const char *quantAlgId2Name(QuantizeAlgorithm id) {
   switch (id) {
-  case UNIFORM: return "uniform";
-  case LOG: return "log";
-  case LLOYD: return "lloyd";
+  case QUANT_ALG_UNIFORM: return "uniform";
+  case QUANT_ALG_LOG: return "log";
+  case QUANT_ALG_LLOYD: return "lloyd";
   default: return NULL;
   }
 }
