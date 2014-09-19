@@ -20,7 +20,7 @@ NVCC=nvcc \
 # NVCC=nvcc -arch sm_20
 # NVCC=nvcc -arch sm_30
 
-CC = gcc -std=c++11 -Wall -g
+CC = g++ -std=c++11 -Wall -g
 
 MKOCT=mkoctfile
 
@@ -96,8 +96,12 @@ test_compress: test_compress.cc dwt_cpu.cc data_io.cc \
 	dwt_cpu.h data_io.h \
 	quant_unif_cpu.h quant_log_cpu.h \
 	dquant_unif_cpu.h dquant_log_cpu.h thresh_cpu.h \
-	bit_stream.h nixtimer.h
-	$(CC) test_compress.cc -o $@ $(LIBS)
+	bit_stream.h nixtimer.h rle.h
+	$(CC) test_compress.cc dwt_cpu.cc thresh_cpu.cc \
+	  quant_unif_cpu.cc quant_log_cpu.cc \
+	  dquant_unif_cpu.cc dquant_log_cpu.cc \
+	  data_io.cc \
+	  -o $@ $(LIBS)
 
 list_data: list_data.cc data_io.cc data_io.h
 	$(CC) list_data.cc data_io.cc -o $@ $(LIBS)

@@ -5,10 +5,19 @@
 #include <map>
 #include <unordered_map>
 
+// Convert a 2-d grid of float values in the range 0..1 into integers
+// in the range 0..255. Using an instance of the template class "Sink",
+// call sink.data(x) on each value, and sink.end() after the last one.
 template <class Sink>
 class FloatMatrixToGrayscale {
   int width, height;
   float *data;
+
+ public:
+  Sink sink;
+  FloatMatrixToGrayscale(int width_, int height_, float *data_)
+    : width(width_), height(height_), data(data_) {
+  }
   
   int convert(float f) {
     /*
@@ -16,12 +25,6 @@ class FloatMatrixToGrayscale {
     if (f >= 1) return 255;
     */
     return (int)((f * 255) + 0.5f);
-  }
-
- public:
-  Sink sink;
-  FloatMatrixToGrayscale(int width_, int height_, float *data_)
-    : width(width_), height(height_), data(data_) {
   }
 
   int getSize() {return width * height;}
@@ -53,21 +56,27 @@ class PrintValues {
   void end() {}
 };
 
-
+/**
+   PairSink
+     void data(int value, int length);
+     void end();
+*/
 template <class PairSink>
 class EncodeRunLength {
-  int prev, length;
+  int prev, length, outputCount;
+  PairSink *sink;
 
  public:
-  PairSink sink;
-  EncodeRunLength() : prev(-1), length(0) {}
+  EncodeRunLength(PairSink *sink_) : prev(-1), length(0), outputCount(0),
+    sink(sink_) {}
 
   void data(int value) {
     if (value == prev && length < 255) {
       length++;
     } else {
-      if (prev != -1) {
-        sink.data(prev, length);
+      if (length > 0) {
+        sink->data(prev, length);
+	outputCount++;
       }
       prev = value;
       length = 1;
@@ -75,8 +84,12 @@ class EncodeRunLength {
   }
 
   void end() {
-    sink.data(prev, length);
+    sink->data(prev, length);
+    outputCount++;
+    sink->end();
   }
+
+  int getOutputCount() {return outputCount;}
 };
 
     
