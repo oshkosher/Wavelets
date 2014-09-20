@@ -100,7 +100,7 @@ test_compress: test_compress.cc dwt_cpu.cc data_io.cc \
 	$(CC) test_compress.cc dwt_cpu.cc thresh_cpu.cc \
 	  quant_unif_cpu.cc quant_log_cpu.cc \
 	  dquant_unif_cpu.cc dquant_log_cpu.cc \
-	  data_io.cc \
+	  data_io.cc nixtimer.cc \
 	  -o $@ $(LIBS)
 
 list_data: list_data.cc data_io.cc data_io.h
