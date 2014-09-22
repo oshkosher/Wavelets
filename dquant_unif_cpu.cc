@@ -14,7 +14,7 @@ void dquant_unif_cpu(int len, float *data, int bits, float threshold, float maxV
 	int base = pow(2.0,bits-1)-1;
 	for (int idx = 0; idx < count; idx++ )
 	{
-		if (data[idx] != (float)0.0)
+		if (abs(data[idx]) <= threshold)
 		{
 			int sign=data[idx]/abs(data[idx]);
 			data[idx] = sign*((abs(data[idx])*(maxVal/base)));			

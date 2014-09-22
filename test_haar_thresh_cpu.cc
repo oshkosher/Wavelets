@@ -9,8 +9,8 @@
 #include "data_io.h"
 #include "thresh_cpu.h"
 
-#include "quant_unif_cpu.h"
-#include "dquant_unif_cpu.h"
+#include "thresh_apply_cpu.h"
+#include "thresh_apply_cpu.h"
  
 int main_full(int argc, char **argv) {
   if (argc != 6) {
@@ -68,8 +68,8 @@ stepCount = abs(stepCount);  // We are using pos in the forward direction and ne
 
     float maxVal;
     float threshold = thresh_cpu(size, data, compRatio, &maxVal);  // Calculate the threshold
-    quant_unif_cpu(size, data, bits, threshold, maxVal);            // Apply threshold and uniform quantization
-    //dquant_unif_cpu(size, data, bits, threshold, maxVal);      // reverse quantization
+    thresh_apply_cpu(size, data, bits, threshold, maxVal);         // Apply threshold and uniform quantization
+    //dquant_unif_cpu(size, data, bits, threshold, maxVal,1);      // reverse quantization
     haar_2d(size, data, true, stepCount);	           // Take the inverse transform
   // printMatrix(width, height, data);
   printf("Writing...\n");

@@ -18,13 +18,13 @@ return (log(abs(x))/log(2.0));
 // Overwrites data with the new values
 float quant_log_cpu(int len, float *data, int bits, float threshold, float maxVal)
 {
-	int displayCount = 9;
+	int displayCount = 11;
 	int count = len * len;
 	int base = (int)(pow(2.0,bits-1)-1);
     float lmax = (float)(log2((float)(maxVal/threshold)));
 	for (int idx = 0; idx < count; idx++)
 	{
-		if (data[idx] <= threshold)
+		if (abs(data[idx]) <= threshold)
 		{
 			data[idx] = (float)0.0;
 		}

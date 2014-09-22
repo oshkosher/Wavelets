@@ -76,8 +76,8 @@ int main_full(int argc, char **argv) {
 	}
 
 	float maxVal, minVal;
-	float threshold = thresh_cpu(size, data, compRatio, &maxVal, &minVal);  // Calculate the threshold
-        quant_log_cpu(size, data, bits, threshold, maxVal);            // Apply threshold and uniform quantization
+	float threshold = thresh_cpu(size, data, compRatio, &maxVal);  // Calculate the threshold
+    quant_log_cpu(size, data, bits, threshold, maxVal);            // Apply threshold and uniform quantization
 	dquant_log_cpu(size, data, bits, threshold, maxVal);      // reverse quantization
 	haar_2d(size, data, true, abs(stepCount));	           // Take the inverse transform
   // printMatrix(width, height, data);
