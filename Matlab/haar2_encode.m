@@ -22,4 +22,4 @@ for j = 1:lexp
     BD  = PD*HD*BD*HD'*PD';
     B(1:len2,1:len2) = BD;
     len2 = len2/2;
-endEnter file contents here
+end
