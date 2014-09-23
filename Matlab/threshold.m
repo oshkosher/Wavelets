@@ -1,4 +1,4 @@
-Efunction th = threshold(A,cutoff)
+function th = threshold(A,cutoff)
 
 [len,len] = size(A);
 
