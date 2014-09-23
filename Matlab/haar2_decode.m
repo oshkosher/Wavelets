@@ -21,4 +21,4 @@ for j = 1:lexp
     HE  = H(1:len2,1:len2);
     AE  = HE'*PE'*AE*PE*HE;
     A(1:len2,1:len2)=AE;
-endEnter file contents here
+end
