@@ -17,4 +17,4 @@ function indx = quantiz_sz(w,p)
 indx = zeros(nRows, nCols);
 for i = 1 : length(p)
     indx = indx + (w > p(i));
-end;Enter file contents here
+end
