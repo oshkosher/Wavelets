@@ -1,11 +1,11 @@
 #include <octave/oct.h>
 
-void setupLloyds(float *points, unsigned int psize, unsigned int *groups, float pmax, float pmin);
+void setupLloyds(float *points, unsigned int psize, float pmax, float pmin);
 void lloyd(float *codebook, unsigned int csize, float stop_criteria, float *table, float &dist, float &reldist);
 void finalize();
 
 DEFUN_DLD (lloydcuda, args, , "\n"
-          "  lloydcuda(input, steps = 1, inverse = false, text = false, blockSize = -1)\n"
+          "  lloydcuda(points, codebook, tol = 1e-7)\n"
           "  Do a lloyds quantization.\n"
           "\n") {
 	octave_value_list retval;
@@ -43,12 +43,14 @@ DEFUN_DLD (lloydcuda, args, , "\n"
 		for(int i = 1; i < psize; i++) {
 			float aux = h_points[i];
 			maxpoints = (aux > maxpoints) ? aux : maxpoints;
-			minpoints = (aux < maxpoints) ? aux : maxpoints;;
+			minpoints = (aux < minpoints) ? aux : minpoints;;
 		}
 
     uint32NDArray groups(psize);
 		
-    FloatNDArray table(csize);
+		dim_vector dim(1);
+		dim(0) = csize-1;
+    FloatNDArray table(dim);
 
     float *h_codebook       = (float*) codebook.fortran_vec();
     unsigned int *h_groups  = (unsigned int*) groups.fortran_vec();
@@ -59,7 +61,7 @@ DEFUN_DLD (lloydcuda, args, , "\n"
 
 		float stop_criteria = abs(tol);
 
-		setupLloyds(h_points, psize, h_groups, maxpoints, minpoints);
+		setupLloyds(h_points, psize, maxpoints, minpoints);
 		lloyd(h_codebook, csize, stop_criteria, h_table, dist, reldist);
 		finalize();
 
@@ -69,8 +71,6 @@ DEFUN_DLD (lloydcuda, args, , "\n"
       retval(2) = octave_value(dist);
       retval(3) = octave_value(reldist);
     }
-
-		retval(0) = octave_value(points);
   }
   
   return retval;

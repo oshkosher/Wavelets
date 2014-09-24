@@ -7,7 +7,7 @@ NV_FLAGS=-gencode arch=compute_20,code=sm_20 -gencode arch=compute_30,code=sm_30
 
 CPATH=src/oct/
 CUDAPATH=src/cuda/
-OCTNAME=lloydcuda
+OCTNAME=lloydcudad
 SOURCE=$(CPATH)$(OCTNAME).cpp
 CSOURCES=$(wildcard $(CUDAPATH)*.cpp)
 COBJECTS=$(CSOURCES:.cpp=.o)
