@@ -9,18 +9,21 @@
 void quant_unif_cpu(int len, float *data, int bits, float threshold, float maxVal)
 {
 	int count = len * len;
-	int base = (int)(pow(2.0,bits-1)-1);
+	// 2^(bits-1) - 1
+	int base = (1 << (bits-1)) - 1;
 
 	for (int idx = 0; idx < count; idx++ )
 	{
-		if (abs(data[idx]) <= threshold)
+		if (fabsf(data[idx]) <= threshold)
 		{
 			data[idx] = (float)0.0;
 		}
 		else
 		{
-			int sign=data[idx]/abs(data[idx]);
-			data[idx] = sign*ceil(base*((abs(data[idx])-threshold)/(maxVal-threshold)));
+			int sign=data[idx]/fabsf(data[idx]);
+			float quantized = sign*ceil(base*((fabsf(data[idx])-threshold)/(maxVal-threshold)));
+			// if (idx < 20) printf("data[%d] %f -> %f\n", idx, data[idx], quantized);
+			data[idx] = quantized;
 		}
 	}
 }
