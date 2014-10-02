@@ -90,7 +90,7 @@ test_huffman: test_huffman.cc huffman.cc huffman.h
 test_bit_stream: test_bit_stream.cc bit_stream.h nixtimer.h nixtimer.cc
 	$(CC) test_bit_stream.cc nixtimer.cc -o $@ $(LIBS)
 
-test_compress: wavelet_compress.pb.h test_compress.cc dwt_cpu.cc data_io.cc \
+test_compress: test_compress.cc dwt_cpu.cc data_io.cc \
 	quant_unif_cpu.cc quant_log_cpu.cc nixtimer.cc \
 	dquant_unif_cpu.cc dquant_log_cpu.cc thresh_cpu.cc \
 	dwt_cpu.h data_io.h \
