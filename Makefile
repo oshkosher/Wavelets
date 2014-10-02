@@ -90,18 +90,23 @@ test_huffman: test_huffman.cc huffman.cc huffman.h
 test_bit_stream: test_bit_stream.cc bit_stream.h nixtimer.h nixtimer.cc
 	$(CC) test_bit_stream.cc nixtimer.cc -o $@ $(LIBS)
 
-test_compress: test_compress.cc dwt_cpu.cc data_io.cc \
+test_compress: wavelet_compress.pb.h test_compress.cc dwt_cpu.cc data_io.cc \
 	quant_unif_cpu.cc quant_log_cpu.cc nixtimer.cc \
 	dquant_unif_cpu.cc dquant_log_cpu.cc thresh_cpu.cc \
 	dwt_cpu.h data_io.h \
 	quant_unif_cpu.h quant_log_cpu.h \
 	dquant_unif_cpu.h dquant_log_cpu.h thresh_cpu.h \
-	bit_stream.h nixtimer.h rle.h
+	bit_stream.h nixtimer.h rle.h param_string.h param_string.cc \
+	quant_count.h quant_count.cc
 	$(CC) test_compress.cc dwt_cpu.cc thresh_cpu.cc \
-	  quant_unif_cpu.cc quant_log_cpu.cc \
+	  quant_unif_cpu.cc quant_log_cpu.cc quant_count.cc \
 	  dquant_unif_cpu.cc dquant_log_cpu.cc \
-	  data_io.cc nixtimer.cc \
+	  data_io.cc nixtimer.cc param_string.cc \
 	  -o $@ $(LIBS)
+
+proto: wavelet_compress_pb.h
+wavelet_compress.pb.h: wavelet_compress.proto
+	protoc $< --cpp_out=.
 
 list_data: list_data.cc data_io.cc data_io.h
 	$(CC) list_data.cc data_io.cc -o $@ $(LIBS)

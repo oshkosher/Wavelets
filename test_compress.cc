@@ -22,8 +22,10 @@
 #include "rle.h"
 #include "quant_log_cpu.h"
 #include "quant_unif_cpu.h"
+#include "quant_count.h"
 #include "dquant_log_cpu.h"
 #include "dquant_unif_cpu.h"
+#include "param_string.h"
 
 using namespace std;
 
@@ -31,7 +33,8 @@ typedef enum {
   QUANT_ALG_UNKNOWN = -1,
   QUANT_ALG_UNIFORM = 1,
   QUANT_ALG_LOG = 2,
-  QUANT_ALG_LLOYD = 3
+  QUANT_ALG_COUNT = 3,  // XXX not fully implemented
+  QUANT_ALG_LLOYD = 4
 } QuantizeAlgorithm;
 
 
@@ -40,6 +43,8 @@ typedef enum {
 #define DEFAULT_QUANTIZE_BITS 8
 #define DEFAULT_QUANTIZE_ALGORITHM QUANT_ALG_UNIFORM
 
+
+/** This holds the the parameters as set by the user on the command line. */
 struct Options {
   // alternative is to decompress
   bool doCompress;
@@ -50,6 +55,9 @@ struct Options {
   QuantizeAlgorithm quantizeAlgorithm;
 };
 
+/** This holds all the data that will be written to or read from the data
+    file. We will be trying out a few different ways or writing the data
+    file. All the routines will be given this same structure. */
 struct FileData {
   float *data;
   int width, height;
@@ -59,6 +67,8 @@ struct FileData {
   float threshold;  // threshold value, not the proportion
   float quantMaxVal;
   QuantizeAlgorithm quantizeAlgorithm;
+  vector<float> quantBinBoundaries;
+  vector<float> quantBinValues;
 
   // default constructor - invalid values
   FileData() : data(NULL), width(-1), height(-1), waveletSteps(0),
@@ -84,6 +94,11 @@ bool decompressFile(const char *inputFile, const char *outputFile,
 		    Options &opt);
 bool writeQuantDataSimple(const char *filename, FileData &fileData);
 bool readQuantDataSimple(const char *filename, FileData &fileData);
+bool writeQuantDataParamStrings(const char *filename, FileData &fileData);
+bool readQuantDataParamStrings(const char *filename, FileData &fileData);
+bool readQuantData(const char *filename, FILE *inf, FileData &fileData);
+bool writeQuantData(const char *filename, FILE *outf, FileData &fileData);
+
 QuantizeAlgorithm quantAlgName2Id(const char *name);
 const char *quantAlgId2Name(QuantizeAlgorithm id);
 
@@ -149,7 +164,7 @@ void printHelp() {
          "                  Must be between [0..1]. (default = %.3f)\n"
          "    -qbits <n> : # of bits into which data is quantized. Must be between \n"
          "                 1 and 32.  (default=%d)\n"
-         "    -qalg <alorithm> : quantization algorithm: uniform, log, or lloyd\n"
+         "    -qalg <alorithm> : quantization algorithm: uniform, log, count, or lloyd\n"
          "                       (default = %s)\n"
          "\n",
          DEFAULT_WAVELET_STEPS,
@@ -266,13 +281,15 @@ bool compressFile(const char *inputFile, const char *outputFile,
   printf("Wavelet transform: %.2f ms\n", waveletMs);
 
   // find the threshold value
-  float maxVal, minVal;
+  float maxVal, *sortedAbsData = NULL;
   startTime = NixTimer::time();
   float threshold = thresh_cpu(size, data, opt.thresholdFraction,
-                               &maxVal, &minVal);
+                               &maxVal, &sortedAbsData);
   elapsed = NixTimer::time() - startTime;
   printf("threshold = %g: %.2f ms\n", threshold, elapsed*1000);
 
+  vector<float> quantBinBoundaries;
+  vector<float> quantBinValues;
 
   // quantize the data
   startTime = NixTimer::time();
@@ -282,6 +299,10 @@ bool compressFile(const char *inputFile, const char *outputFile,
     break;
   case QUANT_ALG_LOG:
     quant_log_cpu(size, data, opt.quantizeBits, threshold, maxVal);
+    break;
+  case QUANT_ALG_COUNT:
+    quant_count_cpu_sorted(size*size, sortedAbsData, opt.quantizeBits,
+			   threshold, quantBinBoundaries, quantBinValues);
     break;
   case QUANT_ALG_LLOYD:
     fprintf(stderr, "Lloyd's algorithm not integrated yet.\n");
@@ -294,13 +315,24 @@ bool compressFile(const char *inputFile, const char *outputFile,
   elapsed = NixTimer::time() - startTime;
   printf("Apply threshold / quantize: %.2f ms\n", elapsed*1000);
 
+  delete[] sortedAbsData;
+
   // write the quantized data to a file
   FileData fileData(opt, data, size, size);
-  fileData.quantMaxVal = maxVal;
+  fileData.threshold = threshold;
+  if (opt.quantizeAlgorithm == QUANT_ALG_UNIFORM ||
+      opt.quantizeAlgorithm == QUANT_ALG_LOG) {
+    fileData.quantMaxVal = maxVal;
+  } else {
+    fileData.quantBinBoundaries = quantBinBoundaries;
+    fileData.quantBinValues = quantBinValues;
+  }
 
   startTime = NixTimer::time();
-  if (!writeQuantDataSimple(outputFile, fileData))
-    return false;
+
+  // if (!writeQuantDataSimple(outputFile, fileData)) return false;
+  if (!writeQuantDataParamStrings(outputFile, fileData)) return false;
+    
   elapsed = NixTimer::time() - startTime;
   printf("Write data file: %.2f ms\n", elapsed*1000);
 
@@ -321,7 +353,9 @@ bool decompressFile(const char *inputFile, const char *outputFile,
 
   firstStartTime = startTime = NixTimer::time();
 
-  if (!readQuantDataSimple(inputFile, f)) return false;
+  // if (!readQuantDataSimple(inputFile, f)) return false;
+  if (!readQuantDataParamStrings(inputFile, f)) return false;
+
   elapsed = NixTimer::time() - startTime;
   printf("Read %dx%d data file: %.2f ms\n", f.width, f.height,
 	 (NixTimer::time() - startTime) * 1000);
@@ -336,6 +370,11 @@ bool decompressFile(const char *inputFile, const char *outputFile,
 
   // de-quantize the data
   startTime = NixTimer::time();
+  if (opt.quantizeAlgorithm != QUANT_ALG_UNIFORM) {
+    printf("%s de-quantization not implemented yet.\n", 
+	   quantAlgId2Name(opt.quantizeAlgorithm));
+    return false;
+  }
   dquant_unif_cpu(size, data, f.quantizeBits, f.threshold, f.quantMaxVal);
   printf("Dequantize: %.2f ms\n", (NixTimer::time() - startTime) * 1000);
 
@@ -384,31 +423,12 @@ bool writeQuantDataSimple(const char *filename, FileData &f) {
   fwrite(&f.quantizeAlgorithm, sizeof(int), 1, outf);
   // XXX we will need something different for Lloyd's algorithm codebook
   fwrite(&f.quantMaxVal, sizeof(float), 1, outf);
+    
+  bool success = writeQuantData(filename, outf, f);
 
-  // write the data
-  BitStreamWriter bits(outf);
-  int count = f.width*f.height;
-
-  // this object takes (length,value) run-length pairs and writes
-  // them in binary to the given bit stream
-  WriteRLEPairsToBitStream rleToBits(&bits, f.quantizeBits);
-
-  // this object takes data values as input, and passes (length,value)
-  // run-length pairs to the rleToBits object
-  EncodeRunLength<WriteRLEPairsToBitStream> rleEncoder(&rleToBits);
-
-  // XXX see if it's faster to use pointer to traverse f.data[]
-
-  for (int i=0; i < count; i++) {
-    int x = (int) f.data[i];
-    rleEncoder.data(x);
-  }
-  rleEncoder.end();
   fclose(outf);
-  printf("%d input values, %d RLE output pairs\n", count,
-	 rleEncoder.getOutputCount());
 
-  return true;
+  return success;
 }
 
 /**
@@ -432,6 +452,80 @@ bool readQuantDataSimple(const char *filename, FileData &f) {
   fread(&f.quantizeAlgorithm, sizeof(int), 1, inf);
   fread(&f.quantMaxVal, sizeof(float), 1, inf);
 
+  bool success = readQuantData(filename, inf, f);
+
+  fclose(inf);
+
+  return success;
+}
+
+
+bool writeQuantDataParamStrings(const char *filename, FileData &f) {
+
+  FILE *outf = fopen(filename, "wb");
+  if (!outf) {
+    printf("Error writing to \"%s\"\n", filename);
+    return false;
+  }
+
+  // write parameters to the header
+  ParamString p;
+  p.setInt("w", f.width);
+  p.setInt("h", f.height);
+  p.setInt("ws", f.waveletSteps);
+  p.setInt("qb", f.quantizeBits);
+  p.setFloat("th", f.threshold);
+  p.set("qa", quantAlgId2Name(f.quantizeAlgorithm));
+  if (f.quantizeAlgorithm == QUANT_ALG_UNIFORM ||
+      f.quantizeAlgorithm == QUANT_ALG_LOG) {
+    p.setFloat("max", f.quantMaxVal);
+  } else {
+    p.setFloatList("qbound", f.quantBinBoundaries);
+    p.setFloatList("cb", f.quantBinValues);
+  }
+
+  p.writeParameters(outf);
+    
+  bool success = writeQuantData(filename, outf, f);
+
+  fclose(outf);
+
+  return success;
+}
+
+
+bool readQuantDataParamStrings(const char *filename, FileData &f) {
+
+  FILE *inf = fopen(filename, "rb");
+  if (!inf) {
+    printf("Cannot read \"%s\"\n", filename);
+    return false;
+  }
+
+  ParamString p;
+  p.readParameters(inf);
+  if (!p.getInt("w", f.width)) printf("width not found\n");
+  if (!p.getInt("h", f.height)) printf("height not found\n");
+  if (!p.getInt("ws", f.waveletSteps)) printf("wavelet steps not found\n");
+  if (!p.getInt("qb", f.quantizeBits)) printf("quant bits not found\n");
+  if (!p.getFloat("th", f.threshold)) printf("threshold not found\n");
+  string qa;
+  if (!p.get("qa", qa)) printf("quant alg not found\n");
+  f.quantizeAlgorithm = quantAlgName2Id(qa.c_str());
+  if (f.quantizeAlgorithm == QUANT_ALG_UNIFORM ||
+      f.quantizeAlgorithm == QUANT_ALG_LOG) {
+    if (!p.getFloat("max", f.quantMaxVal)) printf("max value not found\n");
+  }
+
+  bool success = readQuantData(filename, inf, f);
+
+  fclose(inf);
+
+  return success;
+}
+
+
+bool readQuantData(const char *filename, FILE *inf, FileData &f) {
   int count = f.width * f.height;
   f.data = new float[count];
 
@@ -443,7 +537,6 @@ bool readQuantDataSimple(const char *filename, FileData &f) {
     if (bits.isEmpty()) {
       printf("Ran out of data reading %s, expected %d entries, got %d\n",
              filename, f.width * f.height, (int)(writePos - f.data));
-      fclose(inf);
       return false;
     }
 
@@ -452,16 +545,43 @@ bool readQuantDataSimple(const char *filename, FileData &f) {
     // map 1,0 -> 2,0 -> -2,0 -> -1,1
     sign = 1 - (sign * 2);
 
-    int value = sign * (int) bits.read(f.quantizeBits);
+    int quantized = bits.read(f.quantizeBits);
+    int value = sign * quantized;
 
     int length = bits.read(8);
     
     for (int i=0; i < length; i++)
       *writePos++ = (float)value;
-  }    
+  }
+  return true;
+}
 
-  fclose(inf);
 
+bool writeQuantData(const char *filename, FILE *outf, FileData &f) {
+
+  // write the data
+  BitStreamWriter bits(outf);
+  int count = f.width*f.height;
+
+
+  // this object takes (length,value) run-length pairs and writes
+  // them in binary to the given bit stream
+  WriteRLEPairsToBitStream rleToBits(&bits, f.quantizeBits);
+
+  // this object takes data values as input, and passes (length,value)
+  // run-length pairs to the rleToBits object
+  EncodeRunLength<WriteRLEPairsToBitStream> rleEncoder(&rleToBits);
+
+  // XXX see if it's faster to use pointer to traverse f.data[]
+
+  for (int i=0; i < count; i++) {
+    int x = (int) f.data[i];
+    rleEncoder.data(x);
+  }
+  rleEncoder.end();
+
+  printf("%d input values, %d RLE output pairs\n", count,
+  rleEncoder.getOutputCount());
   return true;
 }
 
@@ -470,6 +590,7 @@ QuantizeAlgorithm quantAlgName2Id(const char *name) {
   if (!strcmp(name, "uniform")) return QUANT_ALG_UNIFORM;
   if (!strcmp(name, "log")) return QUANT_ALG_LOG;
   if (!strcmp(name, "lloyd")) return QUANT_ALG_LLOYD;
+  if (!strcmp(name, "count")) return QUANT_ALG_COUNT;
   return QUANT_ALG_UNKNOWN;
 }
   
@@ -478,6 +599,7 @@ const char *quantAlgId2Name(QuantizeAlgorithm id) {
   switch (id) {
   case QUANT_ALG_UNIFORM: return "uniform";
   case QUANT_ALG_LOG: return "log";
+  case QUANT_ALG_COUNT: return "count";
   case QUANT_ALG_LLOYD: return "lloyd";
   default: return NULL;
   }
