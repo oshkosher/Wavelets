@@ -8,62 +8,45 @@
 #include <algorithm>    // std::sort
 #include "thresh_cpu.h"
 
-// Allocates absData on the heap and loads it with abs(data)
-// Sorts absData.  Finds the index corresponding to the compRatio, and 
-// reads that element to get the threshold. Sets min and max values that 
-// remain above threshold  
-float thresh_cpu(int len, float *data, float compRatio, float *maxVal)
+/**
+   Allocates absData on the heap and loads it with abs(data)
+   Sorts absData.  Finds the index corresponding to the compRatio, and 
+   reads that element to get the threshold. Sets *maxVal to the largest
+   absolute value in the data.
+
+   If saveSortedAbsData is non-NULL, then the caller wants a copy of the
+   sorted array of absolute values. Set *saveSortedAbsData to point to
+   the array, and do not deallocate it.
+*/
+float thresh_cpu(int len, float *data, float compRatio, float *maxVal, 
+		 float **saveSortedAbsData)
 {
-	int loopCount = 10;
-	int displayCount = 10;
 	int count = len*len;	//Square matrix
-	std::vector<float> absData;
-	float maxV = -1;
-	float minV = 1200;
+	float *absData = new float[count];
+	assert(absData);
 
 	for (int idx = 0; idx < count; idx++ )
 	{
-		float fval = *(data+idx);
-		float afval = (float)(abs(*(data+idx)));
-		absData.push_back(afval);
-		if ( loopCount >= 0)
-		{
-			std::cout << "idx: " << idx << " data[idx]:" << data[idx] << " absData[idx]: " << abs(data[idx]) << std::endl;
-			loopCount--;   
-		}
-		if (afval > maxV) maxV = afval;
-		if (afval < minV) minV = afval; 
+		float afval = fabsf(data[idx]);
+		absData[idx] = afval;
+		// if (idx < 10) std::cout << "idx: " << idx << " data[idx]:" << data[idx] << " absData[idx]: " << afval << std::endl;
 	}
 	
-	int threshIdx = floor((compRatio) * count );
-	std::cout << "threshIdx: " << threshIdx << " minV:" << minV << " maxV:" << maxV << std::endl;
-	
-	std::sort(absData.begin(),absData.end());
-	std::cout << "myvector contains:";
-	//for (std::vector<float>::iterator it=absData.begin(); it!=absData.end(); ++it)
-	//	std::cout << ' ' << *it << std::endl;
+	std::sort(absData, absData + count);
 
-	std::vector<float>::iterator it = absData.begin();
-	it += (threshIdx-10);
-	for (int idx = 0; idx < 20; idx++ )
-	{
-		std::cout << "idx:" << idx << " *it:" << *it << std::endl;
-		it++;
-	}
+	int threshIdx = (int)(compRatio * count);
+	float threshold = absData[threshIdx];
+	if (threshold == 0) threshold = 1e-16;
+	
+	// std::cout << "Front:" << absData.front() << " Back:" << absData.back() << " threshold: " << threshold << std::endl;
+	*maxVal = absData[count-1];   // get the largest value in the data
+	
+	// std::cout << "len:" << len << " maxVal:" << *maxVal << " threshIdx:" << threshIdx << " count:" << count << " threshold:" << threshold << std::endl;
 
-	it = absData.begin();
-	it += threshIdx;	
-	float threshold = *it;
-	threshold = 0.90;
-	
-    std::cout << "Front:" << absData.front() << " Back:" << absData.back() << " threshold: " << threshold << std::endl;
-	*maxVal = *(absData.rbegin()); // get the largest value in the data
-        threshold += 1E-16;
-	
-	if (displayCount > 0 )
-	{
-		displayCount--;
-		std::cout << "len:" << len << " maxVal:" << *maxVal << " threshIdx:" << threshIdx << " count:" << count << " threshold:" << threshold << std::endl;
+	if (saveSortedAbsData) {
+		*saveSortedAbsData = absData;
+	} else {
+		delete[] absData;
 	}
 
 	return threshold;
