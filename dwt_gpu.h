@@ -3,6 +3,8 @@
 
 /*
   CUDA implementation of Haar discrete wavelet transform.
+
+  Ed Karrels, ed.karrels@gmail.com, June 2014
 */
 
 /*

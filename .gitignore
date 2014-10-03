@@ -21,6 +21,10 @@ test_haar_cpu.exe
 convert
 libwaveletcuda.so
 cudahaar.oct
+test_haar_thresh_quantUnif_cpu
 test_haar_thresh_quantUnif_cpu.exe
 test_compress
+test_compress.exe
+test_quant_count
+test_quant_count.exe
 LargeImages

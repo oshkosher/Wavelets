@@ -301,8 +301,9 @@ bool compressFile(const char *inputFile, const char *outputFile,
     quant_log_cpu(size, data, opt.quantizeBits, threshold, maxVal);
     break;
   case QUANT_ALG_COUNT:
-    quant_count_cpu_sorted(size*size, sortedAbsData, opt.quantizeBits,
-			   threshold, quantBinBoundaries, quantBinValues);
+    quant_count_init_sorted_cpu(size*size, sortedAbsData, opt.quantizeBits,
+				threshold, quantBinBoundaries, quantBinValues);
+    quant_boundaries_array(quantBinBoundaries, size*size, data);
     break;
   case QUANT_ALG_LLOYD:
     fprintf(stderr, "Lloyd's algorithm not integrated yet.\n");
@@ -370,12 +371,26 @@ bool decompressFile(const char *inputFile, const char *outputFile,
 
   // de-quantize the data
   startTime = NixTimer::time();
-  if (opt.quantizeAlgorithm != QUANT_ALG_UNIFORM) {
-    printf("%s de-quantization not implemented yet.\n", 
-	   quantAlgId2Name(opt.quantizeAlgorithm));
+  switch (f.quantizeAlgorithm) {
+  case QUANT_ALG_UNIFORM:
+    dquant_unif_cpu(size, data, f.quantizeBits, f.threshold, f.quantMaxVal);
+    break;
+  case QUANT_ALG_LOG:
+    dquant_log_cpu(size, data, f.quantizeBits, f.threshold, f.quantMaxVal);
+    break;
+  case QUANT_ALG_COUNT:
+    // check the size of the codebook
+    dequant_codebook_array(f.quantBinValues, size*size, data);
+    break;
+  case QUANT_ALG_LLOYD:
+    fprintf(stderr, "Lloyd's algorithm not integrated yet.\n");
+    return false;
+  default:
+    fprintf(stderr, "Quantization algorithm %d not found.\n",
+            (int)f.quantizeAlgorithm);
     return false;
   }
-  dquant_unif_cpu(size, data, f.quantizeBits, f.threshold, f.quantMaxVal);
+
   printf("Dequantize: %.2f ms\n", (NixTimer::time() - startTime) * 1000);
 
   // perform inverse wavelet transform
@@ -502,6 +517,8 @@ bool readQuantDataParamStrings(const char *filename, FileData &f) {
     return false;
   }
 
+  bool success = false;
+
   ParamString p;
   p.readParameters(inf);
   if (!p.getInt("w", f.width)) printf("width not found\n");
@@ -515,10 +532,26 @@ bool readQuantDataParamStrings(const char *filename, FileData &f) {
   if (f.quantizeAlgorithm == QUANT_ALG_UNIFORM ||
       f.quantizeAlgorithm == QUANT_ALG_LOG) {
     if (!p.getFloat("max", f.quantMaxVal)) printf("max value not found\n");
+  } else {
+    if (!p.getFloatList("cb", f.quantBinValues)) {
+      printf("codebook not found\n");
+      goto fail;
+    }
+
+    // check the codebook size
+    if (f.quantBinValues.size() != (size_t)(1 << f.quantizeBits)) {
+      fprintf(stderr, "Error: quantization of %d bits, but codebook has %d "
+	      "entries (should be %d)\n",
+	      f.quantizeBits, (int)f.quantBinValues.size(), 
+	      (1 << f.quantizeBits));
+      goto fail;
+    }
+
   }
 
-  bool success = readQuantData(filename, inf, f);
-
+  success = readQuantData(filename, inf, f);
+  
+ fail:
   fclose(inf);
 
   return success;
@@ -562,7 +595,6 @@ bool writeQuantData(const char *filename, FILE *outf, FileData &f) {
   // write the data
   BitStreamWriter bits(outf);
   int count = f.width*f.height;
-
 
   // this object takes (length,value) run-length pairs and writes
   // them in binary to the given bit stream
