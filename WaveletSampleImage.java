@@ -54,7 +54,8 @@ public class WaveletSampleImage {
 
     public int getRGB(float value) {
       int color = (int)((value + pixelOffset) * pixelScale);
-      color = color & 0xff;
+      if (color > 255) color = 255;
+      if (color < 0) color = 0;
       return color | (color << 8) | (color << 16);
     }
   }
