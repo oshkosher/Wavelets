@@ -42,7 +42,8 @@ void haar(int length, float data[], bool inverse = false,
 void haar(int length, double data[], bool inverse = false,
           int stepCount = -1);
 
-// Haar wavelet filter on a 2-d square of data
+// Haar wavelet transform. on a 2-d square of data
+// Returns the time the operation took in milliseconds.
 float haar_2d(int size, float *data,
               bool inverse = false, int stepCount = -1);
 
