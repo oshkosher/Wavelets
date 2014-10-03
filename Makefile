@@ -1,3 +1,14 @@
+# Requirements:
+#   nvcc (NVIDIA CUDA compiler)
+#     Install the CUDA toolkit from:
+#     https://developer.nvidia.com/cuda-downloads
+#   protoc (Google Protocol Buffers)
+#     Either build from the source use the Windows binary:
+#     https://developers.google.com/protocol-buffers/docs/downloads
+#   javac (Java compiler)
+#     Download the Java development kit (aka Java Platform, aka JDK):
+#     http://www.oracle.com/technetwork/java/javase/downloads/index.html
+
 default: haar
 
 all: haar WaveletSampleImage.class test_haar_cpu normalize convert \
@@ -104,7 +115,7 @@ test_compress: test_compress.cc dwt_cpu.cc data_io.cc \
 	  data_io.cc nixtimer.cc param_string.cc \
 	  -o $@ $(LIBS)
 
-proto: wavelet_compress_pb.h
+proto: wavelet_compress.pb.h
 wavelet_compress.pb.h: wavelet_compress.proto
 	protoc $< --cpp_out=.
 
