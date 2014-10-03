@@ -25,6 +25,7 @@ int main_full(int argc, char **argv) {
     printf("Invalid step count: \"%s\"\n", argv[1]);
     return 1;
   }
+stepCount = abs(stepCount);  // We are using pos in the forward direction and neg in the reverse dir.
   
   const char *inputFile = argv[2], *outputFile = argv[3];
   
@@ -62,16 +63,14 @@ int main_full(int argc, char **argv) {
     return 1;
   }
 
-  if (stepCount < 0) 
-    haar_2d(size, data, true, -stepCount);
-  else
-    haar_2d(size, data, false, stepCount);
 
-	float maxVal, minVal;
-	float threshold = thresh_cpu(size, data, compRatio, &maxVal, &minVal);  // Calculate the threshold
+   haar_2d(size, data, false, stepCount);
+
+    float maxVal;
+    float threshold = thresh_cpu(size, data, compRatio, &maxVal);  // Calculate the threshold
     quant_unif_cpu(size, data, bits, threshold, maxVal);            // Apply threshold and uniform quantization
-	dquant_unif_cpu(size, data, bits, threshold, maxVal);      // reverse quantization
-	haar_2d(size, data, true, abs(stepCount));	           // Take the inverse transform
+    //dquant_unif_cpu(size, data, bits, threshold, maxVal);      // reverse quantization
+    haar_2d(size, data, true, stepCount);	           // Take the inverse transform
   // printMatrix(width, height, data);
   printf("Writing...\n");
   fflush(stdout);

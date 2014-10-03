@@ -60,6 +60,20 @@ test_haar_thresh_quantLog_cpu.exe: test_haar_thresh_quantLog_cpu.cc dwt_cpu.cc d
 	  dquant_log_cpu.cc dquant_log_cpu.h
 	$(MSVC) test_haar_thresh_quantLog_cpu.cc dwt_cpu.cc data_io.cc nixtimer.cc thresh_cpu.cc quant_log_cpu.cc dquant_log_cpu.cc
 
+test_compress: test_compress.exe
+
+test_compress.exe: test_compress.cc dwt_cpu.cc data_io.cc \
+	quant_unif_cpu.cc quant_log_cpu.cc nixtimer.cc \
+	dquant_unif_cpu.cc dquant_log_cpu.cc thresh_cpu.cc \
+	dwt_cpu.h data_io.h \
+	quant_unif_cpu.h quant_log_cpu.h \
+	dquant_unif_cpu.h dquant_log_cpu.h thresh_cpu.h \
+	bit_stream.h nixtimer.h rle.h
+	$(MSVC) test_compress.cc dwt_cpu.cc thresh_cpu.cc \
+	  quant_unif_cpu.cc quant_log_cpu.cc quant_count.cc \
+	  dquant_unif_cpu.cc dquant_log_cpu.cc param_string.cc \
+	  data_io.cc nixtimer.cc
+
 test_bit_stream.exe: test_bit_stream.cc bit_stream.h nixtimer.h nixtimer.cc
 	$(MSVC) test_bit_stream.cc nixtimer.cc
 

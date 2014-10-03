@@ -1,0 +1,36 @@
+MINUTES 09_17_14
+Drazen Fabris
+
+
+Serge: Lustig, UC Berkeley, compressive sensing, MRI images, data compression~
+Serge tried to contact, Anupam will continue
+Talking to UT Austin.
+
+Anupam: e-mailed former advisor, Stanford, two connections Xubin Zeng (Atmospheric Sciences, U. Arizona)
+Compression: EOF and mode decomposition
+NOAA data
+Github and tasks
+
+Serge: question whether lossless compression will be an issue re MRI, and other image examples
+
+Ed: wrote an input and output routine to work with bits as opposed to full bytes
+Did a half trip test. (Write out to a simple file, quantized and runlength encoded data).  
+Error in the energy "metric". Multiply a+b and a-b by factor 1/square root(2)
+to get Haar encoded data.
+
+Comparing code with the matlab version of compression.  The current version does not produce the 
+same results.  Question about the normalization 0-1 float, 0-255 bit range.
+
+Quantization ranges: do we want only positive ranges for the bins or output?
+Header will need to have the quantization and other information for reconstruction.  The header will need to hierarchical. 
+
+New tasks:
+Serge will write the abstract, prefers two presenters.
+Anupam will look to at data sets 3-D versions, contact professors, tasks.  Handle testing.
+Bonnie, quantization and comparisons with Matlab, determine where the differences come from.New log on status.
+
+Ed, new spreadsheet as a text file.Read data in a streaming form.  Four letter names for each name for each part of the header.  Potentially use Google protocol buffers (faster and more compact that XML).  Will make a full trip, to disk and back.
+Serge and Drazen, error control thoughts.
+Student will join next week for 1-unit independent study.
+
+ 

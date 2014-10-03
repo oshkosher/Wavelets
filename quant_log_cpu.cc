@@ -8,9 +8,9 @@
 #include <cmath>
 #include "quant_log_cpu.h"
 
-float log2(float x)
+float quant_log2(float x)
 {
-return (log(abs(x))/log(2.0));
+	return (log(fabsf(x))/log(2.0));
 }
 
 // Applies the threshold such that values <= threshold are 0
@@ -18,21 +18,21 @@ return (log(abs(x))/log(2.0));
 // Overwrites data with the new values
 float quant_log_cpu(int len, float *data, int bits, float threshold, float maxVal)
 {
-	int displayCount = 9;
+	int displayCount = 11;
 	int count = len * len;
 	int base = (int)(pow(2.0,bits-1)-1);
-    float lmax = (float)(log2((float)(maxVal/threshold)));
+    float lmax = (float)(quant_log2((float)(maxVal/threshold)));
 	for (int idx = 0; idx < count; idx++)
 	{
-		if (data[idx] <= threshold)
+		if (fabsf(data[idx]) <= threshold)
 		{
 			data[idx] = (float)0.0;
 		}
 		else
 		{
-			int sign=data[idx]/abs(data[idx]);
+			int sign=data[idx]/fabsf(data[idx]);
 			
-			float lnVal=log2((float)(abs(data[idx]/threshold)));
+			float lnVal=quant_log2((float)(fabsf(data[idx]/threshold)));
 			
 			data[idx] = sign*ceil((base*lnVal)/lmax);
 			if ( displayCount > 0 )

@@ -1,3 +1,4 @@
+% XX = readDataFile("chicago_orig.data");
 function AA=readDataFile(filename)
 dataFl = fopen(filename,"r");
 [sss,ccc,err] = fscanf(dataFl,"%s\n","C");
@@ -11,4 +12,8 @@ data=reshape(ddd,dim);
 fclose(dataFl);
 figure;imagesc(data');colormap (gray(256));title(filename);axis equal;axis([1 dim(2) 1 dim(1)]);
 AA = data';
+	fdim = size(AA);
+	if (fdim ~= dim)
+		display("The dimensions of the array read don't match the dimensions in the header!");
+	end
 end

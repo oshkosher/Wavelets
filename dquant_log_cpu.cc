@@ -7,7 +7,7 @@
 #include <cmath>
 #include "dquant_log_cpu.h"
 
-extern float log2(float x);
+extern float quant_log2(float x);
 
 
 // Applies the threshold such that values <= threshold are 0
@@ -17,7 +17,7 @@ void dquant_log_cpu(int len, float *data, int bits, float threshold, float maxVa
 {
 	int count = len * len;
 	int base = (int)(pow(2.0,bits-1)-1);
-    float lmax = (float)(log2((float)(maxVal/threshold)));
+    float lmax = (float)(quant_log2((float)(maxVal/threshold)));
 	
 	for (int idx = 0; idx < count; idx++ )
 	{

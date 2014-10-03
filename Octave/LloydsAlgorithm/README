@@ -1,0 +1,68 @@
+PREREQUISITES:
+---------------
+
+- CUDA
+
+
+FILES:
+-------
+
+- src: Directory with the source code.
+   |
+   |- cuda: CUDA lloyd quantization.
+   |
+   |- oct: Cpp code to generate an oct file.
+
+- Makefile: Building script that generates the CUDA shared lib and the oct file.
+
+
+HOW TO USE:
+------------
+
+Runing make, the code insice src/cuda is compiled and linked using NVCC (CUDA compiler) generating the shared library liblloyd.so. 
+Then the code inside src/oct is compiled with mkoctfile and linked using liblloyd.so generating lloydcuda.oct.
+
+To use it, Octave must be able to find liblloyd.so, this can be done in many ways but the easiest probably is to copy liblloyd.so to /usr/lib.
+
+
+INTERFACES:
+------------
+
+- C++
+
+The first function you must call is:
+
+
+- void setupLloyds(float *points, unsigned int psize, float pmax, float pmin);
+- void setupLloyds(double *points, unsigned int psize, double pmax, double pmin);
+
+
+this function allocates the device memory. "points is an array of "psize" values to be quantized. "pmax" and "pmin" are the max and min value.
+After calling this function you can call the lloyd quantization as follow:
+
+
+- void lloyd(double *codebook, unsigned int csize, double stop_criteria, double *table, double &dist, double &reldist, unsigned int *groups);
+- void lloyd(float *codebook, unsigned int csize, float stop_criteria, float *table, float &dist, float &reldist, unsigned int *groups);
+
+
+The codebook is an array of csize elements, it has the initial codebook and is where the final codebook will be stored. The size of the codebook (csize) is equivalent as the number of bits of the quantization.
+
+The lloyds quantization is an iterative process, the stop criteria represent the minimun error diference between iterations, typically 1e-7.
+
+Table is an array of csize-1 elements, it represent the frotier between bins of the quantization as follow.
+
+if the element i < table[0], its quantized value will be codebook[0] and groups[i] = 0;
+
+if element i >= table[0] and i < table[1], its quantized value will be codebook[1] and groups[i] = 1;
+
+in general,
+
+if element i >= table[j-1] and i < table[j], its quantized value will be codebook[j] and groups[i] = j;
+
+therefore, groups is an array of psize (the number of elements) and for each element stores its codebook index.
+
+Dist represents de error of the last iteration,
+
+Reldist represents the error difference of the last iteration and the previous one. If reldist is < stop_criteria, the algorithm ends.
+
+

@@ -1,0 +1,53 @@
+message WaveletCompressedImage {
+  required int32 width = 1;
+  required int32 height = 2;
+  required int32 waveletTransformStepCount = 3;
+
+
+  enum WaveletAlgorithm {
+    HAAR = 1;
+    CDF79 = 2;
+    CDF53 = 3;
+  }
+  required WaveletAlgorithm waveletAlgorithm = 4;
+
+  // standard or nonstandard transform
+  // standard: do all transform steps, then transpose
+  // nonstandard: do one transform step, transpose, repeat
+  enum WaveletTranspose {
+    STANDARD = 1;    // do all transform steps, then transpose
+    NONSTANDARD = 2; // do one transform step, transpose, repeat
+  }
+  required WaveletTranspose waveletTranspose = 5;
+
+  // This proportion of the original data that was replaced with zero.
+  // It will be a value between 0 and 1.
+  // (this value is not needed when reconstructing the data)
+  optional float thresholdFraction = 6;
+
+  // All values with an absolute value less than this were replaced with zero.
+  optional float thresholdValue = 7;
+
+  required int32 quantizeBits = 8;
+
+  enum QuantizationAlgorithm {
+    UNIFORM = 1;
+    LOG = 2;
+    POPULATION = 3;
+    LLOYD = 4;
+  }
+  optional QuantizationAlgorithm quantizationAlgorithm = 9;
+
+  // the maximum value used when computing quantization
+  optional float quantMaxValue = 10;
+
+  // The boundaries of the quantization bins
+  // For N quantizeBits, there are 2^N bins, and (2^N)+1 boundaries.
+  repeated float quantBinBoundaries = 11 [packed=true];
+
+  // The values that should be used to represent each quantized value.
+  // AKA the codebook.
+  // For N quantizeBits, there are 2^N quantize values.
+  repeated float quantBinValues = 12 [packed=true];
+}
+

@@ -1,7 +1,8 @@
 #ifndef __QUANT_LOG_CPU__
 #define __QUANT_LOG_CPU__
 
-float log2(float x);
+// Define log2 on systems that don't have it
+float quant_log2(float x);
 
 // Applies the threshold such that values <= threshold are 0
 // Maps the remaining range of values to the values 0:(2^bits)-1
