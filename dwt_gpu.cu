@@ -1,3 +1,9 @@
+/*
+  CUDA implementation of Haar discrete wavelet transform.
+
+  Ed Karrels, ed.karrels@gmail.com, June 2014
+*/
+
 #include "dwt_cpu.h"
 #include "dwt_gpu.h"
 #include "transpose_gpu.h"
@@ -15,20 +21,23 @@
     git show 736c52c:dwt_gpu.cu | less
 */
 
+
+/*
+  Call structure:
+
+  haar_2d_cuda
+    haar_2d_cuda_internal
+      haar_2d_kernel
+      haar_inv_2d_kernel
+      haar_transpose_2d_kernel
+      haar_inv_transpose_2d_kernel
+
+*/
+
 template<typename NUM>
 float haar_2d_cuda_internal
 (int size, NUM *data, bool inverse, int stepCount, int threadBlockSize,
  bool useCombinedTranspose);
-
-// Returns the time in milliseconds between ev1 and ev2 (where ev1
-// happened first).
-/*
-static float elapsed(cudaEvent_t ev1, cudaEvent_t ev2) {
-  float ms;
-  CUCHECK(cudaEventElapsedTime(&ms, ev1, ev2));
-  return ms;
-}
-*/
 
 
 /*
