@@ -96,7 +96,14 @@ class CudaTimer {
   int countEvents() {return events.size() / 2;}
   cudaEvent_t getEvent(size_t i) {return events[i];}
   cudaEvent_t getLastEvent() {return events[events.size()-1];}
-  
+
+  // return the time between event 2*i and 2*i+1
+  float getEventTime(int i) {
+    float ms;
+    CUCHECK(cudaEventElapsedTime(&ms, events[i*2], events[i*2+1]));
+    return ms;
+  }
+    
 };
 
 #endif // __CUDA_TIMER_H__
