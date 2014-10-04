@@ -38,7 +38,7 @@ bool ParamString::readParameters(FILE *inf) {
 bool ParamString::writeParameters(FILE *outf) {
   string content;
   map<string,string>::const_iterator iter;
-  for (iter = params.cbegin(); iter != params.cend(); iter++) {
+  for (iter = params.begin(); iter != params.end(); iter++) {
     content.append(formatString(iter->first.c_str(), FORMAT_STRING_LHS));
     content.push_back('=');
     content.append(formatString(iter->second.c_str(), FORMAT_STRING_RHS));
@@ -145,7 +145,7 @@ string ParamString::formatMap(const map<string,string> &m) {
   bool first = true;
   result.push_back('{');
 
-  for (iter = m.cbegin(); iter != m.cend(); iter++) {
+  for (iter = m.begin(); iter != m.end(); iter++) {
     if (!first) result.push_back(',');
     first = false;
     result.append(formatString(iter->first.c_str()));
