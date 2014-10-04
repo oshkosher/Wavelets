@@ -2,12 +2,23 @@
 #   nvcc (NVIDIA CUDA compiler)
 #     Install the CUDA toolkit from:
 #     https://developer.nvidia.com/cuda-downloads
-#   protoc (Google Protocol Buffers)
-#     Either build from the source use the Windows binary:
-#     https://developers.google.com/protocol-buffers/docs/downloads
 #   javac (Java compiler)
 #     Download the Java development kit (aka Java Platform, aka JDK):
 #     http://www.oracle.com/technetwork/java/javase/downloads/index.html
+#   protoc (Google Protocol Buffers)
+#     On Unix or Unix-like (Cygwin) systems, it's pretty easy to either
+#     find it as pre-built package (look for protobuf and libprotobuf-devel)
+#     or to build it from the source and install it:
+#       https://developers.google.com/protocol-buffers/docs/downloads
+#     On Windows, you'll need to build it from the source, but it's a little
+#     harder.
+#       1. Download the source and expand the archive in this directory.
+#       2. Look in the "vsprojects" subdirectory. Open "protobuf.sln"
+#          in Visual Studio. Build the project for Debug and Release.
+#       3. In a command prompt, navigate to the "vsprojects" subdirectory
+#          and run "extract_includes.bat".
+#       4. Check Makefile.nmake, and make sure protoc.exe, the libraries, and
+#          the include directory can be found correctly.
 
 default: haar
 
@@ -111,12 +122,13 @@ test_compress: test_compress.cc dwt_cpu.cc data_io.cc \
 	quant_unif_cpu.h quant_log_cpu.h \
 	dquant_unif_cpu.h dquant_log_cpu.h thresh_cpu.h \
 	bit_stream.h nixtimer.h rle.h param_string.h param_string.cc \
-	quant_count.h quant_count.cc
+	quant_count.h quant_count.cc \
+	wavelet_compress.pb.h wavelet_compress.pb.cc
 	$(CC) test_compress.cc dwt_cpu.cc thresh_cpu.cc \
 	  quant_unif_cpu.cc quant_log_cpu.cc quant_count.cc \
-	  dquant_unif_cpu.cc dquant_log_cpu.cc \
-	  data_io.cc nixtimer.cc param_string.cc \
-	  -o $@ $(LIBS)
+	  dquant_unif_cpu.cc dquant_log_cpu.cc param_string.cc \
+	  data_io.cc nixtimer.cc wavelet_compress.pb.cc \
+	  -o $@ $(LIBS) -L/usr/local/lib -lprotobuf
 
 proto: wavelet_compress.pb.h
 wavelet_compress.pb.h: wavelet_compress.proto
@@ -155,5 +167,5 @@ clean:
 	rm -f *.class *.obj *.o *.exp *.lib *.pdb *~ \
 	  convert haar test_haar_cpu normalize libwaveletcuda.so cudahaar.oct \
 	  test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu \
-	  test_bit_stream test_compress
+	  test_bit_stream test_compress wavelet_compress.pb.{h,cc}
 

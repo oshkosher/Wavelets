@@ -1,14 +1,28 @@
-EXECS = WaveletSampleImage.class haar.exe test_haar_cpu.exe test_haar_thresh_quantUnif_cpu.exe test_haar_thresh_quantLog_cpu.exe normalize.exe
+EXECS = WaveletSampleImage.class haar.exe test_haar_cpu.exe \
+  test_haar_thresh_quantUnif_cpu.exe test_haar_thresh_quantLog_cpu.exe \
+  normalize.exe test_compress.exe
 
-HAAR_OBJS = haar.obj dwt_cpu.obj dwt_gpu.obj data_io.obj transpose_gpu.obj \
-	    nixtimer.obj
+default: haar.exe test_haar_cpu.exe test_compress.exe
+
+all: $(EXECS)
 
 NVCC = nvcc -m32 -gencode arch=compute_20,code=sm_20 -gencode arch=compute_30,code=sm_30 -gencode arch=compute_11,code=sm_11
 
+# BUILD=Debug
+# BUILD_FLAGS=/Zi /MDd
 
-MSVC = cl /EHsc /nologo
+BUILD=Release
+BUILD_FLAGS=/O2 /MD
 
-all: $(EXECS)
+MSVC = cl /EHsc /nologo $(BUILD_FLAGS) -D_SCL_SECURE_NO_WARNINGS
+
+PROTOBUF_DIR = protobuf-2.6.0\vsprojects
+PROTOC = $(PROTOBUF_DIR)\$(BUILD)\protoc.exe
+JAVAC = javac
+
+
+HAAR_OBJS = haar.obj dwt_cpu.obj dwt_gpu.obj data_io.obj transpose_gpu.obj \
+	    nixtimer.obj
 
 haar.obj: haar.cu
 	$(NVCC) -c haar.cu
@@ -68,11 +82,19 @@ test_compress.exe: test_compress.cc dwt_cpu.cc data_io.cc \
 	dwt_cpu.h data_io.h \
 	quant_unif_cpu.h quant_log_cpu.h \
 	dquant_unif_cpu.h dquant_log_cpu.h thresh_cpu.h \
-	bit_stream.h nixtimer.h rle.h
-	$(MSVC) test_compress.cc dwt_cpu.cc thresh_cpu.cc \
+	bit_stream.h nixtimer.h rle.h param_string.h param_string.cc \
+	quant_count.h quant_count.cc \
+	wavelet_compress.pb.h wavelet_compress.pb.cc
+	$(MSVC) /I$(PROTOBUF_DIR)\include \
+	  test_compress.cc dwt_cpu.cc thresh_cpu.cc \
 	  quant_unif_cpu.cc quant_log_cpu.cc quant_count.cc \
 	  dquant_unif_cpu.cc dquant_log_cpu.cc param_string.cc \
-	  data_io.cc nixtimer.cc
+	  data_io.cc nixtimer.cc wavelet_compress.pb.cc \
+          $(PROTOBUF_DIR)\$(BUILD)\libprotobuf.lib
+
+proto: wavelet_compress.pb.h
+wavelet_compress.pb.h: wavelet_compress.proto
+	$(PROTOC) wavelet_compress.proto --cpp_out=.
 
 test_bit_stream.exe: test_bit_stream.cc bit_stream.h nixtimer.h nixtimer.cc
 	$(MSVC) test_bit_stream.cc nixtimer.cc
@@ -81,8 +103,8 @@ normalize.exe: normalize.cc data_io.cc data_io.h
 	$(MSVC) normalize.cc data_io.cc
 
 WaveletSampleImage.class: WaveletSampleImage.java
-	javac WaveletSampleImage.java
+	$(JAVAC) WaveletSampleImage.java
 
 clean:
 	del *.class *.obj *.o *.exp *.lib *.pdb *~ \
-	  $(EXECS)
+	  wavelet_compress.pb.h wavelet_compress.pb.cc $(EXECS)

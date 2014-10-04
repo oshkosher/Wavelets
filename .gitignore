@@ -28,3 +28,6 @@ test_compress.exe
 test_quant_count
 test_quant_count.exe
 LargeImages
+protobuf-2.5.0
+protobuf-2.6.0
+

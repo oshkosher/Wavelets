@@ -26,8 +26,11 @@
 #include "dquant_log_cpu.h"
 #include "dquant_unif_cpu.h"
 #include "param_string.h"
+#include "wavelet_compress.pb.h"
 
 using namespace std;
+
+#define FILE_ID_STRING "SCU wavelet 1.0\n"
 
 typedef enum {
   QUANT_ALG_UNKNOWN = -1,
@@ -96,11 +99,17 @@ bool writeQuantDataSimple(const char *filename, FileData &fileData);
 bool readQuantDataSimple(const char *filename, FileData &fileData);
 bool writeQuantDataParamStrings(const char *filename, FileData &fileData);
 bool readQuantDataParamStrings(const char *filename, FileData &fileData);
+bool writeQuantDataProtoBuf(const char *filename, FileData &fileData);
+bool readQuantDataProtoBuf(const char *filename, FileData &fileData);
 bool readQuantData(const char *filename, FILE *inf, FileData &fileData);
 bool writeQuantData(const char *filename, FILE *outf, FileData &fileData);
 
 QuantizeAlgorithm quantAlgName2Id(const char *name);
 const char *quantAlgId2Name(QuantizeAlgorithm id);
+WaveletCompressedImage_QuantizationAlgorithm quantAlgId2ProtoId
+  (QuantizeAlgorithm id);
+QuantizeAlgorithm quantProtoId2AlgId
+  (WaveletCompressedImage_QuantizationAlgorithm protoId);
 
 class WriteRLEPairsToBitStream {
   BitStreamWriter *out;
@@ -332,7 +341,8 @@ bool compressFile(const char *inputFile, const char *outputFile,
   startTime = NixTimer::time();
 
   // if (!writeQuantDataSimple(outputFile, fileData)) return false;
-  if (!writeQuantDataParamStrings(outputFile, fileData)) return false;
+  // if (!writeQuantDataParamStrings(outputFile, fileData)) return false;
+  if (!writeQuantDataProtoBuf(outputFile, fileData)) return false;
     
   elapsed = NixTimer::time() - startTime;
   printf("Write data file: %.2f ms\n", elapsed*1000);
@@ -355,7 +365,8 @@ bool decompressFile(const char *inputFile, const char *outputFile,
   firstStartTime = startTime = NixTimer::time();
 
   // if (!readQuantDataSimple(inputFile, f)) return false;
-  if (!readQuantDataParamStrings(inputFile, f)) return false;
+  // if (!readQuantDataParamStrings(inputFile, f)) return false;
+  if (!readQuantDataProtoBuf(inputFile, f)) return false;
 
   elapsed = NixTimer::time() - startTime;
   printf("Read %dx%d data file: %.2f ms\n", f.width, f.height,
@@ -509,6 +520,72 @@ bool writeQuantDataParamStrings(const char *filename, FileData &f) {
 }
 
 
+/**
+   Format:
+   16 bytes: File type identification string "SCU wavelet 1.0\n"
+   4 bytes: The length of the header in bytes, not including the 20 bytes
+            for this and the ID string, encoded as a little-endian int.
+   variable length: Header, encoded as a Google Protocol Buffer
+   variable length: Data. Layout can be determined by reading the header.
+*/
+    
+bool writeQuantDataProtoBuf(const char *filename, FileData &f) {
+
+  FILE *outf = fopen(filename, "wb");
+  if (!outf) {
+    printf("Error writing to \"%s\"\n", filename);
+    return false;
+  }
+
+  fputs(FILE_ID_STRING, outf);
+
+  // build the protobuf
+  WaveletCompressedImage buf;
+
+  buf.set_width(f.width);
+  buf.set_height(f.height);
+  buf.set_wavelet_transform_step_count(f.waveletSteps);
+  buf.set_quantize_bits(f.quantizeBits);
+  buf.set_threshold_value(f.threshold);
+  buf.set_wavelet_algorithm(WaveletCompressedImage_WaveletAlgorithm_HAAR);
+  buf.set_quantization_algorithm(quantAlgId2ProtoId(f.quantizeAlgorithm));
+
+  if (f.quantizeAlgorithm == QUANT_ALG_UNIFORM ||
+      f.quantizeAlgorithm == QUANT_ALG_LOG) {
+    buf.set_quant_max_value(f.quantMaxVal);
+  } else {
+    for (size_t i=0; i < f.quantBinBoundaries.size(); i++)
+      buf.add_quant_bin_boundaries(f.quantBinBoundaries[i]);
+    for (size_t i=0; i < f.quantBinValues.size(); i++)
+      buf.add_quant_bin_values(f.quantBinValues[i]);
+  }
+
+  assert(sizeof(unsigned) == 4);
+  unsigned codedLen = (unsigned) buf.ByteSize();
+  fwrite(&codedLen, sizeof codedLen, 1, outf);
+  printf("Header protobuf = %u bytes\n", codedLen);
+
+  char *codedBuf = new char[codedLen];
+  assert(codedBuf);
+  if (!buf.SerializeToArray(codedBuf, codedLen)) {
+    fprintf(stderr, "Failed to encode parameters\n");
+    return false;
+  }
+
+  if (fwrite(codedBuf, 1, codedLen, outf) != codedLen) {
+    fprintf(stderr, "Failed to write encoded parameters to file\n");
+    return false;
+  }
+  delete[] codedBuf;
+    
+  bool success = writeQuantData(filename, outf, f);
+
+  fclose(outf);
+
+  return success;
+}
+
+
 bool readQuantDataParamStrings(const char *filename, FileData &f) {
 
   FILE *inf = fopen(filename, "rb");
@@ -516,8 +593,6 @@ bool readQuantDataParamStrings(const char *filename, FileData &f) {
     printf("Cannot read \"%s\"\n", filename);
     return false;
   }
-
-  bool success = false;
 
   ParamString p;
   p.readParameters(inf);
@@ -535,7 +610,7 @@ bool readQuantDataParamStrings(const char *filename, FileData &f) {
   } else {
     if (!p.getFloatList("cb", f.quantBinValues)) {
       printf("codebook not found\n");
-      goto fail;
+      return false;
     }
 
     // check the codebook size
@@ -544,14 +619,71 @@ bool readQuantDataParamStrings(const char *filename, FileData &f) {
 	      "entries (should be %d)\n",
 	      f.quantizeBits, (int)f.quantBinValues.size(), 
 	      (1 << f.quantizeBits));
-      goto fail;
+      return false;
     }
 
   }
 
-  success = readQuantData(filename, inf, f);
+  bool success = readQuantData(filename, inf, f);
+
+  fclose(inf);
+
+  return success;
+}
+
+
+bool readQuantDataProtoBuf(const char *filename, FileData &f) {
+
+  FILE *inf = fopen(filename, "rb");
+  if (!inf) {
+    printf("Cannot read \"%s\"\n", filename);
+    return false;
+  }
+
+  char idString[17] = {0};
+  fread(idString, 1, 16, inf);
+  if (strcmp(idString, FILE_ID_STRING)) {
+    fprintf(stderr, "Invalid file format. Expected protocol buffer header.\n");
+    return false;
+  }
+
+  // read the header data
+  unsigned codedLen;
+  fread(&codedLen, sizeof codedLen, 1, inf);
   
- fail:
+  char *codedBuf = new char[codedLen];
+  assert(codedBuf);
+  if (codedLen != (unsigned)fread(codedBuf, 1, codedLen, inf)) {
+    fprintf(stderr, "Failed to read header.\n");
+    return false;
+  }
+
+  // decode the protobuf
+  WaveletCompressedImage buf;
+  if (!buf.ParseFromArray(codedBuf, codedLen)) {
+    fprintf(stderr, "Failed to decode header data.\n");
+    return false;
+  }
+
+  f.width = buf.width();
+  f.height = buf.height();
+  f.waveletSteps = buf.wavelet_transform_step_count();
+  f.quantizeBits = buf.quantize_bits();
+  f.threshold = buf.threshold_value();
+  f.quantMaxVal = buf.quant_max_value();
+  // buf.wavelet_algorithm();
+  f.quantizeAlgorithm = quantProtoId2AlgId(buf.quantization_algorithm());
+
+  f.quantBinBoundaries.resize(buf.quant_bin_boundaries_size());
+  for (int i=0; i < buf.quant_bin_boundaries_size(); i++)
+    f.quantBinBoundaries[i] = buf.quant_bin_boundaries(i);
+
+  f.quantBinValues.resize(buf.quant_bin_values_size());
+  for (int i=0; i < buf.quant_bin_values_size(); i++)
+    f.quantBinValues[i] = buf.quant_bin_values(i);
+
+  bool success = readQuantData(filename, inf, f);
+  
   fclose(inf);
 
   return success;
@@ -634,5 +766,41 @@ const char *quantAlgId2Name(QuantizeAlgorithm id) {
   case QUANT_ALG_COUNT: return "count";
   case QUANT_ALG_LLOYD: return "lloyd";
   default: return NULL;
+  }
+}
+  
+
+WaveletCompressedImage_QuantizationAlgorithm quantAlgId2ProtoId
+  (QuantizeAlgorithm id) {
+
+  switch (id) {
+  case QUANT_ALG_UNIFORM:
+    return WaveletCompressedImage_QuantizationAlgorithm_UNIFORM;
+  case QUANT_ALG_LOG: 
+    return WaveletCompressedImage_QuantizationAlgorithm_LOG;
+  case QUANT_ALG_COUNT:
+    return WaveletCompressedImage_QuantizationAlgorithm_COUNT;
+  case QUANT_ALG_LLOYD:
+    return WaveletCompressedImage_QuantizationAlgorithm_LLOYD;
+  default:
+    return WaveletCompressedImage_QuantizationAlgorithm_UNIFORM;
+  }
+}
+  
+
+QuantizeAlgorithm quantProtoId2AlgId
+  (WaveletCompressedImage_QuantizationAlgorithm protoId) {
+
+  switch (protoId) {
+  case WaveletCompressedImage_QuantizationAlgorithm_UNIFORM:
+    return QUANT_ALG_UNIFORM;
+  case WaveletCompressedImage_QuantizationAlgorithm_LOG:
+    return QUANT_ALG_LOG;
+  case WaveletCompressedImage_QuantizationAlgorithm_COUNT:
+    return QUANT_ALG_COUNT;
+  case WaveletCompressedImage_QuantizationAlgorithm_LLOYD:
+    return QUANT_ALG_LLOYD;
+  default:
+    return QUANT_ALG_UNIFORM;
   }
 }
