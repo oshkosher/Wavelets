@@ -218,7 +218,6 @@ bool writeQuantDataParamStrings(const char *filename, FileData &f) {
    variable length: Header, encoded as a Google Protocol Buffer
    variable length: Data. Layout can be determined by reading the header.
 */
-    
 bool writeQuantDataProtoBuf(const char *filename, FileData &f) {
 
   FILE *outf = fopen(filename, "wb");
@@ -354,6 +353,7 @@ bool readQuantDataProtoBuf(const char *filename, FileData &f) {
     fprintf(stderr, "Failed to decode header data.\n");
     return false;
   }
+  delete[] codedBuf;
 
   f.width = buf.width();
   f.height = buf.height();
@@ -494,3 +494,4 @@ QuantizeAlgorithm quantProtoId2AlgId
     return QUANT_ALG_UNIFORM;
   }
 }
+

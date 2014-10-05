@@ -367,6 +367,10 @@ class BitStreamReader {
     fillBuffer();
   }
 
+  ~BitStreamReader() {
+    delete[] buffer;
+  }
+
   /** Read 32 or less bits. If there are not that many bits remaining
       in the data file, the missing bits will be 0, and eof will be set. */
   unsigned read(int bitsWanted) {

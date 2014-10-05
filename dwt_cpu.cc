@@ -342,7 +342,7 @@ static void haar_inv(int length, T data[], int stepCount) {
 
     sampleCount <<= 1;
   }
-  delete temp;
+  delete[] temp;
 }
 
 

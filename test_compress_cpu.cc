@@ -137,7 +137,8 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   elapsed = NixTimer::time() - firstStartTime;
   printf("Total: %.2f ms\n", elapsed*1000);
-  
+
+  delete[] data;
 
   return true;
 }
@@ -202,6 +203,8 @@ bool decompressFile(const char *inputFile, const char *outputFile,
   printf("Write file: %.2f ms\n", (NixTimer::time() - startTime) * 1000);
 
   printf("Total: %.2f ms\n", (NixTimer::time() - firstStartTime) * 1000);
+
+  delete[] data;
 
   return true;
 }
