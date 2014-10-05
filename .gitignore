@@ -11,8 +11,8 @@
 *.class
 haar
 haar.exe
-list_values
-list_values.exe
+list_data
+list_data.exe
 normalize
 normalize.exe
 test_haar_cpu

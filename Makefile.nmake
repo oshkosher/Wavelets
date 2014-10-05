@@ -1,18 +1,18 @@
 EXECS = WaveletSampleImage.class haar.exe test_haar_cpu.exe \
   test_haar_thresh_quantUnif_cpu.exe test_haar_thresh_quantLog_cpu.exe \
-  normalize.exe test_compress.exe
+  normalize.exe test_compress_cpu.exe
 
-default: haar.exe test_haar_cpu.exe test_compress.exe
+default: haar.exe test_haar_cpu.exe test_compress_cpu.exe
 
 all: $(EXECS)
 
 NVCC = nvcc -m32 -gencode arch=compute_20,code=sm_20 -gencode arch=compute_30,code=sm_30 -gencode arch=compute_11,code=sm_11
 
-# BUILD=Debug
-# BUILD_FLAGS=/Zi /MDd
+BUILD=Debug
+BUILD_FLAGS=/Zi /MDd
 
-BUILD=Release
-BUILD_FLAGS=/O2 /MD
+# BUILD=Release
+# BUILD_FLAGS=/O2 /MD
 
 MSVC = cl /EHsc /nologo $(BUILD_FLAGS) -D_SCL_SECURE_NO_WARNINGS
 
@@ -74,9 +74,10 @@ test_haar_thresh_quantLog_cpu.exe: test_haar_thresh_quantLog_cpu.cc dwt_cpu.cc d
 	  dquant_log_cpu.cc dquant_log_cpu.h
 	$(MSVC) test_haar_thresh_quantLog_cpu.cc dwt_cpu.cc data_io.cc nixtimer.cc thresh_cpu.cc quant_log_cpu.cc dquant_log_cpu.cc
 
-test_compress: test_compress.exe
+test_compress: test_compress_cpu.exe
 
-test_compress.exe: test_compress.cc dwt_cpu.cc data_io.cc \
+test_compress_cpu.exe: test_compress_cpu.cc test_compress_common.cc \
+	dwt_cpu.cc data_io.cc \
 	quant_unif_cpu.cc quant_log_cpu.cc nixtimer.cc \
 	dquant_unif_cpu.cc dquant_log_cpu.cc thresh_cpu.cc \
 	dwt_cpu.h data_io.h \
@@ -86,7 +87,8 @@ test_compress.exe: test_compress.cc dwt_cpu.cc data_io.cc \
 	quant_count.h quant_count.cc \
 	wavelet_compress.pb.h wavelet_compress.pb.cc
 	$(MSVC) /I$(PROTOBUF_DIR)\include \
-	  test_compress.cc dwt_cpu.cc thresh_cpu.cc \
+	  test_compress_cpu.cc test_compress_common.cc \
+          dwt_cpu.cc thresh_cpu.cc \
 	  quant_unif_cpu.cc quant_log_cpu.cc quant_count.cc \
 	  dquant_unif_cpu.cc dquant_log_cpu.cc param_string.cc \
 	  data_io.cc nixtimer.cc wavelet_compress.pb.cc \
@@ -106,5 +108,5 @@ WaveletSampleImage.class: WaveletSampleImage.java
 	$(JAVAC) WaveletSampleImage.java
 
 clean:
-	del *.class *.obj *.o *.exp *.lib *.pdb *~ \
+	del *.class *.obj *.o *.exp *.lib *.pdb *.ilk *.idb *~ \
 	  wavelet_compress.pb.h wavelet_compress.pb.cc $(EXECS)

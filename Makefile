@@ -115,7 +115,10 @@ test_bit_stream: test_bit_stream.cc bit_stream.h nixtimer.h nixtimer.cc
 test_quant_count: test_quant_count.cc quant_count.h quant_count.cc
 	$(CC) test_quant_count.cc quant_count.cc data_io.cc -o $@ $(LIBS)
 
-test_compress: test_compress.cc dwt_cpu.cc data_io.cc \
+test_compress: test_compress_cpu
+
+test_compress_cpu: test_compress_cpu.cc test_compress_common.cc \
+	dwt_cpu.cc data_io.cc \
 	quant_unif_cpu.cc quant_log_cpu.cc nixtimer.cc \
 	dquant_unif_cpu.cc dquant_log_cpu.cc thresh_cpu.cc \
 	dwt_cpu.h data_io.h \
@@ -124,7 +127,8 @@ test_compress: test_compress.cc dwt_cpu.cc data_io.cc \
 	bit_stream.h nixtimer.h rle.h param_string.h param_string.cc \
 	quant_count.h quant_count.cc \
 	wavelet_compress.pb.h wavelet_compress.pb.cc
-	$(CC) test_compress.cc dwt_cpu.cc thresh_cpu.cc \
+	$(CC) test_compress_cpu.cc test_compress_common.cc \
+	  dwt_cpu.cc thresh_cpu.cc \
 	  quant_unif_cpu.cc quant_log_cpu.cc quant_count.cc \
 	  dquant_unif_cpu.cc dquant_log_cpu.cc param_string.cc \
 	  data_io.cc nixtimer.cc wavelet_compress.pb.cc \
