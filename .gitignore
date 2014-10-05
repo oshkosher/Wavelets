@@ -32,4 +32,5 @@ test_quant_count.exe
 LargeImages
 protobuf-2.5.0
 protobuf-2.6.0
-
+wavelet_compress.pb.cc
+wavelet_compress.pb.h
