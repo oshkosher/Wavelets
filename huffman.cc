@@ -64,7 +64,7 @@ void Huffman::computeHuffmanCoding() {
   }
 
   // printf("queue size: %d\n", (int)queue.size());
-  Node *tree = queue.top();
+  // Node *tree = queue.top();
   // printTree(tree);
 
   computed = true;

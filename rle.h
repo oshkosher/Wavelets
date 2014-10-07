@@ -12,10 +12,10 @@ template <class Sink>
 class FloatMatrixToGrayscale {
   int width, height;
   float *data;
+  Sink *sink;
 
  public:
-  Sink sink;
-  FloatMatrixToGrayscale(int width_, int height_, float *data_)
+ FloatMatrixToGrayscale(Sink *sink, int width_, int height_, float *data_)
     : width(width_), height(height_), data(data_) {
   }
   
@@ -34,9 +34,9 @@ class FloatMatrixToGrayscale {
 
     float *p = data, *end = data + (width*height);
     for (; p != end; p++) {
-      sink.data(convert(*p));
+      sink->data(convert(*p));
     }
-    sink.end();
+    sink->end();
     /*
     int n = width*height;
     for (int i=0; i < n; i++) 
@@ -135,6 +135,8 @@ class FrequencyCountPair {
     add(length);
   }
 
+  void end() {
+  }
 };
   
 

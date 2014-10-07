@@ -9,7 +9,7 @@ class Huffman {
  public:
 
   // Initialize a histogram with 'size' entries
- Huffman(int size_) : size(size_) {
+  Huffman(int size_) : size(size_) {
     counts = new int[size];
     memset(counts, 0, sizeof(int) * size);
     computed = false;
@@ -21,31 +21,37 @@ class Huffman {
     if (nodes) delete[] nodes;
   }
 
+  // increase the count for one entry by one
   void increment(int value) {
     assert(value >= 0 && value < size);
     counts[value]++;
   }
 
+  // set the count for one entry
   void update(int value, int offset) {
     assert(value >= 0 && value < size);
     counts[value] += offset;
   }
 
+  // get the count for one entry
   int getCount(int value) {
     assert(value >= 0 && value < size);
     return counts[value];
   }
 
+  // computing the encoding
   void computeHuffmanCoding();
 
+  // return the length of the encoded form of this value
   int encodedLength(int value);
-  
+
+  // 
   void encode(int value, int &length, int &bits);
   void decode(int bits, int &value);
 
 
   struct Node {
-    int count, value;
+    int count, value, tableOffset;
     Node *left, *right, *parent;
 
     Node(unsigned value_, unsigned count_) {

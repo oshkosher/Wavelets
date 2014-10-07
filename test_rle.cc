@@ -54,8 +54,11 @@ int main(int argc, char **argv) {
 
   // FrequencyCountPair frequencyCount;
   // EncodeRunLength<FrequencyCountPair> encoder;
+
+  FrequencyCountPair frequencyCount;
+  EncodeRunLength<FrequencyCountPair> encoder(&frequencyCount);
   FloatMatrixToGrayscale<EncodeRunLength<FrequencyCountPair> >
-    matrixScan(width, height, data);
+    matrixScan(&encoder, width, height, data);
 
   matrixScan.scan();
 
@@ -68,7 +71,6 @@ int main(int argc, char **argv) {
   }
   */
 
-  FrequencyCountPair &frequencyCount = matrixScan.sink.sink;
   Huffman huff(256);
 
   for (int value=0; value < 256; value++) {

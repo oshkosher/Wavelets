@@ -11,7 +11,7 @@ int main2() {
 
   std::vector<float> boundaries, codebook;
 
-  quant_count_cpu(len, data, 2, .4, boundaries, codebook);
+  quant_count_init_cpu(len, data, 2, .4, boundaries, codebook);
   for (int i=0; i < 3; i++)
     printf("  %f", boundaries[i]);
   printf("\n");
@@ -35,7 +35,7 @@ int main() {
   std::vector<float> boundaries, codebook;
   int bits = 3;
 
-  quant_count_cpu(width * height, data, bits, .1, boundaries, codebook);
+  quant_count_init_cpu(width * height, data, bits, .1, boundaries, codebook);
   int binCount = 1 << bits;
   for (int i=0; i < binCount-1; i++)
     printf("  %f", boundaries[i]);

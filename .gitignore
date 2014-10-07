@@ -27,6 +27,8 @@ test_compress
 test_compress.exe
 test_compress_cpu
 test_compress_cpu.exe
+test_compress_gpu
+test_compress_gpu.exe
 test_quant_count
 test_quant_count.exe
 LargeImages
@@ -34,3 +36,9 @@ protobuf-2.5.0
 protobuf-2.6.0
 wavelet_compress.pb.cc
 wavelet_compress.pb.h
+test_bit_stream
+test_bit_stream.exe
+test_huffman
+test_huffman.exe
+test_rle
+test_rl.exe

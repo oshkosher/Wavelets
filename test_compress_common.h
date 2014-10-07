@@ -30,6 +30,7 @@ struct Options {
   bool doCompress;
 
   int waveletSteps;
+  bool isWaveletTransposeStandard;
   float thresholdFraction;
   int quantizeBits;
   QuantizeAlgorithm quantizeAlgorithm;

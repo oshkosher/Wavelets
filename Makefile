@@ -2,9 +2,13 @@
 #   nvcc (NVIDIA CUDA compiler)
 #     Install the CUDA toolkit from:
 #     https://developer.nvidia.com/cuda-downloads
+#     Add nvcc to your PATH.
+#     
 #   javac (Java compiler)
 #     Download the Java development kit (aka Java Platform, aka JDK):
 #     http://www.oracle.com/technetwork/java/javase/downloads/index.html
+#     Add javac to your PATH.
+# 
 #   protoc (Google Protocol Buffers)
 #     On Unix or Unix-like (Cygwin) systems, it's pretty easy to either
 #     find it as pre-built package (look for protobuf and libprotobuf-devel)
@@ -15,23 +19,47 @@
 #       1. Download the source and expand the archive in this directory.
 #       2. Look in the "vsprojects" subdirectory. Open "protobuf.sln"
 #          in Visual Studio. Build the project for Debug and Release.
+#          You'll want to disable incremental linking and set the
+#          Debug Information Format to Program Database (/Zi).
 #       3. In a command prompt, navigate to the "vsprojects" subdirectory
 #          and run "extract_includes.bat".
 #       4. Check Makefile.nmake, and make sure protoc.exe, the libraries, and
 #          the include directory can be found correctly.
 
-default: haar
+default: convert test_haar_cpu haar test_compress_cpu
 
-all: haar WaveletSampleImage.class test_haar_cpu normalize convert \
-  cudahaar.mex test_huffman test_haar_thresh_quantUnif_cpu \
-  test_haar_thresh_quantLog_cpu test_bit_stream test_compress
+EXECS = test_haar_cpu haar test_compress \
+  test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu \
+  normalize test_rle test_huffman test_bit_stream test_quant_count \
+  test_compress_gpu list_data
+
+all: convert $(EXECS) libwaveletcuda.so cudahaar.mex
 
 java: WaveletSampleImage.class
 
 oct: cudahaar.mex
 
-# enable this to generate code for multiple card generations
-NVCC=nvcc \
+# Set this to YES or NO, to select between a Debug or Release build
+IS_DEBUG=YES
+
+
+ifeq ($(IS_DEBUG),YES)
+BUILD=Debug
+CC_OPT_FLAG=-g
+CL_OPT_FLAG=/MDd
+else
+BUILD=Release
+CC_OPT_FLAG=-O2
+CL_OPT_FLAG=/MD
+endif
+
+# Either -m32 or -m64. Currently we use 64-bit on Linux and 32-bit on
+# Windows, because not everyone in the group has 64-bit support in
+# Visual Studio.
+NVCC_ARCH_SIZE = -m64
+
+# By default, build CUDA code for many architectures
+NVCC_ARCH = \
   -gencode arch=compute_11,code=sm_11 \
   -gencode arch=compute_20,code=sm_20 \
   -gencode arch=compute_30,code=sm_30 \
@@ -39,15 +67,12 @@ NVCC=nvcc \
 
 # enable one of these to generate code for just one generation of GPU
 # (reduces compile time by 30%)
-# NVCC=nvcc -arch sm_20
-# NVCC=nvcc -arch sm_30
+# NVCC_ARCH=-arch sm_20
+NVCC_ARCH=-arch sm_30
 
-CC = g++ -std=c++11 -Wall -g
+CC = g++ -std=c++11 -Wall $(CC_OPT_FLAG)
 
 MKOCT=mkoctfile
-
-WaveletSampleImage.class: WaveletSampleImage.java
-	javac $<
 
 
 IS_CYGWIN=
@@ -55,34 +80,50 @@ IS_CYGWIN=
 ifeq "$(shell uname | head -c 9)" "CYGWIN_NT"
 
 IS_CYGWIN=YES
-CUDA_OBJS=dwt_cpu.obj dwt_gpu.obj data_io.obj transpose_gpu.obj nixtimer.obj
+OBJ_EXT=obj
 # NVCC_LIBS=-lws2_32
 LIBS=-lstdc++
-%.obj: %.cc
-	$(NVCC) -c $<
-%.obj: %.cu
-	$(NVCC) -c $<
+PROTOBUF_DIR = protobuf-2.6.0/vsprojects
+PROTOBUF_LIB = $(PROTOBUF_DIR)/$(BUILD)/libprotobuf.lib
+PROTOC = $(PROTOBUF_DIR)/$(BUILD)/protoc.exe
+NVCC_ARCH_SIZE = -m32
+NVCC_OPT = --compiler-options $(CL_OPT_FLAG) --compiler-options -D_SCL_SECURE_NO_WARNINGS  -I$(PROTOBUF_DIR)/include
 CLASSPATH_DIR="$(shell cygpath --windows `pwd`)"
 
 else
 
-CUDA_OBJS=dwt_cpu.o dwt_gpu.o data_io.o transpose_gpu.o nixtimer.o
+OBJ_EXT=o
 LIBS=-lstdc++ -lrt
-NVCC_OCT_OPT=--compiler-options -fPIC
-%.o: %.cc
-	$(NVCC) $(NVCC_OCT_OPT) -c $<
-%.o: %.cu
-	$(NVCC) $(NVCC_OCT_OPT) -c $<
+PROTOBUF_DIR = /usr/local
+PROTOBUF_LIB = -L$(PROTOBUF_DIR)/lib -lprotobuf
+PROTOC = protoc
+NVCC_OPT=--compiler-options -fPIC
 CLASSPATH_DIR=$(CURDIR)
 
 endif
 
+NVCC = nvcc $(NVCC_OPT) $(NVCC_ARCH) $(NVCC_ARCH_SIZE) $(CC_OPT_FLAG) 
 
-haar: $(CUDA_OBJS) haar.cu
-	$(NVCC) -g $^ -o $@
+%.$(OBJ_EXT): %.cc
+	$(NVCC) -c $<
+
+%.$(OBJ_EXT): %.cu
+	$(NVCC) -c $<
+
+CUDA_OBJS=dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) data_io.$(OBJ_EXT) \
+  transpose_gpu.$(OBJ_EXT) nixtimer.$(OBJ_EXT)
+
+HAAR_OBJS=haar.$(OBJ_EXT) dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) \
+  data_io.$(OBJ_EXT) transpose_gpu.$(OBJ_EXT) nixtimer.$(OBJ_EXT)
+
+haar: $(HAAR_OBJS)
+	$(NVCC) $(HAAR_OBJS) -o $@
+
+WaveletSampleImage.class: WaveletSampleImage.java
+	javac $<
 
 test_haar_cpu: test_haar_cpu.cc dwt_cpu.cc data_io.cc
-	gcc -Wall -g $^ -o $@ $(LIBS)
+	$(CC) $^ -o $@ $(LIBS)
 
 test_haar_thresh_quantUnif_cpu: test_haar_thresh_quantUnif_cpu.cc \
   dwt_cpu.cc dwt_cpu.h data_io.cc data_io.h nixtimer.cc nixtimer.h \
@@ -101,7 +142,7 @@ test_haar_thresh_quantLog_cpu: test_haar_thresh_quantLog_cpu.cc \
 	  $(LIBS) -o $@
 
 normalize: normalize.cc data_io.cc
-	gcc -Wall -g $^ -o $@ $(LIBS)
+	$(CC) $^ -o $@ $(LIBS)
 
 test_rle: test_rle.cc rle.h data_io.cc data_io.h huffman.h huffman.cc
 	$(CC) test_rle.cc huffman.cc data_io.cc -o $@ $(LIBS)
@@ -134,19 +175,32 @@ test_compress_cpu: test_compress_cpu.cc test_compress_common.cc \
 	  data_io.cc nixtimer.cc wavelet_compress.pb.cc \
 	  -o $@ $(LIBS) -L/usr/local/lib -lprotobuf
 
+test_compress_gpu.obj: test_compress_gpu.cu wavelet_compress.pb.h
+
+TEST_COMPRESS_GPU_OBJS=test_compress_gpu.$(OBJ_EXT) \
+  test_compress_common.$(OBJ_EXT) \
+  dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) \
+  data_io.$(OBJ_EXT) transpose_gpu.$(OBJ_EXT) nixtimer.$(OBJ_EXT) \
+  wavelet_compress.pb.$(OBJ_EXT) quant_count.$(OBJ_EXT) param_string.$(OBJ_EXT)
+
+test_compress_gpu: $(TEST_COMPRESS_GPU_OBJS)
+	$(NVCC) $(TEST_COMPRESS_GPU_OBJS) -o $@ $(PROTOBUF_LIB)
+
 proto: wavelet_compress.pb.h
-wavelet_compress.pb.h: wavelet_compress.proto
-	protoc $< --cpp_out=.
+wavelet_compress.pb.h wavelet_compress.pb.cc: wavelet_compress.proto
+	$(PROTOC) $< --cpp_out=.
+
+wavelet_compress.pb.$(OBJ_EXT): wavelet_compress.pb.cc wavelet_compress.pb.h
 
 list_data: list_data.cc data_io.cc data_io.h
 	$(CC) list_data.cc data_io.cc -o $@ $(LIBS)
 
-libwaveletcuda.so: $(CUDA_OBJS) Octave/octave_wrapper.cu
-	$(NVCC) $(NVCC_OCT_OPT) -I. -c Octave/octave_wrapper.cu
-	$(NVCC) $(NVCC_OCT_OPT) -o $@ --shared $(CUDA_OBJS) octave_wrapper.o
+libwaveletcuda.so: $(CUDA_OBJS) Octave/LloydsAlgorithm/octave_wrapper.cu
+	$(NVCC) -I. -c Octave/LloydsAlgorithm/octave_wrapper.cu
+	$(NVCC) -o $@ --shared $(CUDA_OBJS) octave_wrapper.$(OBJ_EXT)
 
-cudahaar.mex: Octave/cudahaar.cc libwaveletcuda.so
-	$(MKOCT) -L. -lwaveletcuda Octave/cudahaar.cc
+cudahaar.mex: Octave/LloydsAlgorithm/cudahaar.cc libwaveletcuda.so
+	$(MKOCT) -L. -lwaveletcuda Octave/LloydsAlgorithm/cudahaar.cc
 
 convert: Makefile WaveletSampleImage.class
 	@echo Write $@ wrapper for \"java WaveletSampleImage\"
@@ -168,8 +222,6 @@ sendscu: .sendscu
 	touch .sendscu
 
 clean:
-	rm -f *.class *.obj *.o *.exp *.lib *.pdb *~ \
-	  convert haar test_haar_cpu normalize libwaveletcuda.so cudahaar.oct \
-	  test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu \
-	  test_bit_stream test_compress wavelet_compress.pb.{h,cc}
-
+	rm -f *.class *.obj *.o *.exp *.lib *.pdb *.so *~ $(EXECS) \
+	  convert libwaveletcuda.so cudahaar.oct \
+	  wavelet_compress.pb.{h,cc}

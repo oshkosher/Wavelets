@@ -1,29 +1,48 @@
-EXECS = WaveletSampleImage.class haar.exe test_haar_cpu.exe \
+default: convert test_haar_cpu.exe haar.exe test_compress_cpu.exe
+
+EXECS = test_haar_cpu.exe haar.exe test_compress_cpu.exe \
   test_haar_thresh_quantUnif_cpu.exe test_haar_thresh_quantLog_cpu.exe \
-  normalize.exe test_compress_cpu.exe
+  normalize.exe test_rle.exe test_huffman.exe test_bit_stream.exe \
+  test_quant_count.exe test_compress_gpu.exe list_data.exe
 
-default: haar.exe test_haar_cpu.exe test_compress_cpu.exe
-
-all: $(EXECS)
-
-NVCC = nvcc -m32 -gencode arch=compute_20,code=sm_20 -gencode arch=compute_30,code=sm_30 -gencode arch=compute_11,code=sm_11
+all: WaveletSampleImage.class $(EXECS)
 
 IS_DEBUG=YES
 
 !IF "$(IS_DEBUG)"=="YES"
 BUILD=Debug
 BUILD_FLAGS=/Zi /MDd
+CL_OPT_FLAG=/MDd
+CC_OPT_FLAG=-g
 !ELSE
 BUILD=Release
 BUILD_FLAGS=/O2 /MD
+CL_OPT_FLAG=/MD
+CC_OPT_FLAG=-O2
 !ENDIF
 
+NVCC_ARCH = \
+  -gencode arch=compute_11,code=sm_11 \
+  -gencode arch=compute_20,code=sm_20 \
+  -gencode arch=compute_30,code=sm_30 \
+  -gencode arch=compute_35,code=sm_35
 
-MSVC = cl /EHsc /nologo $(BUILD_FLAGS) -D_SCL_SECURE_NO_WARNINGS
+# enable one of these to generate code for just one generation of GPU
+# (reduces compile time by 30%)
+# NVCC_ARCH=-arch sm_20
+NVCC_ARCH=-arch sm_30
+
+NVCC_ARCH_SIZE = -m32
 
 PROTOBUF_DIR = protobuf-2.6.0\vsprojects
+PROTOBUF_LIB = $(PROTOBUF_DIR)\$(BUILD)\libprotobuf.lib
 PROTOC = $(PROTOBUF_DIR)\$(BUILD)\protoc.exe
 JAVAC = javac
+
+NVCC = nvcc $(NVCC_OPT) $(NVCC_ARCH) $(NVCC_ARCH_SIZE) $(CC_OPT_FLAG) \
+  --compiler-options $(CL_OPT_FLAG) -I$(PROTOBUF_DIR)\include
+
+CC = cl /EHsc /nologo $(BUILD_FLAGS) -D_SCL_SECURE_NO_WARNINGS
 
 
 HAAR_OBJS = haar.obj dwt_cpu.obj dwt_gpu.obj data_io.obj transpose_gpu.obj \
@@ -48,7 +67,7 @@ nixtimer.obj: nixtimer.cc nixtimer.h
 	$(NVCC) -c nixtimer.cc
 
 haar.exe: $(HAAR_OBJS)
-	$(NVCC) -g $(HAAR_OBJS) -o $@
+	$(NVCC) $(HAAR_OBJS) -o $@
 
 thresh_cpu.obj: thresh_cpu.cc thresh_cpu.h
 	$(NVCC) -c thresh_cpu.cc
@@ -65,19 +84,22 @@ quant_log_cpu.obj: quant_log_cpu.cc quant_log_cpu.h
 dquant_log_cpu.obj: dquant_log_cpu.cc dquant_log_cpu.h
 	$(NVCC) -c dquant_log_cpu.cc
 
+test_compress_common.obj: test_compress_common.cc test_compress_common.h
+	$(NVCC) -c test_compress_common.cc
+
 test_haar_cpu.exe: test_haar_cpu.cc dwt_cpu.cc dwt_cpu.h data_io.cc data_io.h \
 	  nixtimer.cc nixtimer.h
-	$(MSVC) test_haar_cpu.cc dwt_cpu.cc data_io.cc nixtimer.cc
+	$(CC) test_haar_cpu.cc dwt_cpu.cc data_io.cc nixtimer.cc
 
 test_haar_thresh_quantUnif_cpu.exe: test_haar_thresh_quantUnif_cpu.cc dwt_cpu.cc dwt_cpu.h data_io.cc data_io.h \
 	  nixtimer.cc nixtimer.h thresh_cpu.cc thresh_cpu.h quant_unif_cpu.cc quant_unif_cpu.h \
 	  dquant_unif_cpu.cc dquant_unif_cpu.h
-	$(MSVC) test_haar_thresh_quantUnif_cpu.cc dwt_cpu.cc data_io.cc nixtimer.cc thresh_cpu.cc quant_unif_cpu.cc dquant_unif_cpu.cc
+	$(CC) test_haar_thresh_quantUnif_cpu.cc dwt_cpu.cc data_io.cc nixtimer.cc thresh_cpu.cc quant_unif_cpu.cc dquant_unif_cpu.cc
 
 test_haar_thresh_quantLog_cpu.exe: test_haar_thresh_quantLog_cpu.cc dwt_cpu.cc dwt_cpu.h data_io.cc data_io.h \
 	  nixtimer.cc nixtimer.h thresh_cpu.cc thresh_cpu.h quant_log_cpu.cc quant_log_cpu.h \
 	  dquant_log_cpu.cc dquant_log_cpu.h
-	$(MSVC) test_haar_thresh_quantLog_cpu.cc dwt_cpu.cc data_io.cc nixtimer.cc thresh_cpu.cc quant_log_cpu.cc dquant_log_cpu.cc
+	$(CC) test_haar_thresh_quantLog_cpu.cc dwt_cpu.cc data_io.cc nixtimer.cc thresh_cpu.cc quant_log_cpu.cc dquant_log_cpu.cc
 
 # aliases
 test_compress: test_compress_cpu.exe
@@ -93,7 +115,7 @@ test_compress_cpu.exe: test_compress_cpu.cc test_compress_common.cc \
 	bit_stream.h nixtimer.h rle.h param_string.h param_string.cc \
 	quant_count.h quant_count.cc \
 	wavelet_compress.pb.h wavelet_compress.pb.cc
-	$(MSVC) /I$(PROTOBUF_DIR)\include \
+	$(CC) /I$(PROTOBUF_DIR)\include \
 	  test_compress_cpu.cc test_compress_common.cc \
           dwt_cpu.cc thresh_cpu.cc \
 	  quant_unif_cpu.cc quant_log_cpu.cc quant_count.cc \
@@ -101,16 +123,43 @@ test_compress_cpu.exe: test_compress_cpu.cc test_compress_common.cc \
 	  data_io.cc nixtimer.cc wavelet_compress.pb.cc \
           $(PROTOBUF_DIR)\$(BUILD)\libprotobuf.lib
 
+test_compress_gpu.obj: test_compress_gpu.cu
+	$(NVCC) -c test_compress_gpu.cu
+
+TEST_COMPRESS_GPU_OBJS=test_compress_gpu.obj test_compress_common.obj \
+  dwt_cpu.obj dwt_gpu.obj data_io.obj transpose_gpu.obj nixtimer.obj \
+  wavelet_compress.pb.obj quant_count.obj param_string.obj
+
+test_compress_gpu.exe: $(TEST_COMPRESS_GPU_OBJS)
+	$(NVCC) $(TEST_COMPRESS_GPU_OBJS) $(PROTOBUF_LIB) -o $@
+
 proto: wavelet_compress.pb.h
 wavelet_compress.pb.h: wavelet_compress.proto
 	$(PROTOC) wavelet_compress.proto --cpp_out=.
 
+wavelet_compress.pb.obj: wavelet_compress.pb.h wavelet_compress.pb.cc
+	$(NVCC) -c wavelet_compress.pb.cc
+
 test_bit_stream.exe: test_bit_stream.cc bit_stream.h nixtimer.h nixtimer.cc
-	$(MSVC) test_bit_stream.cc nixtimer.cc
+	$(CC) test_bit_stream.cc nixtimer.cc
 
 normalize.exe: normalize.cc data_io.cc data_io.h
-	$(MSVC) normalize.cc data_io.cc
+	$(CC) normalize.cc data_io.cc
 
+test_rle.exe: test_rle.cc rle.h huffman.h huffman.cc data_io.cc
+	$(CC) test_rle.cc data_io.cc huffman.cc
+
+test_huffman.exe: test_huffman.cc huffman.cc huffman.h
+	$(CC) test_huffman.cc huffman.cc
+
+test_quant_count.exe: test_quant_count.cc quant_count.h quant_count.cc
+	$(CC) test_quant_count.cc quant_count.cc data_io.cc
+
+list_data.exe: list_data.cc data_io.cc data_io.h
+	$(CC) list_data.cc data_io.cc
+
+convert: WaveletSampleImage.class
+java: WaveletSampleImage.class
 WaveletSampleImage.class: WaveletSampleImage.java
 	$(JAVAC) WaveletSampleImage.java
 
