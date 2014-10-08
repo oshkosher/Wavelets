@@ -1,0 +1,67 @@
+Sergio went over the internal data flow.
+
+  Read data file header into parameters structure
+  Read data into main memory
+  Copy parameters structure to GPU
+  Copy data from main memory to GPU memory
+  Process data on GPU
+  Copy any changees to parameters from GPU to main memory
+  Copy data from GPU to main memory
+  Write parameters and data to output file
+
+  Each tile (or cubelet) will be processed independently and
+  asynchronously.  In other words, once the first tile is sent to the
+  GPU, it can begin processing it. The first few tiles might be
+  finished before the last tiles have been sent to the GPU.
+
+  The tiles may finish out of order, and we won't know their
+  compressed size until they are finished. Since the file header will
+  contain the compressed size of each tile (so that they can be
+  located in the data part of the file), it cannot be written until
+  tiles have finished. Therefore, a temporary file will be created
+  that will hold all the tiles. As they finish, they will be written
+  to this file. When they have all finished, the size of all of them
+  will be known, and the header can be written to the final output
+  file.  After the header is written, all the tile data from the
+  temporary file will be appended to output file, and the temporary
+  file will be removed.
+
+  Note that we could structure the file with a bit of header information on
+  each tile, including the length of the tile. That way, the tiles
+  can be immediately written to the final output file as they finish,
+  but rather than having all the tile data in the header, our code will
+  have to traverse all the tile headers, as a sort of linked list.
+  We decided it would keep the file format simpler to have all the
+  necessary meta-data in the header.
+
+  Also note that if we write the tiles as they are completed, they may
+  be stored out-of-order. This makes writing the file efficient, but
+  it will make reading the file slower, since the reader will need to
+  seek around the input file if it wants to access the data in order.
+  The file format will be flexible enough that it can support either
+  in-order or out-of-order data. If we want the reader to be
+  efficient, the writer will have to do extra work and write the tiles
+  to the final output file in order. So, it's a simple tradeoff, and
+  we can change the priority at any time. We will initially store the
+  data out-of-order, because it's easy, and it makes the writer
+  efficient.
+
+We briefly mentioned other compression algorithms:
+  UF
+  empirical mode decomposition
+
+David will look into using bzip2 on the GPU to improve compression.
+
+Data sources
+  NOAA geostationary satellite data
+  Montreal neurological institude - Ed has a friend who works there
+    who said he can get us some sample data.
+
+The abstract will need to be submitted by October 6.
+
+We will want two presenters for the conference. Perhaps one can
+describe the wavelet methodology, and the other can describe the CUDA
+implementation.
+
+  
+  
