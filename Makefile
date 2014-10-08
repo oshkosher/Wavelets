@@ -14,8 +14,15 @@
 #     find it as pre-built package (look for protobuf and libprotobuf-devel)
 #     or to build it from the source and install it:
 #       https://developers.google.com/protocol-buffers/docs/downloads
-#     On Windows, you'll need to build it from the source, but it's a little
-#     harder.
+#     On Windows, you'll either need to build it from the source, or download
+#     pre-built binaries from our FTP site where we've got large images
+#     archived (ftp.dynapsecorp.com). They're in the "Protobuf binaries"
+#     subdirectory. Download the ZIP file for your version of Visual Studio
+#     and extract the contents into this directory. It will create a
+#     directory "protobuf-2.6.0" which contains the binaries for Debug
+#     and Release builds.
+#
+#     If you want to build from the source:
 #       1. Download the source and expand the archive in this directory.
 #       2. Look in the "vsprojects" subdirectory. Open "protobuf.sln"
 #          in Visual Studio. Build the project for Debug and Release.
@@ -23,8 +30,10 @@
 #          Debug Information Format to Program Database (/Zi).
 #       3. In a command prompt, navigate to the "vsprojects" subdirectory
 #          and run "extract_includes.bat".
-#       4. Check Makefile.nmake, and make sure protoc.exe, the libraries, and
-#          the include directory can be found correctly.
+#       4. In Makefile.nmake and Makefile, check that PROTOBUF_DIR,
+#          PROTOBUF_LIB, and PROTOC point to the locations matching
+#          your build.
+# 
 
 default: convert test_haar_cpu haar test_compress_cpu
 
@@ -70,6 +79,9 @@ NVCC_ARCH = \
 # NVCC_ARCH=-arch sm_20
 NVCC_ARCH=-arch sm_30
 
+# use this to direct NVCC to use a different host compiler, if necessary
+# NVCC_COMPILER_BINDIR=--compiler-bindir='C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\bin'
+
 CC = g++ -std=c++11 -Wall $(CC_OPT_FLAG)
 
 MKOCT=mkoctfile
@@ -87,7 +99,7 @@ PROTOBUF_DIR = protobuf-2.6.0/vsprojects
 PROTOBUF_LIB = $(PROTOBUF_DIR)/$(BUILD)/libprotobuf.lib
 PROTOC = $(PROTOBUF_DIR)/$(BUILD)/protoc.exe
 NVCC_ARCH_SIZE = -m32
-NVCC_OPT = --compiler-options $(CL_OPT_FLAG) --compiler-options -D_SCL_SECURE_NO_WARNINGS  -I$(PROTOBUF_DIR)/include
+NVCC_OPT = --compiler-options $(CL_OPT_FLAG) -D_SCL_SECURE_NO_WARNINGS  -I$(PROTOBUF_DIR)/include $(NVCC_COMPILER_BINDIR)
 CLASSPATH_DIR="$(shell cygpath --windows `pwd`)"
 
 else
@@ -102,7 +114,7 @@ CLASSPATH_DIR=$(CURDIR)
 
 endif
 
-NVCC = nvcc $(NVCC_OPT) $(NVCC_ARCH) $(NVCC_ARCH_SIZE) $(CC_OPT_FLAG) 
+NVCC = nvcc $(NVCC_OPT) $(NVCC_ARCH) $(NVCC_ARCH_SIZE) $(NVCC_COMPILER_BINDIR) $(CC_OPT_FLAG) 
 
 %.$(OBJ_EXT): %.cc
 	$(NVCC) -c $<
