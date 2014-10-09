@@ -7,7 +7,9 @@ Present: David Concha (remotely), Drazen Fabris, Anupam Goyal, Bonnie Smithson (
 Presentation:
 
 
-Sergio showed results of compression using Haar wavelet transform using Matlab code.  Lena image was used for the following three runs.  The only difference with runs by Ed was that Serge used full eight levels whereas Ed used three levels.  The images used by Serge are 256x256 so maximum possible levels is 8.
+Sergio showed results of compression using Haar wavelet transform using Matlab code.  Lena image was used for the 
+following three runs.  The only difference with runs by Ed was that Serge used full eight levels whereas Ed used 
+three levels.  The images used by Serge are 256x256 so maximum possible levels is 8.
 
 1.	Uniform quantization with cutoff of 0.75 and 8 bits.  
 
@@ -15,7 +17,12 @@ Sergio showed results of compression using Haar wavelet transform using Matlab c
 
 3.	Logarithmic quantization with higher cutoff of 0.95.
 
-With uniform quantization the image quality was unacceptable but quite good with logarithmic quantization at the same cutoff.  With logarithmic quantization at higher cutoff of 0.9, the image degraded compared to logarithmic quantization at lower cutoff.  In addition to visual observation, error metrics of “percentage relative error” and “peak signal-to-noise ratio” were output for these runs and they showed the same trends as visual observation.  For example, percentage relative error was about 20 for uniform quantization and about 2.6 for logarithmic quantization.
+With uniform quantization the image quality was unacceptable but quite good with logarithmic quantization at the 
+same cutoff.  With logarithmic quantization at higher cutoff of 0.9, the image degraded compared to logarithmic 
+quantization at lower cutoff.  In addition to visual observation, error metrics of “percentage relative error” 
+and “peak signal-to-noise ratio” were output for these runs and they showed the same trends as visual observation.  
+For example, percentage relative error was about 20 for uniform quantization and about 2.6 for logarithmic 
+quantization.
 
 
 Future work:
@@ -25,10 +32,12 @@ Future work:
 a.	Using other filter types besides Haar.
 b.	Using other quantization besides logarithmic such as by Lloyd’s algorithm.
 
-2.	As mentioned by Drazen, for multiple images, graphs of cutoff level versus error should be generated for uniform and logarithmic quantization.
+2.	As mentioned by Drazen, for multiple images, graphs of cutoff level versus error should be generated for 
+    uniform and logarithmic quantization.
 
 3.	Serge mentioned the following two tasks:
-a.	Comparing the results of the Matlab code to the production code for error metrics like “mean squared error” and “peak signal-to-noise ratio”.  Visual comparison can be done in addition to the error metrics.
+a.	Comparing the results of the Matlab code to the production code for error metrics like “mean squared error” 
+    and “peak signal-to-noise ratio”.  Visual comparison can be done in addition to the error metrics.
 b.	Using the production code to create the graphs suggested by Drazen with Lloyd’s algorithm.
 
 
@@ -36,25 +45,39 @@ Discussions:
 
 
 1.	Abstract: Serge completed submission of the abstract to the GPU conference.  
-a.	A short version and a long version of abstract were needed to be submitted.  Long version would only be seen by the organizers.
+a.	A short version and a long version of abstract were needed to be submitted.  Long version would only be seen 
+    by the organizers.
 b.	A student is interested in using this work for images used in eye surgery.
-c.	Serge mentioned the word cubelet is put in double quotes in the abstracts, signifying the data is multi-dimensional i.e. any dimensions more than one.
-d.	In response to Bonnie’s comment about visualizing multi-dimensional data, Serge mentioned examples of five dimensional seismic data with three spatial dimensions and offset and time as other two dimensions.  In this case, any two of the five dimensions could be visualized at a given time or three of the five dimensions could be visualized as a function of time.
-e.	The medical images are of type Spectral Domain Optical Coherence Tomography (SD-OCT), which would be provided by the student.
-f.	Serge would be the speaking author for this 25 minute presentation.  In addition to information such as his prior speaking engagements and resume, Serge uploaded other documents as well with the abstract submission.
+c.	Serge mentioned the word cubelet is put in double quotes in the abstracts, signifying the data is multi-dimensional 
+    i.e. any dimensions more than one.
+d.	In response to Bonnie’s comment about visualizing multi-dimensional data, Serge mentioned examples of five 
+    dimensional seismic data with three spatial dimensions and offset and time as other two dimensions.  In this case, 
+    any two of the five dimensions could be visualized at a given time or three of the five dimensions could be 
+    visualized as a function of time.
+e.	The medical images are of type Spectral Domain Optical Coherence Tomography (SD-OCT), which would be provided by 
+    the student.
+f.	Serge would be the speaking author for this 25 minute presentation.  In addition to information such as his prior 
+    speaking engagements and resume, Serge uploaded other documents as well with the abstract submission.
 
 2.	To Do for Anupam:
-a.	Anupam plans to find a medical image from Montreal Neurological Image website.  He would also find a converter so that the image likely in “MINC” format can be converted to a numerical array that we can work with.  He can then post this image on GitHub.
+a.	Anupam plans to find a medical image from Montreal Neurological Image website.  He would also find a converter 
+    so that the image likely in “MINC” format can be converted to a numerical array that we can work with.  He can 
+    then post this image on GitHub.
 b.	Anupam will send and post the minutes of the meeting.
-c.	A presentation on CUDA code is planned during next week’s group meeting.  Anupam will send an email to Ed to mention this to him since he is not at the meeting today.
+c.	A presentation on CUDA code is planned during next week’s group meeting.  Anupam will send an email to Ed to 
+    mention this to him since he is not at the meeting today.
 
-3.	Drazen suggested a more generalizable approach to begin with where size of cubelets can be variable.  This is in addition to quantization that can vary from cubelet to cubelet.
+3.	Drazen suggested a more generalizable approach to begin with where size of cubelets can be variable.  This is 
+    in addition to quantization that can vary from cubelet to cubelet.
 
 4.	Ed’s proposal to make mean and variance of various partitions identical was discussed.
 
-5.	Serge mentioned the need to transition from non-standard to standard representation.  Ed currently uses non-standard presentation.  In standard presentation, each direction would be processed at all levels before going to the next dimension.
+5.	Serge mentioned the need to transition from non-standard to standard representation.  Ed currently uses 
+    non-standard presentation.  In standard presentation, each direction would be processed at all levels before 
+    going to the next dimension.
 
 6.	Serge and Drazen plan to look at optimization by investigating different error metrics.
 
-7.	Serge suggested that different persons take turns in leading weekly meetings.  This would give exposure to various sub-groups such as for CUDA, testing, and optimization.
+7.	Serge suggested that different persons take turns in leading weekly meetings.  This would give exposure to 
+    various sub-groups such as for CUDA, testing, and optimization.
 
