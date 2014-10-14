@@ -144,18 +144,18 @@ test_haar_cpu: test_haar_cpu.cc dwt_cpu.cc data_io.cc
 test_haar_thresh_quantUnif_cpu: test_haar_thresh_quantUnif_cpu.cc \
   dwt_cpu.cc dwt_cpu.h data_io.cc data_io.h nixtimer.cc nixtimer.h \
   thresh_cpu.cc thresh_cpu.h quant_unif_cpu.cc quant_unif_cpu.h \
-  dquant_unif_cpu.cc dquant_unif_cpu.h
+  dquant_unif_cpu.cc dquant_unif_cpu.h quant.h quant.cc
 	$(CC) test_haar_thresh_quantUnif_cpu.cc dwt_cpu.cc data_io.cc \
 	  nixtimer.cc thresh_cpu.cc quant_unif_cpu.cc dquant_unif_cpu.cc \
-	  $(LIBS) -o $@
+	  quant.cc $(LIBS) -o $@
 
 test_haar_thresh_quantLog_cpu: test_haar_thresh_quantLog_cpu.cc \
   dwt_cpu.cc dwt_cpu.h data_io.cc data_io.h nixtimer.cc nixtimer.h \
   thresh_cpu.cc thresh_cpu.h quant_log_cpu.cc quant_log_cpu.h \
-  dquant_log_cpu.cc dquant_log_cpu.h
+  dquant_log_cpu.cc dquant_log_cpu.h quant.h quant.cc
 	$(CC) test_haar_thresh_quantLog_cpu.cc dwt_cpu.cc data_io.cc \
 	  nixtimer.cc thresh_cpu.cc quant_log_cpu.cc dquant_log_cpu.cc \
-	  $(LIBS) -o $@
+	  quant.cc $(LIBS) -o $@
 
 normalize: normalize.cc data_io.cc
 	$(CC) $^ -o $@ $(LIBS)
