@@ -36,19 +36,19 @@
    boundaries and codebook to quantize the data into 2^bits bits.
 */
 void quant_count_init_cpu
-(int len, float data[], int bits, float thresh,
+(int len, const float data[], int bits, float thresh,
  std::vector<float> &boundaries,
  std::vector<float> &codebook);
 
 /** Like quant_count_init, but the given data is already the sorted
     absolute values. */
 void quant_count_init_sorted_cpu
-(int len, float sorted[], int bits, float thresh,
+(int len, const float sorted[], int bits, float thresh,
  std::vector<float> &boundaries,
  std::vector<float> &codebook);
 
 /** Apply the bin boundaries to a value; return the quantized value. */
-int quant_boundaries(const std::vector<float> &codebook, float value);
+int quant_boundaries(const std::vector<float> &boundaries, float value);
 
 /** Apply the bin boundaries to an array of values */
 void quant_boundaries_array(const std::vector<float> &codebook,

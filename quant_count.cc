@@ -7,7 +7,7 @@
    boundaries and codebook to quantize the data into 2^bits bits.
 */
 void quant_count_init_cpu
-(int len, float data[], int bits, float thresh,
+(int len, const float data[], int bits, float thresh,
  std::vector<float> &boundaries,
  std::vector<float> &codebook) {
   
@@ -27,7 +27,7 @@ void quant_count_init_cpu
 /** Like quant_count_cpu, but the given data is already the sorted
     absolute values. */
 void quant_count_init_sorted_cpu
-(int len, float sorted[], int bits, float thresh,
+(int len, const float sorted[], int bits, float thresh,
  std::vector<float> &boundaries,
  std::vector<float> &codebook) {
 
@@ -44,7 +44,7 @@ void quant_count_init_sorted_cpu
   codebook[0] = 0;
 
   // is the flush-to-zero threshold smaller than the first bin?
-  float *threshPtr = std::upper_bound(sorted, sorted+len, thresh);
+  const float *threshPtr = std::upper_bound(sorted, sorted+len, thresh);
   int threshPos = threshPtr - sorted;
 
   // index in sorted[] of the last value in the previous bin
@@ -78,7 +78,8 @@ void quant_count_init_sorted_cpu
     // find the last copy of that value and use the value right after
     // it as the next boundary.
     if (binEnd < len && sorted[binEnd] == boundaries[i-1]) {
-      float *next = std::upper_bound(sorted+binEnd, sorted+len, boundaries[i-1]);
+      const float *next = std::upper_bound(sorted+binEnd, sorted+len,
+					   boundaries[i-1]);
       binEnd = next - sorted;
       binSize = (len - binEnd) / (binCount - i);
     }

@@ -6,19 +6,15 @@
 #include <iostream>
 #include <math.h>
 #include <cmath>
+#include "quant.h"
 #include "quant_log_cpu.h"
-
-float quant_log2(float x)
-{
-	return (log(fabsf(x))/log(2.0));
-}
 
 // Applies the threshold such that values <= threshold are 0
 // Maps the remaining range of values to the values 0:(2^bits)-1
 // Overwrites data with the new values
 float quant_log_cpu(int len, float *data, int bits, float threshold, float maxVal)
 {
-	int displayCount = 11;
+	int displayCount = 0;
 	int count = len * len;
 	int base = (int)(pow(2.0,bits-1)-1);
     float lmax = (float)(quant_log2((float)(maxVal/threshold)));
@@ -33,7 +29,6 @@ float quant_log_cpu(int len, float *data, int bits, float threshold, float maxVa
 			int sign=data[idx]/fabsf(data[idx]);
 			
 			float lnVal=quant_log2((float)(fabsf(data[idx]/threshold)));
-			
 			data[idx] = sign*ceil((base*lnVal)/lmax);
 			if ( displayCount > 0 )
 			{

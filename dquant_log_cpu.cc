@@ -21,14 +21,10 @@ void dquant_log_cpu(int len, float *data, int bits, float threshold, float maxVa
 	
 	for (int idx = 0; idx < count; idx++ )
 	{
-		if (data[idx] <= threshold)
+		if (data[idx] != 0)
 		{
-			data[idx] = (float)0.0;
-		}
-		else
-		{
-			int sign=data[idx]/abs(data[idx]);
-			float lnVal=abs(data[idx]*(lmax/base));
+			int sign=data[idx]/fabsf(data[idx]);
+			float lnVal=fabsf(data[idx]*(lmax/base));
 			data[idx] = sign*threshold*(float)(pow((float)(2.0),lnVal));
 		}
 	}

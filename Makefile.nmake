@@ -152,8 +152,13 @@ test_rle.exe: test_rle.cc rle.h huffman.h huffman.cc data_io.cc
 test_huffman.exe: test_huffman.cc huffman.cc huffman.h
 	$(CC) test_huffman.cc huffman.cc
 
-test_quant_count.exe: test_quant_count.cc quant_count.h quant_count.cc
-	$(CC) test_quant_count.cc quant_count.cc data_io.cc
+test_quant_count.exe: test_quant_count.cc quant_count.h quant_count.cc quant.h \
+	  quant.cc thresh_cpu.cc quant_unif_cpu.cc quant_log_cpu.cc \
+	  dquant_unif_cpu.cc dquant_log_cpu.cc
+	$(CC) test_quant_count.cc quant_count.cc quant.cc \
+	  data_io.cc thresh_cpu.cc quant_unif_cpu.cc quant_log_cpu.cc \
+	  dquant_unif_cpu.cc dquant_log_cpu.cc nixtimer.cc
+
 
 list_data.exe: list_data.cc data_io.cc data_io.h
 	$(CC) list_data.cc data_io.cc

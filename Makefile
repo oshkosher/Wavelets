@@ -49,7 +49,8 @@ java: WaveletSampleImage.class
 oct: cudahaar.mex
 
 # Set this to YES or NO, to select between a Debug or Release build
-IS_DEBUG=YES
+# IS_DEBUG=YES
+IS_DEBUG=NO
 
 
 ifeq ($(IS_DEBUG),YES)
@@ -95,9 +96,12 @@ IS_CYGWIN=YES
 OBJ_EXT=obj
 # NVCC_LIBS=-lws2_32
 LIBS=-lstdc++
-PROTOBUF_DIR = protobuf-2.6.0/vsprojects
-PROTOBUF_LIB = $(PROTOBUF_DIR)/$(BUILD)/libprotobuf.lib
-PROTOC = $(PROTOBUF_DIR)/$(BUILD)/protoc.exe
+# PROTOBUF_DIR = protobuf-2.6.0/vsprojects
+PROTOBUF_DIR = /usr/local
+# PROTOBUF_LIB = $(PROTOBUF_DIR)/$(BUILD)/libprotobuf.lib
+PROTOBUF_LIB = -L$(PROTOBUF_DIR)/lib -lprotobuf
+# PROTOC = $(PROTOBUF_DIR)/$(BUILD)/protoc.exe
+PROTOC = protoc
 NVCC_ARCH_SIZE = -m32
 NVCC_OPT = --compiler-options $(CL_OPT_FLAG) -D_SCL_SECURE_NO_WARNINGS  -I$(PROTOBUF_DIR)/include $(NVCC_COMPILER_BINDIR)
 CLASSPATH_DIR="$(shell cygpath --windows `pwd`)"
@@ -165,8 +169,13 @@ test_huffman: test_huffman.cc huffman.cc huffman.h
 test_bit_stream: test_bit_stream.cc bit_stream.h nixtimer.h nixtimer.cc
 	$(CC) test_bit_stream.cc nixtimer.cc -o $@ $(LIBS)
 
-test_quant_count: test_quant_count.cc quant_count.h quant_count.cc
-	$(CC) test_quant_count.cc quant_count.cc data_io.cc -o $@ $(LIBS)
+test_quant_count: test_quant_count.cc quant_count.h quant_count.cc quant.h \
+	  quant.cc thresh_cpu.cc quant_unif_cpu.cc quant_log_cpu.cc \
+	  dquant_unif_cpu.cc dquant_log_cpu.cc
+	$(CC) test_quant_count.cc quant_count.cc quant.cc \
+	  data_io.cc thresh_cpu.cc quant_unif_cpu.cc quant_log_cpu.cc \
+	  dquant_unif_cpu.cc dquant_log_cpu.cc \
+	  -o $@ $(LIBS)
 
 test_compress: test_compress_cpu
 

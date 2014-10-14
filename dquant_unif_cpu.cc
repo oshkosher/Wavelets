@@ -4,6 +4,7 @@
 #include <cassert>
 #include <math.h>
 #include "dwt_cpu.h"
+#include "quant.h"
 
 /**
   Maps the values 0:(2^bits)-1 to 0:maxVal.
@@ -17,8 +18,12 @@ void dquant_unif_cpu(int len, float *data, int bits, float threshold, float maxV
 	int base = (1 << (bits-1)) - 1;
 	for (int idx = 0; idx < count; idx++ )
 	{
-		float dequant = data[idx] * maxVal / base;
-		// if (idx < 20) printf("data[%d] %f -> %f\n", idx, data[idx], dequant);
-		data[idx] = dequant;
+		if (data[idx] == 0) {
+			data[idx] = 0;
+		} else {
+	 		float dequant = (data[idx] * (maxVal-threshold) / base) + copysignf(threshold, data[idx]);
+	 		// if (idx < 20) printf("data[%d] %f -> %f\n", idx, data[idx], dequant);
+			data[idx] = dequant;
+		}
 	}
 }
