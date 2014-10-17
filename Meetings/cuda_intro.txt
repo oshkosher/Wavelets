@@ -1,0 +1,247 @@
+CUDA
+
+API for programming NVIDIA graphics cards (GPUs)
+ - OpenCL: standard for any GPU (NVIDIA or AMD) or multi-core CPU
+
+Send code and data to GPU, execute on GPU, copy back
+  Separate from main (CPU) memory
+
+  host: CPU
+  device: GPU
+
+  There are ways to access GPU memory from CPU code and vice-versa,
+  but they're not efficient.
+
+Write code in C++. Each function is compiled for the CPU, the GPU, or both.
+
+  __host__ b();  // default
+  __device__ a();
+  __host__ __device__ c();
+    Can only call functions compiled for the current device.
+    If running CPU code, can only call CPU code. Same for GPU.
+
+  To call GPU code from the CPU:
+  __global__ callgpu(x, y, z);
+    Runs on the device, called by the host
+    Special syntax:
+    callgpu <<< blockCount, threadCount >>> (x, y, z);
+
+Code is written as if it is being executed by multiple threads
+simultaneously. Rather than pthread_create(), which creates one thread at
+a time, CUDA launches all the threads at once. Called a "kernel call".
+
+Sample kernel:
+  __global__ void add(int a[], int b[], int result[], int len) {
+    int idx = threadIdx.x;
+
+    result[idx] = a[idx] + b[idx];
+  }
+
+int *data_host, *data_dev;
+
+3-level hierarchy
+
+  grid: many thread blocks
+
+  thread block: many threads
+    Get the size of my grid: gridDim.{x,y,z}  (# of blocks)
+    Get the index of my block: blockIdx.{x,y,z}  (which block)
+
+  thread: one path of control
+    Get the size of my thread block: blockDim.{x,y,z}  (# of threads)
+    Get the index of my thread: threadIdx.{x,y,z}  (which thread)
+
+  Each kernel is launched with a grid of thread blocks.
+  Specify the # of thread blocks and # of threads per thread block.
+
+  // loop if the array is longer than thread block size
+  __global__ void add(int a[], int b[], int result[], int len) {
+    int idx = threadIdx.x;
+
+    while (idx < len) {  // ex: 100 thread, I'm #7: 7, 107, 207, ..
+      result[idx] = a[idx] + b[idx];
+      idx += blockDim.x;
+    }
+  }
+
+  // use multiple thread blocks
+  __global__ void add(int a[], int b[], int result[], int len) {
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+
+    while (idx < len) {
+      result[idx] = a[idx] + b[idx];
+      idx += blockDim.x * gridDim.x;
+    }
+  }
+
+  For example, 10 threads per block: blockDim.x == 10
+  and 100 thread blocks in the grid: gridDim.x = 100
+  Total number of threads = 10*100 = 1000
+    If I'm thread 7 in block 30:
+      idx = 7 + 30 * 10 = 307
+    On each iteration, each thread processes 1 entry, so skip ahead
+    by the number of threads:
+      idx += blockDim.x * gridDim.x = 10 * 100 = 1000
+    307, 1307, 2307, ...
+
+
+Threads within a block can coordinate
+  group synchronize, like a barrier
+  have block-local memory (called "shared" memory)
+
+  # of thread blocks is essentially unlimited (2^31 - 1)
+  # of thread in each block is limited (1024)
+  Why?
+    Hardware limit - # of threads accessing block-local memory needs to
+    have a limit to be efficiently implmented
+
+Threads in different blocks cannot coordinate
+  May not be running simultaneously.
+  Big GPU: start all 100 threads blocks simultaneously.
+  Small GPU: run 1 thread block at a time.
+
+Kernel calls can be queued along with memory copies:
+  copy data to GPU
+  run kernel A
+  run kernel B
+  copy data from GPU
+
+Start all the operations asynchronously, wait until the last one finishes.
+
+Define multiple queues. GPU will interleave or run simultaneously if
+resources are available.
+
+Multiple GPUs
+  Handled manually: copy 1..N/2 to GPU 0, copy N/2..N to GPU 1, start both
+<--- cutoff point --->
+
+Memory
+  global memory - about 2 GB, globally visible, slow
+  shared memory - about 48kb, local to thread block, fast
+  constant memory - 64kb, globally visible, fast
+  "local" memory - 512kb, local to thread, slow (actually uses global mem)
+    avoid arrays declared as local variables
+
+  global memory access: wide (256-512 bits at a time), long latency,
+    high-ish throughput
+
+    Structure code so adjacent threads access adjacent memory:
+    thread 0: read array[0]
+    thread 1: read array[1]
+    thread 2: read array[2]
+
+    Called a "coalesced" memory access.
+
+    Bad:
+      thread 0: read array[0]
+      thread 1: read array[100]
+      thread 2: read array[200]
+
+
+  Large thread blocks are good:
+    threads 0..128 read array[0..128]
+    not really simultaneous
+    threads 0..31: start read
+    threads 32..63: start read
+    threads 64..95: start read
+    threads 96..127: start read
+    <now the data for threads 0..31 is ready)
+    threads 0..31: use data, no waiting needed
+    <now the data for threads 32..63 is ready)
+
+    threads 0..31 read array[0..31]
+    threads 0..31: start read
+    <wait>
+    <wait>
+    <wait>
+    <now the data is ready)
+    threads 0..31: use data
+
+  Shared memory can be accessed in any order efficiently.
+  Standard trick: optimize matrix transpose by copying tiles through
+  shared memory.
+
+  Read from global memory:
+  +------------------------
+  |  0  1  2  3
+  |  4  5  6  7     These are the id's of the threads doing the access.
+  |  8  9 10 11
+  | 12 13 14 15
+  |
+  |
+
+  Write to shared memory:
+  +-------------+
+  |  0  1  2  3 |
+  |  4  5  6  7 |
+  |  8  9 10 11 |
+  | 12 13 14 15 |
+  +-------------+
+
+  barrier - synchronize all the threads in the block, to insure that they
+  have all finished writing to shared memory
+
+  Read from shared memory:
+  +-------------+
+  |  0  4  8 12 |
+  |  1  5  9 13 |
+  |  2  6 10 14 |
+  |  3  7 11 15 |
+  +-------------+
+
+  Write to global memory:
+  +------------------------
+  |  0  1  2  3
+  |  4  5  6  7
+  |  8  9 10 11
+  | 12 13 14 15
+  |
+  |
+
+Computation is often much cheaper than memory. Minimize memory accesses,
+and when accessing global memory, do coalesced accesses.
+
+
+GPU use in wavelet project
+
+  Copy data to GPU
+
+  Compute wavelet transform
+    (id of the thread doing the access)
+    Read:  0 0 1 1 2 2 3 3
+    Write: 0 1 2 3 0 1 2 3
+
+    Already implemented. Including copy to&from GPU
+    is 13x faster than CPU. Not including copy, 188x faster.
+    (copy to 78ms, xform 11.3ms, copy from 79ms)
+
+  Compute threshold
+    Compute absolute value of each element - limited only by memory throughput
+    Sort - very fast implementation, don't have numbers
+
+  Compute Lloyd bins
+    Already implemented. Speed?
+    Copy bin thresholds and codebook back to CPU.
+
+  Quantize/apply threshold
+    uniform & quant - very few calculations, at mem speed
+    Lloyd - will need binary search in bin threshold array.
+      See if it's faster to have lookup array in constant memory or shared
+      memory. If const, needs to be set by CPU. 
+      Memory size will be an issue for > 12 bit quantization:
+        Shared memory = 48kb
+        2 floats / bin (thresh, value) = 8 bytes / bin = 6k bins => 4k = 2^12
+        If bin value can be computed, then 13 bits (4 bytes/bin)
+      If too large for shared or const memory, multiple passes will probably
+      be faster than global memory. On each pass, handle just the range
+      of values for the current part of the table in memory.
+
+  Compression
+    RLE / huffman: per-row
+    bzip2: 3rd party project
+
+
+
+    
+
+  
