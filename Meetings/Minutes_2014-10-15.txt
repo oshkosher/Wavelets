@@ -24,6 +24,6 @@ In the introduction, he mentioned the following:
               b.  A "thread block" has many "threads".
               c. "Threads" are in groups of 32.
 	v. The index is computed by thread block in the grid and then then thread number in the block.  Thus, via the index the grid, thread block, and thread are mapped to a linear array.
-        vi.   It is best to make the code as fine grained as possible so that there are more options to optimize.  Also, in general, it is best to maximize the number of thread in a thread block, i.e. to make it 1024.
+        vi.   It is best to make the code as fine grained as possible so there are more options to optimize.  Also, in general, it is best to maximize the number of thread in a thread block, i.e. to make it 1024.
         vii. Big GPU can run more threads simultaneously compared to a smaller GPU.
 
