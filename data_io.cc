@@ -12,7 +12,7 @@ static bool isBinary(const char *filename) {
   if (!inf) return false;
 
   char buf[9];
-  fread(buf, 1, 8, inf);
+  if (8 != fread(buf, 1, 8, inf)) return false;
   fclose(inf);
   buf[8] = 0;
   return !strncmp(buf, "binary", 6);
@@ -30,8 +30,8 @@ static bool readBinaryDataFile(const char *filename, float **data,
 
   // skip the header
   fseek(inf, 8, SEEK_SET);
-  fread(width, sizeof(int), 1, inf);
-  fread(height, sizeof(int), 1, inf);
+  if (1 != fread(width, sizeof(int), 1, inf)) return false;
+  if (1 != fread(height, sizeof(int), 1, inf)) return false;
 
   // check for invalid image sizes
   if (*width < 1 || *height < 1) {
@@ -55,7 +55,7 @@ static bool readBinaryDataFile(const char *filename, float **data,
     return false;
   }
 
-  fread(*data, 4, (int)cells, inf);
+  if (cells != fread(*data, 4, (int)cells, inf)) return false;
   fclose(inf);
 
   return true;
