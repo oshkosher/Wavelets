@@ -152,6 +152,7 @@ bool writeQuantDataSimple(const char *filename, FileData &f) {
 */
 bool readQuantDataSimple(const char *filename, FileData &f) {
 
+  bool success = false;
   FILE *inf = fopen(filename, "rb");
   if (!inf) {
     printf("Cannot read \"%s\"\n", filename);
@@ -160,19 +161,22 @@ bool readQuantDataSimple(const char *filename, FileData &f) {
 
   assert(sizeof f.quantizeAlgorithm == sizeof(int));
 
-  fread(&f.width, sizeof(int), 1, inf);
-  fread(&f.height, sizeof(int), 1, inf);
-  fread(&f.waveletSteps, sizeof(int), 1, inf);
-  fread(&f.quantizeBits, sizeof(int), 1, inf);
-  fread(&f.threshold, sizeof(float), 1, inf);
-  fread(&f.quantizeAlgorithm, sizeof(int), 1, inf);
-  fread(&f.quantMaxVal, sizeof(float), 1, inf);
+  if (1 != fread(&f.width, sizeof(int), 1, inf)) goto fail;
+  if (1 != fread(&f.height, sizeof(int), 1, inf)) goto fail;
+  if (1 != fread(&f.waveletSteps, sizeof(int), 1, inf)) goto fail;
+  if (1 != fread(&f.quantizeBits, sizeof(int), 1, inf)) goto fail;
+  if (1 != fread(&f.threshold, sizeof(float), 1, inf)) goto fail;
+  if (1 != fread(&f.quantizeAlgorithm, sizeof(int), 1, inf)) goto fail;
+  if (1 != fread(&f.quantMaxVal, sizeof(float), 1, inf)) goto fail;
 
-  bool success = readQuantData(filename, inf, f);
+  success = readQuantData(filename, inf, f);
 
+ fail:
   fclose(inf);
 
   return success;
+
+
 }
 
 
@@ -330,7 +334,7 @@ bool readQuantDataProtoBuf(const char *filename, FileData &f) {
   }
 
   char idString[17] = {0};
-  fread(idString, 1, 16, inf);
+  if (16 != fread(idString, 1, 16, inf)) return false;
   if (strcmp(idString, FILE_ID_STRING)) {
     fprintf(stderr, "Invalid file format. Expected protocol buffer header.\n");
     return false;
@@ -338,7 +342,7 @@ bool readQuantDataProtoBuf(const char *filename, FileData &f) {
 
   // read the header data
   unsigned codedLen;
-  fread(&codedLen, sizeof codedLen, 1, inf);
+  if (1 != fread(&codedLen, sizeof codedLen, 1, inf)) return false;
   
   char *codedBuf = new char[codedLen];
   assert(codedBuf);

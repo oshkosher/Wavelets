@@ -1,0 +1,29 @@
+Minutes of Weekly Meeting of the Wavelet Group
+
+Date: Wednesday, October 15th, 2014
+Time: Noon to 1 PM
+Present: David Concha (remotely), Drazen Fabris, Anupam Goyal, Ed Karrels, Bonnie Smithson (remotely), Sergio Zarantonello
+
+
+Ed gave an introduction to CUDA.
+
+In the introduction, he mentioned the following:
+
+1. CUDA only works with nVidia and requires certain hardware (nVidia graphics card).  CUDA works as a Single-Instruction-Multiple-Data (SIMD) machine.
+
+2. He refers to CPU as host and GPU as device (on a graphics card).
+
+3. nVidia card can have 1 GB or 2 GB memory.  Each card can have multiple processing cores.
+
+4. In CUDA programming:
+	i.   Each function has a tag for running on host, or on device, or both.  Host functions only call each other.  Device functions only call each other.  These are tagged as "_host_" or "_device_".
+	ii.  There are also global functions that make interactions between host functions and device functions possible.  These are tagged as "_global_".
+        iii. If a function appears before another, a header is not needed to use the function appearing earlier in the function that appears later on.
+        iv.  The hierarchy of parallelism is as follows:
+              a.  A "grid" has many "thread blocks".  The limit on number of thread block is very large.
+              b.  A "thread block" has many "threads".
+              c. "Threads" are in groups of 32.
+	v. The index is computed by thread block in the grid and then then thread number in the block.  Thus, via the index the grid, thread block, and thread are mapped to a linear array.
+        vi.   It is best to make the code as fine grained as possible so there are more options to optimize.  Also, in general, it is best to maximize the number of thread in a thread block, i.e. to make it 1024.
+        vii. Big GPU can run more threads simultaneously compared to a smaller GPU.
+
