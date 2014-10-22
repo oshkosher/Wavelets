@@ -121,6 +121,8 @@ Memory
   constant memory - 64kb, globally visible, fast
   "local" memory - 512kb, local to thread, slow (actually uses global mem)
     avoid arrays declared as local variables
+    int x, y;   // will tend to stay in registers
+    int z[100]; // will be in slow "local" memory
 
   global memory access: wide (256-512 bits at a time), long latency,
     high-ish throughput
@@ -141,27 +143,33 @@ Memory
   Large thread blocks are good:
     threads 0..128 read array[0..128]
     not really simultaneous
-    threads 0..31: start read
-    threads 32..63: start read
-    threads 64..95: start read
-    threads 96..127: start read
-    <now the data for threads 0..31 is ready)
-    threads 0..31: use data, no waiting needed
-    <now the data for threads 32..63 is ready)
 
-    threads 0..31 read array[0..31]
-    threads 0..31: start read
-    <wait>
-    <wait>
-    <wait>
-    <now the data is ready)
-    threads 0..31: use data
+      1. threads 0..31: start read
+      2. threads 32..63: start read
+      3. threads 64..95: start read
+      4. threads 96..127: start read
+        <now the data for threads 0..31 is ready)
+      5. threads 0..31: use data, no waiting needed
+        <now the data for threads 32..63 is ready)
+      ...
+
+    but with a small thread block, there may not be enough threads
+    to hide the latency of memory accesses
+
+      threads 0..31 read array[0..31]
+      1. threads 0..31: start read
+      2. <wait>
+      3. <wait>
+      4. <wait>
+        <now the data is ready)
+      5. threads 0..31: use data
+      ...
 
   Shared memory can be accessed in any order efficiently.
   Standard trick: optimize matrix transpose by copying tiles through
   shared memory.
 
-  Read from global memory:
+  1. Read from global memory:
   +------------------------
   |  0  1  2  3
   |  4  5  6  7     These are the id's of the threads doing the access.
@@ -170,7 +178,7 @@ Memory
   |
   |
 
-  Write to shared memory:
+  2. Write to shared memory:
   +-------------+
   |  0  1  2  3 |
   |  4  5  6  7 |
@@ -178,10 +186,10 @@ Memory
   | 12 13 14 15 |
   +-------------+
 
-  barrier - synchronize all the threads in the block, to insure that they
-  have all finished writing to shared memory
+  3. Barrier - synchronize all the threads in the block, to insure that they
+  have all finished writing to shared memory.
 
-  Read from shared memory:
+  4. Read from shared memory in transposed order:
   +-------------+
   |  0  4  8 12 |
   |  1  5  9 13 |
@@ -189,7 +197,7 @@ Memory
   |  3  7 11 15 |
   +-------------+
 
-  Write to global memory:
+  5. Write to global memory:
   +------------------------
   |  0  1  2  3
   |  4  5  6  7
