@@ -1,0 +1,166 @@
+Starting with this program that adds 2 vectors of N elements using CPU and GPU:
+
+	int main(int argc, char *argv[]) {
+		srand(time(NULL));
+		const int N = 1024;
+
+		// h_ is for Host, d_ is for device
+		// h_c is for Host results, h_c2 is for device result in CPU
+		float *h_a, *d_a;
+		float *h_b, *d_b;
+		float *h_c, *d_c, *h_c2;
+
+		// CPU memory allocation
+		h_a  = (float*)malloc(N*sizeof(float));
+		h_b  = (float*)malloc(N*sizeof(float));
+		h_c  = (float*)malloc(N*sizeof(float));
+		h_c2 = (float*)malloc(N*sizeof(float));
+
+		// GPU memory allocation
+		cudaMalloc((void**)&d_a, N*sizeof(float));
+		cudaMalloc((void**)&d_b, N*sizeof(float));
+		cudaMalloc((void**)&d_c, N*sizeof(float));
+
+		// Initial data for A and B
+		for(int i = 0; i < N; i++) {
+			h_a[i] = rand() % 100;
+			h_b[i] = rand() % 100;
+		}
+
+		// Copy initial data to GPU
+		cudaMemcpy(d_a, h_a, N * sizeof(float), cudaMemcpyHostToDevice);
+		cudaMemcpy(d_b, h_b, N * sizeof(float), cudaMemcpyHostToDevice);
+
+		// execute in CPU
+		vectorAddCPU(h_a, h_b, h_c, N);
+
+		// execute in GPU
+		vectorAddGPU1Block<<<1, N>>>(d_a, d_b, d_c, N);
+
+		// Copy de GPU results to CPU
+		cudaMemcpy(h_c2, d_c, N * sizeof(float), cudaMemcpyDeviceToHost);
+
+		// Compare results
+		for(int i = 0; i < N; i++) {
+			if(h_c[i] != h_c2[i]) {
+				printf("ERROR: %f is not %f\n",h_c[i],h_c2[i]);
+			}
+		}
+	}
+
+The vetorAddCPU function is as expected:
+
+	void vectorAddCPU(float *a, float *b, float *c, int n) {
+		for(int i = 0; i < n; i++) {
+			c[i] = a[i] + b[i];
+		}
+	}
+
+a loop that adds element by element. The 1 block CUDA version is as follows:
+
+	__global__ void vectorAddGPU1Block(float *a, float *b, float *c, int N) {
+		unsigned idx = threadIdx.x;
+
+		c[idx] = a[idx] + b[idx];
+	}
+
+This function uses only one block so is limited to (at most) 1024 elements.
+If we want to add more elements or use more efficiently the GPU, we need to use
+more blocks. To do so we change the kernel function in 2 ways, first:
+	
+	unsigned idx = threadIdx.x;
+	
+is replaced by:
+
+	unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;
+	
+and second, we need to protect the memory, because we can execute more threads
+than elements. The new kernel functions is:
+
+	__global__ void vectorAddGPU(float *a, float *b, float *c, int N) {
+		unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+		if (idx < N) {
+			c[idx] = a[idx] + b[idx];
+		}
+	}
+
+Also we need to change the kernel call:
+
+	// execute in GPU
+	vectorAddGPU1Block<<<1, N>>>(d_a, d_b, d_c, N);
+
+by this one:
+
+	// execute in GPU
+	unsigned threads = 256;
+	unsigned blocks = (N-1) / threads + 1;
+	vectorAddGPU1Block<<<blocks, threads>>>(d_a, d_b, d_c, N);
+
+with the new kernel and with different number of blocks. I also change the
+number of threads because is a more typical value.
+
+Until now we use one dimension of threads and blocks. We can use up to 3
+dimensions. We also can use multi-dimensional threads with unidimensional 
+blocks and vice versa. For example, for a two-dimensional threads we change the
+kernel call:
+
+	// execute in GPU
+	dim3 threads(16,16);  // this call is the same as dim3 threads(16,16,1);
+	unsigned blocks = (N-1) / threads + 1;
+	vectorAddGPU1Block<<<blocks, threads>>>(d_a, d_b, d_c, N);
+
+and the kernel index calculation should looks something like this:
+
+	unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;
+	unsigned idy = blockIdx.x * blockDim.x + threadIdx.y;
+	
+idy also use blockIdx.x because the blocks are one dimension. An example of use 
+of idx and idy is:
+
+	a[idy*cols+idx]
+	
+is the typical way to access two-dimensional array in linear memory with cols the
+number of columns (width) of the array.
+
+Until now, the memory access pattern is really simple, but if we want to use an
+array of structs, is better to use struct of arrays. 
+
+case 1:
+
+	struct point2D {
+		int x;
+		int y;
+	}
+
+	point2D p[100];
+	
+case 2:
+	
+	struct point2D {
+		int x[100];
+		int y[100];
+	}
+
+	point2D p;
+	
+The first is an array of struct that in memory will looks like this:
+
+	p : [x1,y1,x2,y2,...,x100,y100]
+	
+the second case is a struct of arrays and the memory will be:
+
+	p : [x1,x2,...,x100,y1,y2,...,y100]
+	
+In the first example the memory accesses are not contiguous
+	
+	p : [x1,y1,x2,y2,...,x100,y100]
+	     XX -- XX
+
+and in the second the memory accesses are contiguous
+
+	p : [x1,x2,...,x100,y1,y2,...,y100]
+		 XX XX ...
+
+The second approach is more efficient and the memory accesses is called 
+coalesced and is use to idle latencies.
