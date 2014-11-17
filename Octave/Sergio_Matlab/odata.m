@@ -1,0 +1,9 @@
+  %function status = odata(A,FILE,FMT) 
+  FILE = 'C:\Work\output3';
+  fid = fopen(FILE,'wl')
+   FMT = 'int';
+%   FMT = 'real*4';
+  count=fwrite(fid,A,FMT)
+  status=fclose(fid);
+  fid = fopen(FILE,'rl')
+  [B,count]=fread(fid,32,FMT);
