@@ -18,7 +18,7 @@ Presentation:
 Discussions:
 
 1. Anupam mentioned that in order to convert color, non-square, MPEG atmospheric images from NASA to their corresponding .data files, the existing program on Maria's machine called "WaveletSampleImage" can be modified as follows.  It should: 
-   a. Retain color information in the original image and not make it grayscale.
+   a. Retain color information in the original image and not make it grayscale. 
    b. Keep the original dimensions and not crop the original image.
    c. Accept MPEG format. The current program works with JPEG format.
 
