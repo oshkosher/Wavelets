@@ -85,7 +85,7 @@ while (last > 1)
    next=next+1;
    % Si shall still be indexes for descending symbols or nodes
    count=last-1;
-   while ((count> 0) & (C(Si(count+1)) >= C(Si(count))))
+   while ((count> 0) && (C(Si(count+1)) >= C(Si(count))))
       temp=Si(count);
       Si(count)=Si(count+1);
       Si(count+1)=temp;
