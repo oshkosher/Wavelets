@@ -19,7 +19,7 @@ Serge mentioned the following:
 5. For color images, instead of using RGB axes, we should use HSI (Hue, Saturation, and Intensity) axes that have lower correlation between them.  Anupam had also suggested looking at Principal Component Transforms as an alternative.
 	a. The transformation involves multiplying a 3-D vector with a 3x3 matrix.
 
-6. We need to make sure that the images we use are not protected and thus can be used by us.  Bonnie suggested some other movies that we could use.
+6. We need to make sure that the  images we use are not protected and thus can be used by us.  Bonnie suggested some other movies that we could use.
 
 7. It would be good to compare our compression method to existing video compression standard H.264.
 
@@ -40,9 +40,9 @@ Anupam mentioned the following:
 
 1. He does not have Photoshop or Matlab on his computer and could not find an online program to subtract two images and compute the Mean Squared Error (MSE).  Thus, he requested Serge to do it in MatLab.  He emailed the two JPEG files and their corresponding .data files to Serge for this purpose.
 
-2. He does not have a GPU card on his computer.  Thus, he needs to use Maria’s machine to run the GPU code.
+2. He does not have a GPU card on his computer.  Thus, he needs to use Mariaâ€™s machine to run the GPU code.
 
-3. Anupam emailed Ed about running commands for other steps (quantization, normalization, …) on Maria’s machine.
+3. Anupam emailed Ed about running commands for other steps (quantization, normalization, â€¦) on Mariaâ€™s machine.
 
 Following additional discussions took place:
 
