@@ -40,7 +40,7 @@ default: convert test_haar_cpu haar test_compress_cpu
 EXECS = test_haar_cpu haar test_compress \
   test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu \
   normalize test_rle test_huffman test_bit_stream test_quant_count \
-  test_compress_gpu list_data
+  test_compress_gpu list_data image_error
 
 all: convert $(EXECS) libwaveletcuda.so cudahaar.mex
 
@@ -49,8 +49,8 @@ java: WaveletSampleImage.class
 oct: cudahaar.mex
 
 # Set this to YES or NO, to select between a Debug or Release build
-# IS_DEBUG=YES
-IS_DEBUG=NO
+IS_DEBUG=YES
+# IS_DEBUG=NO
 
 
 ifeq ($(IS_DEBUG),YES)
@@ -96,14 +96,14 @@ IS_CYGWIN=YES
 OBJ_EXT=obj
 # NVCC_LIBS=-lws2_32
 LIBS=-lstdc++
-# PROTOBUF_DIR = protobuf-2.6.0/vsprojects
+PROTOBUF_DIR_VC = protobuf-2.6.0/vsprojects
 PROTOBUF_DIR = /usr/local
-# PROTOBUF_LIB = $(PROTOBUF_DIR)/$(BUILD)/libprotobuf.lib
+PROTOBUF_LIB_VC = $(PROTOBUF_DIR_VC)/$(BUILD)/libprotobuf.lib
 PROTOBUF_LIB = -L$(PROTOBUF_DIR)/lib -lprotobuf
-# PROTOC = $(PROTOBUF_DIR)/$(BUILD)/protoc.exe
+PROTOC_VC = $(PROTOBUF_DIR_VC)/$(BUILD)/protoc.exe
 PROTOC = protoc
 NVCC_ARCH_SIZE = -m32
-NVCC_OPT = --compiler-options $(CL_OPT_FLAG) -D_SCL_SECURE_NO_WARNINGS  -I$(PROTOBUF_DIR)/include $(NVCC_COMPILER_BINDIR)
+NVCC_OPT = --compiler-options $(CL_OPT_FLAG) -D_SCL_SECURE_NO_WARNINGS  -I$(PROTOBUF_DIR_VC)/include $(NVCC_COMPILER_BINDIR)
 CLASSPATH_DIR="$(shell cygpath --windows `pwd`)"
 
 else
@@ -158,6 +158,9 @@ test_haar_thresh_quantLog_cpu: test_haar_thresh_quantLog_cpu.cc \
 	  quant.cc $(LIBS) -o $@
 
 normalize: normalize.cc data_io.cc
+	$(CC) $^ -o $@ $(LIBS)
+
+image_error: image_error.cc data_io.cc
 	$(CC) $^ -o $@ $(LIBS)
 
 test_rle: test_rle.cc rle.h data_io.cc data_io.h huffman.h huffman.cc

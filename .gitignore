@@ -43,3 +43,5 @@ test_huffman
 test_huffman.exe
 test_rle
 test_rl.exe
+image_error
+image_error.exe
