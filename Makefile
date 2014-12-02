@@ -44,7 +44,7 @@ EXECS = test_haar_cpu haar test_compress \
 
 all: convert $(EXECS) libwaveletcuda.so cudahaar.mex
 
-java: WaveletSampleImage.class
+java: WaveletSampleImage.class ImageDiff.class
 
 oct: cudahaar.mex
 
@@ -136,6 +136,9 @@ haar: $(HAAR_OBJS)
 	$(NVCC) $(HAAR_OBJS) -o $@
 
 WaveletSampleImage.class: WaveletSampleImage.java
+	javac $<
+
+ImageDiff.class: ImageDiff.java
 	javac $<
 
 test_haar_cpu: test_haar_cpu.cc dwt_cpu.cc data_io.cc

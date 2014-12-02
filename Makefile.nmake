@@ -6,7 +6,7 @@ EXECS = test_haar_cpu.exe haar.exe test_compress_cpu.exe \
   test_quant_count.exe test_compress_gpu.exe list_data.exe \
   image_error.exe
 
-all: WaveletSampleImage.class $(EXECS)
+all: WaveletSampleImage.class ImageDiff.class $(EXECS)
 
 IS_DEBUG=YES
 
@@ -168,9 +168,13 @@ list_data.exe: list_data.cc data_io.cc data_io.h
 	$(CC) list_data.cc data_io.cc
 
 convert: WaveletSampleImage.class
-java: WaveletSampleImage.class
+java: WaveletSampleImage.class ImageDiff.class
 WaveletSampleImage.class: WaveletSampleImage.java
 	$(JAVAC) WaveletSampleImage.java
+
+ImageDiff.class: ImageDiff.java
+	$(JAVAC) ImageDiff.java
+
 
 clean:
 	del *.class *.obj *.o *.exp *.lib *.pdb *.ilk *.idb *~ \
