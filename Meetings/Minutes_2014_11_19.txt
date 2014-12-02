@@ -1,0 +1,53 @@
+Minutes of Weekly Meeting of the Wavelet Group
+
+Date: Wednesday, November 19th, 2014
+Time: Noon to 1 PM
+Present: David Concha (remotely), Drazen Fabris, Anupam Goyal, Bonnie Smithson (remotely), Sergio Zarantonello
+
+
+Presentation:
+
+1. Anupam showed images from his run on Maria's machine.  He showed the following images in JPEG format:
+   a. Starting image from .data file that was obtained by cropping (to make it a square), converting to grayscale, and converting values to floats, from the original, color non-square, JPEG image.  The original image was obtained by Anupam from NASA website.  This image is a color image taken from the President's inauguration on January 20th, 2009.
+   b. A non-natural visual of wavelet transform obtained by running the forward Haar wavelet transform.
+   c. Final image that was obtained by running the inverse Haar transform on the result of forward Haar transform.  This looks like the starting image.
+
+2. Bonnie showed the atmospheric images from NASA, links for which were sent by Anupam earlier.
+
+
+Discussions:
+
+1. Anupam mentioned that in order to convert color, non-square, MPEG atmospheric images from NASA to their corresponding .data files, the existing program on Maria's machine called "WaveletSampleImage" can be modified as follows.  It should: 
+   a. Retain color information in the original image and not make it grayscale. 
+   b. Keep the original dimensions and not crop the original image.
+   c. Accept MPEG format. The current program works with JPEG format.
+
+2. In the discussions that followed with Serge and Drazen, it was decided that rather than first creating a program that would take the entire MPEG image and convert it to a .data file, a program should be written that would extract cubelets from the full image.  Then, these cubelets would be processed until the final stage.  Pointers to these cubelets and their indices in the full image would be stored so that these cubelets can be reassembled at the end.  There would also be overlap at the faces of these cubelets, that would be merged at the end.
+
+3. Serge further mentioned that it may be beneficial to store color information in axes other than RGB, such as along Principal Component Transforms (PCTs), as mentioned by Anupam, or as HSI (Hue, Saturation, and Intensity) axes.  The geometry of cubes could be stored in alternate co-ordinate systems such as with r, Theta, and Phi.
+
+4. About the Matlab code that Serge has put into GitHub, he mentioned that:
+   a. It can take non-square/non-cube data.
+   b. Sub-sampling is done by taking every other point.  This reduced the size by a factor of 8, i.e. 2 to the power of three, along three dimensions. 
+   c. Lloyd's algorithm runs slow. In order to make it run faster, log quantization can be used to generate an initial guess of codebook.  This initial guess of the codebook can then be fed to Lloyd's algorithm so that the codebook can be refined.
+
+5. For displaying 3-D atmospheric images from NASA, it was seen that "small" size movie would display faster than a "medium" size movie.
+
+6. About MPEG standards, Bonnie mentioned that are MPEG-2 and MPEG-4 standards.  From the discussions that followed it was decided that, at present, we should work with MPEG-2 standard.  MPEG-4 offers more sophisticated functionality such as drawing Regions-Of-Interests (ROIs) that are circular. 
+
+
+Future Work:
+
+1. To Do for Anupam:
+   a. Subtract the starting grayscale image (obtained from the original color, non-square image) from the final image (obtained by doing inverse Haar transform).  This was suggested by Drazen.  Drazen mentioned that this image would likely look like low-level white noise.
+   b. Obtain Mean Squared Error (MSE) between starting and final images.
+   c. Also do other steps such as logarithmic quantization, normalization (in addition to the Haar Wavelet Transform already done).
+   d. Post meeting minutes.
+   e. Develop PowerPoint slides with Serge that show current status of the project.  These can be updated from time to time as the project progresses.
+
+2. David should try to convert Matlab code to run on CUDA.
+
+
+3. Bonnie should try to make Matlab code run in Octave.
+
+4. Others should look at Matlab code.

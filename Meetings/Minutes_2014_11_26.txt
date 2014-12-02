@@ -1,0 +1,75 @@
+Minutes of Weekly Meeting of the Wavelet Group
+
+Date: Wednesday, November 26th, 2014
+Time: Noon to about 12:50 PM
+Present: David Concha (remotely), Anupam Goyal, Bonnie Smithson (remotely), Sergio Zarantonello
+
+Discussions:
+
+Serge mentioned the following:
+
+1. The decision about our abstract being accepted for the GPU Conference is expected by December 5, 2014.
+
+2. For presentation at the conference, we could start in a cubelet format, then compress it, and present the results.  It would be nice to have color images and images that are psychologically impactful.
+
+3. Matlab has ability of converting an MPEG file to a cube.  The problem may be handling a large cube.
+
+4. As per computations in MatLab, Root Mean Squared Error (rMSE) is 2.8% between the starting image and wavelet transform processed image (forward and inverse) that Anupam showed last week (on November 19th).  Serge did this computation directly on JPEG files as MatLab can take JPEG files.
+
+5. For color images, instead of using RGB axes, we should use HSI (Hue, Saturation, and Intensity) axes that have lower correlation between them.  Anupam had also suggested looking at Principal Component Transforms as an alternative.
+	a. The transformation involves multiplying a 3-D vector with a 3x3 matrix.
+
+6. We need to make sure that the  images we use are not protected and thus can be used by us.  Bonnie suggested some other movies that we could use.
+
+7. It would be good to compare our compression method to existing video compression standard H.264.
+
+
+Bonnie mentioned the following:
+
+1. She has found a utility to separate a file into cubelets.
+
+2. The essential part to be done on the GPUs is the compression of cubelets.
+
+3. It can be decided later on whether to separate the entire file into cubelets on client side.
+
+4. There is a package that can extract an ROI that becomes a movie.
+
+5. For video, MPEG-4 is a superset of MPEG-2.
+
+Anupam mentioned the following:
+
+1. He does not have Photoshop or Matlab on his computer and could not find an online program to subtract two images and compute the Mean Squared Error (MSE).  Thus, he requested Serge to do it in MatLab.  He emailed the two JPEG files and their corresponding .data files to Serge for this purpose.
+
+2. He does not have a GPU card on his computer.  Thus, he needs to use Maria’s machine to run the GPU code.
+
+3. Anupam emailed Ed about running commands for other steps (quantization, normalization, …) on Maria’s machine.
+
+Following additional discussions took place:
+
+The processing of an MPEG file involves the following steps:
+
+1. MPEG file is to be processed by a utility called from MatLab that splits it into cubelets.
+
+2. Cubelets are passed to Octave that converts these cubelets to 3-D data arrays.
+
+3. 3-D data arrays are processed by GPUs.
+
+4. At the end, cubelets are re-assembled into the full image.
+
+After the meeting was over, Serge and Anupam discussed the following:
+
+1. Once the paper is accepted for GPU conference, we should aim to write a grant proposal to the National Science Foundation (NSF) and/or apply for a provisional patent if this becomes a product.
+
+2. This product could be a client-server program where parts are done on the client side and other parts on the GPU.
+
+3. This product could provide customizable compression where the user could specify an error metric and go through several iterations to achieve that goal.
+
+Future Work:
+
+Anupam should look at axes for color images that are an alternative to RGB, such as Hue-Saturation-Intensity (HSI) and Principal Component Transforms (PCT).
+
+Anupam should look at the error metrics for quality of image compression.  Since he had done prior work in this area, he should scan a copy of his unfinished paper and send it to the group.  This paper has descriptions of several quality metrics.
+
+As Anupam does various runs, he should try to make a document like a User Manual, where all the commands and their options are explained.
+
+David should look at MatLab code and see what changes need to be made to it for CUDA implementation.
