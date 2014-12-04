@@ -1,0 +1,64 @@
+Minutes of Weekly Meeting of the Wavelet Group
+
+Date: Wednesday, December 3rd, 2014
+
+Time: Noon to about 1:30 PM
+
+Present: David Concha (remotely), Drazen Fabris, Anupam Goyal, Ed Karrels, Bonnie Smithson (remotely), Sergio Zarantonello
+
+Presentations:
+
+Anupam described the work he did along with his professor in Arizona, in a paper titled “Quality Assessment Techniques for Image Compression”.  He described the following:
+
+1. Dimensions and file sizes of four images two of which were monochrome and two were color and also their sources.
+
+2. Image compression in bits per pixel (bpp) for monochrome and color images and the resulting file sizes.   0.125, 0.25, and 0.5 bpp were used for monochrome images and three times that for the color images (as each color image contains three bands).
+
+3. Three compression algorithms were evaluated – UTCQ, SPIHT, and an earlier version of JPEG (that was Discrete Cosine Transform based).  For color images, UTCQ compressed each band separately.  For JPEG, exact file sizes for each bits per pixel could not be obtained but corresponded to a “level” of compression.  Levels of compression were chosen that gave a file size closest to a given bpp value.
+
+4. The following image quality evaluation metrics were described and their tabular data with corresponding graphs shown.
+
+a. Mean Squared Error (MSE) and normalized MSE.  MSE is obtained by squaring the difference in corresponding pixel values between original and reconstructed images, summing this squared difference over all the pixels, and then dividing this sum by total number of pixels.  
+	i. Normalized MSE is obtained by dividing MSE by variance of the image.  This was not shown in the paper.
+
+b. Clustering.  Ten seed clusters were used.  The number of pixels which change the cluster in the reconstructed image was counted.  This number being lower represents a better reconstructed image.
+
+c. Spectral correlation for color images only.  For each of the three bands for color images, taking two bands at a time, correlation between them was computed.  The correlation in the original image was normalized to one and values in reconstructed images for different bpp values were compared to this normalized value.
+
+d. MSE for Hue, Saturation, and Intensity (HSI) axes was computed.  This applies to color images only.
+
+e. Number of segments in original and reconstructed images was computed as bpp was varied.
+
+After Anupam’s presentation and discussions for it, Bonnie transmitted images over Skype that were shown by Drazen and discussed with the group.
+
+
+Discussions:
+
+The following questions were asked:
+
+1. How were bands of color images taken - as RGB, as HSI, or as other axes?
+
+2. What is the wavelet method used for SPIHT and UTCQ?  Ed found online that the wavelet method used for UTCQ is the same as used for our project.
+
+3. Is any spatial information used in clustering or is it only used in segmentation?
+
+The following were mentioned:
+
+1. SPIHT algorithm’s method of prioritizing wavelet coefficients is similar to that used in our project.  Thus, if a compressed file exists for a given maximum level of compression, a reconstructed image can be created that will increasingly give an image of higher quality as more and more of that file is taken. 
+
+2. In segmentation, the number of segments was more than half of total number of pixels.  Thus number of pixels per segment was very small, some having just one pixel per segment.  There may be ways to segment differently.
+
+3. The number of data points i.e. number of bpp values is small (only three).
+
+4. Bonnie mentioned that she liked the last figure in the paper where an image showed magnitude difference between the original image and the reconstructed images.
+
+5. Serge mentioned that we can replicate same work for evaluating our software by varying compression ratio in terms of bits per pixel (bpp) and studying quality metrics.
+
+6. In addition to MSE, we can look at L1norm and L2norm, where L1norm gives a measure of sparsity.
+7. In compression and reconstruction, high-frequency information gets eliminated.  It would be interesting to see how edge detection is affected before and after the reconstruction.
+
+8. As per discussions with Ed, we should also look at statistical measures of different segments for each level of compression. 
+
+Future Work:
+
+1. Drazen plans to talk to his contact at Lawrence Berkeley National Labs for work related to fluid dynamics.
