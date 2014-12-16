@@ -1,0 +1,54 @@
+Minutes of Weekly Meeting of the Wavelet Group
+
+Date: Wednesday, December 10th, 2014
+
+Time: Noon to about 1:15 PM
+Present: David Concha (remotely), Drazen Fabris, Anupam Goyal, Bonnie Smithson (remotely), Sergio Zarantonello
+
+Presentations:
+
+1. Bonnie showed a video clip she made of a lake.  This video could be used as an example in our project.  She has the movie in AVI format.  This is available on the FTP site of our project. 
+
+She used a tool “AviSynth” that is described at the following website.  This is an Open Source tool.
+
+http://avisynth.nl/index.php/Main_Page
+
+In “AviSynth”, it is possible to crop cubelets in the two spatial dimensions and in the time dimension, out of the full video, by specifying x and y extents and by specifying starting and ending times.  Frames per second of the movie can also be specified.
+
+The tool can save movies in color or in grayscale.  There are a large number of video formats in which the movie can be saved, including using the video compression standard H.264.
+
+2. Serge gave a PowerPoint presentation (see under the folder "Presentations" PDF of the PowerPoint"Biorthogonal_Wavelets.pdf") detailing how wavelet encoding is done with biorthogonal wavelets.  
+
+He first reviewed the process of "transform encoding" a vector with wavelets. This he described in two equivalent ways, (1) using filtering operations, and (2) using matrix operations.  In the first description, the data vector is: (a) convolved with two quadratic mirror filters, a low-pass filter and a high pass filter, (b) every other value of each of the resulting convolutions is retained, the others are discarded, and (c) the values obtained with the low pass filter (known as the "approximation coefficients"), are re-processed, and those from the high-pass filtering (called (the "detail coefficients") are saved. In terms of matrix operations, the above is equivalent to: (a) using the low and high pass filters to construct a "'transform" matrix, (b) multiplying the matrix times the data vector (thought of as a column vector), and multiplying the output by a permutation matrix so that the vector components  with odd indices ("approximation coefficients") are placed in the top half, and those with even indices ("detail coefficients") in the bottom half, and (c) saving the bottom half, re-applying the whole process to the top half, and continuing recursively. Once again, the two ways of interpreting wavelet encoding are entirely equivalent; choosing one or the other is a matter of implementation only.
+
+If the objective is to wavelet encode an image, the process is applied to the column vectors of the image first,   then to the rows of the resulting matrix. Similarly, to wavelet encode a cube, the procedure is applied to all the x-vectors of the data cube, then to the y-vectors of the result, and finally to the z-vectors of the new result.
+
+Serge next addressed the specific situation of wavelet encoding via biortogonal wavelets. Suppose the purpose is to encode a vector using a specific biorthogonal wavelet. The procedure starts with two given symmetric low-pass filters La and Ls. From La one constructs a high-pass filter Hs, and from Ls a high-pass filter Ha. To encode a vector one uses the filters La and Ha; to decode a vector use Ls and Hs. The filtering operations require that either the data vector be padded by mirroring at its ends, or that the filters be modified (folded) for the first few outputs of the filtering operation. If the symmetric have radius r, the mirror padding extends the data vector with r components at each end.
+
+Discussions:
+
+Serge mentioned the following:
+
+1. In the three months till the conference for which our abstract has been accepted, there is a lot of work to do.  It would be nice to finish the work ahead of time.
+
+2. For the presentation at the conference, we can show an implementation of our work for one cubelet.
+
+3. From the gray-scale movie created by Bonnie, it would be useful to extract a cubelet for example of dimensions 256x256x32 and use it to compare H.264 with our compression method.  
+
+4. For color images/videos, we need to explore how to transform these to another basis such as HSI or YCrCb (color scheme used in JPEG 2000).
+
+5. Serge will upload his “C” language code for 9-7 wavelet compression on GitHub.  After the meeting, Anupam helped Serge put this code on GitHub under the directory “Wavelets\SEZ_C_CODE”.  David may be able to work with the code in “C” language more easily than the code in MatLab.
+
+6. Serge mentioned that it is computationally more efficient to measure rms reconstruction errors in the wavelet domain.
+
+7. Serge's “9-7” wavelet compression in MatLab works for 3-D data whereas his “C” implementation, as of last Wednesday, only works for 2-D data and needs to be extended to 3-D.  The MatLab code works by “folding the filters” whereas the “C” language code works by “mirroring the data”.  As Serge showed Anupam after the meeting the “C” language code is like that of Haar code where each subsequent level is a “mini” version of the previous level.  In Serge's MatLab code,  all levels of all columns are taken and then all levels of all rows are taken (this method is referred to in the literature as the "standard wavelet  representation").
+
+Anupam mentioned the following:
+
+1. In AviSynth, how the extent of compression of specified for H.264 and how an equivalent compression can be used for our compression method?
+
+Future Work:
+
+1. Bonnie and Anupam should test the images/videos with our compression method.  They should arrive at a best case of images/videos to show at the conference.
+
+2. Ed and David should implement the 9-7 wavelet compression code for CUDA.  This is available in MatLab for 3-D case.  For its “C” language implementation, it is described on GitHub as “2-D Case using data mirroring, using non-standard wavelet representation, uniform quantization, and zlib lossless compression”.
