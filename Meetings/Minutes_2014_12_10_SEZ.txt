@@ -7,13 +7,13 @@ Present: David Concha (remotely), Drazen Fabris, Anupam Goyal, Bonnie Smithson (
 
 Presentations:
 
-1. Bonnie showed a video clip she made of a lake.  This video could be used as an example in our project.  She has the movie in AVI format.  This is available on the FTP site of our project. 
+1. Bonnie showed a video clip she made of a lake.  This video could be used as an example in our project.  She has  the movie in AVI format.  This is available on the FTP site of our project. 
 
-She used a tool “AviSynth” that is described at the following website.  This is an Open Source tool.
+She used a tool â€œAviSynthâ€ that is described at the following website.  This is an Open Source tool.
 
 http://avisynth.nl/index.php/Main_Page
 
-In “AviSynth”, it is possible to crop cubelets in the two spatial dimensions and in the time dimension, out of the full video, by specifying x and y extents and by specifying starting and ending times.  Frames per second of the movie can also be specified.
+In â€œAviSynthâ€, it is possible to crop cubelets in the two spatial dimensions and in the time dimension, out of the full video, by specifying x and y extents and by specifying starting and ending times.  Frames per second of the movie can also be specified.
 
 The tool can save movies in color or in grayscale.  There are a large number of video formats in which the movie can be saved, including using the video compression standard H.264.
 
@@ -37,11 +37,11 @@ Serge mentioned the following:
 
 4. For color images/videos, we need to explore how to transform these to another basis such as HSI or YCrCb (color scheme used in JPEG 2000).
 
-5. Serge will upload his “C” language code for 9-7 wavelet compression on GitHub.  After the meeting, Anupam helped Serge put this code on GitHub under the directory “Wavelets\SEZ_C_CODE”.  David may be able to work with the code in “C” language more easily than the code in MatLab.
+5. Serge will upload his â€œCâ€ language code for 9-7 wavelet compression on GitHub.  After the meeting, Anupam helped Serge put this code on GitHub under the directory â€œWavelets\SEZ_C_CODEâ€.  David may be able to work with the code in â€œCâ€ language more easily than the code in MatLab.
 
 6. Serge mentioned that it is computationally more efficient to measure rms reconstruction errors in the wavelet domain.
 
-7. Serge's “9-7” wavelet compression in MatLab works for 3-D data whereas his “C” implementation, as of last Wednesday, only works for 2-D data and needs to be extended to 3-D.  The MatLab code works by “folding the filters” whereas the “C” language code works by “mirroring the data”.  As Serge showed Anupam after the meeting the “C” language code is like that of Haar code where each subsequent level is a “mini” version of the previous level.  In Serge's MatLab code,  all levels of all columns are taken and then all levels of all rows are taken (this method is referred to in the literature as the "standard wavelet  representation").
+7. Serge's â€œ9-7â€ wavelet compression in MatLab works for 3-D data whereas his â€œCâ€ implementation, as of last Wednesday, only works for 2-D data and needs to be extended to 3-D.  The MatLab code works by â€œfolding the filtersâ€ whereas the â€œCâ€ language code works by â€œmirroring the dataâ€.  As Serge showed Anupam after the meeting the â€œCâ€ language code is like that of Haar code where each subsequent level is a â€œminiâ€ version of the previous level.  In Serge's MatLab code,  all levels of all columns are taken and then all levels of all rows are taken (this method is referred to in the literature as the "standard wavelet  representation").
 
 Anupam mentioned the following:
 
@@ -51,4 +51,4 @@ Future Work:
 
 1. Bonnie and Anupam should test the images/videos with our compression method.  They should arrive at a best case of images/videos to show at the conference.
 
-2. Ed and David should implement the 9-7 wavelet compression code for CUDA.  This is available in MatLab for 3-D case.  For its “C” language implementation, it is described on GitHub as “2-D Case using data mirroring, using non-standard wavelet representation, uniform quantization, and zlib lossless compression”.
+2. Ed and David should implement the 9-7 wavelet compression code for CUDA.  This is available in MatLab for 3-D case.  For its â€œCâ€ language implementation, it is described on GitHub as â€œ2-D Case using data mirroring, using non-standard wavelet representation, uniform quantization, and zlib lossless compressionâ€.
