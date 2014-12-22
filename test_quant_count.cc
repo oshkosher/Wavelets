@@ -93,7 +93,8 @@ int main() {
       startTime = NixTimer::time();
       quant_unif_cpu(width, data, bits, threshold, maxVal);
       elapsed1 = NixTimer::time() - startTime;
-      QuantUniform qu(bits, threshold, maxVal);
+      QuantUniform qu;
+      qu.init(bits, threshold, maxVal);
       QuantizationLooper<QuantUniform> qlu(&qu);
       qlu.quantize(width*height, origData, quantizedData, doComputeErr);
       elapsed2 = qlu.getExecuteTime();
@@ -106,7 +107,8 @@ int main() {
       startTime = NixTimer::time();
       quant_log_cpu(width, data, bits, threshold, maxVal);
       elapsed1 = NixTimer::time() - startTime;
-      QuantLog qu(bits, threshold, maxVal);
+      QuantLog qu;
+      qu.init(bits, threshold, maxVal);
       QuantizationLooper<QuantLog> qlu(&qu);
       qlu.quantize(width*height, origData, quantizedData, doComputeErr);
       elapsed2 = qlu.getExecuteTime();
@@ -201,7 +203,8 @@ int main4() {
   quant_log_cpu(LEN, data, bits, threshold, maxVal);
   memcpy(oldq, data, sizeof oldq);
 
-  QuantLog q(bits, threshold, maxVal);
+  QuantLog q;
+  q.init(bits, threshold, maxVal);
   QuantizationLooper<QuantLog> ql(&q);
   ql.quantize(LEN, orig, iq);
 

@@ -98,8 +98,8 @@ OBJ_EXT=obj
 LIBS=-lstdc++
 PROTOBUF_DIR_VC = protobuf-2.6.0/vsprojects
 PROTOBUF_DIR = /usr/local
-PROTOBUF_LIB = $(PROTOBUF_DIR_VC)/$(BUILD)/libprotobuf.lib
-PROTOBUF_LIB_CW = -L$(PROTOBUF_DIR)/lib -lprotobuf
+PROTOBUF_LIB_NVCC = $(PROTOBUF_DIR_VC)/$(BUILD)/libprotobuf.lib
+PROTOBUF_LIB = -L$(PROTOBUF_DIR)/lib -lprotobuf
 PROTOC_VC = $(PROTOBUF_DIR_VC)/$(BUILD)/protoc.exe
 PROTOC = protoc
 NVCC_ARCH_SIZE = -m32
@@ -112,6 +112,7 @@ OBJ_EXT=o
 LIBS=-lstdc++ -lrt
 PROTOBUF_DIR = /usr/local
 PROTOBUF_LIB = -L$(PROTOBUF_DIR)/lib -lprotobuf
+PROTOBUF_LIB_NVCC = $(PROTOBUF_LIB)
 PROTOC = protoc
 NVCC_OPT=--compiler-options -fPIC
 CLASSPATH_DIR=$(CURDIR)
@@ -203,7 +204,7 @@ test_compress_cpu: test_compress_cpu.cc test_compress_common.cc \
 	  quant_unif_cpu.cc quant_log_cpu.cc quant_count.cc quant.cc \
 	  dquant_unif_cpu.cc dquant_log_cpu.cc param_string.cc \
 	  data_io.cc nixtimer.cc wavelet_compress.pb.cc \
-	  -o $@ $(LIBS) $(PROTOBUF_LIB_CW)
+	  -o $@ $(LIBS) $(PROTOBUF_LIB)
 
 test_compress_gpu.obj: test_compress_gpu.cu wavelet_compress.pb.h quant.h
 
@@ -214,7 +215,7 @@ TEST_COMPRESS_GPU_OBJS=test_compress_gpu.$(OBJ_EXT) \
   wavelet_compress.pb.$(OBJ_EXT) quant_count.$(OBJ_EXT) param_string.$(OBJ_EXT)
 
 test_compress_gpu: $(TEST_COMPRESS_GPU_OBJS)
-	$(NVCC) $(TEST_COMPRESS_GPU_OBJS) -o $@ $(PROTOBUF_LIB)
+	$(NVCC) $(TEST_COMPRESS_GPU_OBJS) -o $@ $(PROTOBUF_LIB_NVCC)
 
 proto: wavelet_compress.pb.h
 wavelet_compress.pb.h wavelet_compress.pb.cc: wavelet_compress.proto
