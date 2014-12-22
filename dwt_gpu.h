@@ -41,5 +41,17 @@ float haar_2d_cuda
  int threadBlockSize = 128, bool useCombinedTranspose = true);
 #endif
 
+template<typename NUM>
+__global__ void haar_transpose_2d_kernel
+(int arrayWidth, int transformLength, NUM *data, NUM *result,
+ int tileSize);
+
+template<typename NUM>
+__global__ void haar_inv_transpose_2d_kernel
+(int arrayWidth, int transformLength, NUM *data, NUM *result, int tileSize);
+
+
+int bestHaarGPUTileSize();
+
 
 #endif // __DWT_GPU_H__

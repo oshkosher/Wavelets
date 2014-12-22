@@ -46,6 +46,10 @@ class CudaTimer {
 
   const char *getName() {return name.c_str();}
 
+  void print() {
+    printf("%s: %.3fms\n", getName(), time());
+  }
+
   // start timer
   void start(cudaStream_t stream = 0) {
     if (isStarted) {

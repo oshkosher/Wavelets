@@ -276,7 +276,7 @@ float haar_2d_cuda
 //   GTX 690: 32     (compute level 3.0)
 //   Tesla K20c: 32  (compute level 3.5)
 //
-int bestTileSize() {
+int bestHaarGPUTileSize() {
   int gpuId;
   cudaDeviceProp prop;
   CUCHECK(cudaGetDevice(&gpuId));
@@ -298,7 +298,7 @@ float haar_2d_cuda_internal
 (int size, NUM *data, bool inverse, int stepCount, int threadBlockSize,
  bool useCombinedTranspose) {
 
-  int tileSize = bestTileSize();
+  int tileSize = bestHaarGPUTileSize();
 
   if (useCombinedTranspose) printf("Tile size %dx%d\n", tileSize, tileSize);
 

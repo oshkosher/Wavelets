@@ -17,7 +17,7 @@ float quant_log_cpu(int len, float *data, int bits, float threshold, float maxVa
 	int displayCount = 0;
 	int count = len * len;
 	int base = (int)(pow(2.0,bits-1)-1);
-    float lmax = (float)(quant_log2((float)(maxVal/threshold)));
+        float lmax = (float)(QuantFunction::quant_log2((float)(maxVal/threshold)));
 	for (int idx = 0; idx < count; idx++)
 	{
 		if (fabsf(data[idx]) <= threshold)
@@ -28,7 +28,7 @@ float quant_log_cpu(int len, float *data, int bits, float threshold, float maxVa
 		{
 			int sign=data[idx]/fabsf(data[idx]);
 			
-			float lnVal=quant_log2((float)(fabsf(data[idx]/threshold)));
+			float lnVal=QuantFunction::quant_log2((float)(fabsf(data[idx]/threshold)));
 			data[idx] = sign*ceil((base*lnVal)/lmax);
 			if ( displayCount > 0 )
 			{

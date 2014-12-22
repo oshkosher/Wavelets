@@ -8,6 +8,14 @@
 #include <algorithm>
 #include "nixtimer.h"
 
+#ifdef __CUDACC__
+#include "cuda.h"
+#define HD __host__ __device__
+#define DV __device__
+#else
+#define HD
+#define DV
+#endif
 
 // For some reason, copysignf is defined on 64-bit Windows, but not 32-bit.
 // And on 64-bit, it's called _copysignf, not copysignf.
@@ -15,13 +23,33 @@
 #ifdef _M_X64
 #define copysignf _copysignf
 #else
-#define copysignf quant_copysignf
+#define copysignf QuantFunction::quant_copysignf
 #endif
 #endif
 
 
-float quant_copysignf(float x, float s);
-float quant_log2(float x);
+class QuantFunction {
+ public:
+  HD static float quant_copysignf(float x, float s) {
+    // for some reason, copysignf is defined on 64-bit Windows, but not 32-bit
+#if defined(_WIN32) && !defined(_M_X64)
+    if (s < 0)
+      return -x;
+    else
+      return x;
+#else
+    return copysignf(x, s);
+#endif
+  }
+
+  HD static float quant_log2(float x) {
+#ifdef _WIN32
+    return (log(fabsf(x))/log(2.0));
+#else
+    return log2f(x);
+#endif
+  }
+};
 
 
 /**
@@ -42,6 +70,7 @@ class QuantizationLooper {
   QuantizationLooper(Quantizer *q)
     : quantizer(q), executeTime(0) {}
 
+  // XXX add peak signal-to-noise ratio
   void quantize(size_t length, const float *dataIn, int *dataOut = NULL,
 		bool doComputeErr = false) {
     if (dataOut == NULL)
@@ -104,8 +133,17 @@ class QuantUniform {
   float scale, invScale;
 
  public:
-  QuantUniform(int bits_, float threshold_, float maxVal_)
-    : bits(bits_), threshold(threshold_), maxVal(maxVal_) {
+  HD QuantUniform() {}
+
+  HD QuantUniform(const QuantUniform &that)
+    : bits(that.bits), base(that.base), threshold(that.threshold),
+    maxVal(that.maxVal), scale(that.scale), invScale(that.invScale) {}
+
+  HD void init(int bits_, float threshold_, float maxVal_) {
+    bits = bits_;
+    threshold = threshold_;
+    maxVal = maxVal_;
+    // if bits==8, then base = 127
     base = (1 << (bits-1)) - 1;
 
     /*
@@ -122,10 +160,10 @@ class QuantUniform {
     scale = base / (maxVal - threshold);
     invScale = 1 / scale;
 
-    // printf("QuantUniform  bits=%d, threshold=%.8g, maxVal=%.8g, base=%d, scale = %.8g, invScale = %.8g\n", bits, threshold, maxVal, base, scale, invScale);
+    printf("QuantUniform  bits=%d, threshold=%.8g, maxVal=%.8g, base=%d, scale = %.8g, invScale = %.8g\n", bits, threshold, maxVal, base, scale, invScale);
   }
 
-  int quant(float x) const {
+  HD int quant(float x) const {
 
     float absx = fabsf(x);
 
@@ -138,7 +176,7 @@ class QuantUniform {
     return (int) copysignf(scaled, x);
   }
 
-  float dequant(int x) const {
+  HD float dequant(int x) const {
     if (x == 0) {
       return 0;
     } else if (x > 0) {
@@ -155,27 +193,31 @@ class QuantLog {
   float threshold, invThresh, maxVal, lmax, lmaxInv, dqScale;
 
  public:
-  QuantLog(int bits_, float threshold_, float maxVal_)
-    : bits(bits_), threshold(threshold_), maxVal(maxVal_) {
+  HD void init(int bits_, float threshold_, float maxVal_) {
+    bits = bits_;
+    threshold = threshold_;
+    maxVal = maxVal_;
+
     base = (1 << (bits-1)) - 1;
+
     if (maxVal == threshold) {
       lmax = 1;
       lmaxInv = 1;
     } else {
-      lmax = quant_log2(maxVal/threshold);
+      lmax = logf(maxVal/threshold);
       lmaxInv = 1 / lmax;
     }
     invThresh = (threshold == 0) ? 1 : (1 / threshold);
     dqScale = lmax / base;
   }
 
-  int quant(float x) const {
+  HD int quant(float x) const {
 
     float absx = fabsf(x);
     if (absx <= threshold) return 0;
     // int sign=x/fabsf(x);
     
-    float lnVal = quant_log2(absx * invThresh);
+    float lnVal = logf(absx * invThresh);
     float result = base * lnVal * lmaxInv + 1;
 
     if (result > base) result = base;
@@ -183,11 +225,11 @@ class QuantLog {
     return (int) copysignf(result, x);
   }
 
-  float dequant(int x) const {
+  HD float dequant(int x) const {
     if (x == 0) return 0;
     // int sign=x/abs(x);
     float lnVal=fabsf(x*dqScale);
-    return copysignf(threshold*(float)(pow(2.0f, lnVal)), x);
+    return copysignf(threshold * expf(lnVal), x);
   }
 };
 

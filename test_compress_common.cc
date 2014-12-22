@@ -256,7 +256,7 @@ bool writeQuantDataProtoBuf(const char *filename, FileData &f) {
   assert(sizeof(unsigned) == 4);
   unsigned codedLen = (unsigned) buf.ByteSize();
   fwrite(&codedLen, sizeof codedLen, 1, outf);
-  printf("Header protobuf = %u bytes\n", codedLen);
+  // printf("Header protobuf = %u bytes\n", codedLen);
 
   char *codedBuf = new char[codedLen];
   assert(codedBuf);

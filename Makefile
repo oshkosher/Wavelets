@@ -35,12 +35,12 @@
 #          your build.
 # 
 
-default: convert test_haar_cpu haar test_compress_cpu
+default: convert test_haar_cpu haar test_compress_cpu test_compress_gpu
 
 EXECS = test_haar_cpu haar test_compress \
   test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu \
   normalize test_rle test_huffman test_bit_stream test_quant_count \
-  test_compress_gpu list_data image_error
+  test_compress_gpu list_data image_error test_transform
 
 all: convert $(EXECS) libwaveletcuda.so cudahaar.mex
 
@@ -98,8 +98,8 @@ OBJ_EXT=obj
 LIBS=-lstdc++
 PROTOBUF_DIR_VC = protobuf-2.6.0/vsprojects
 PROTOBUF_DIR = /usr/local
-PROTOBUF_LIB_VC = $(PROTOBUF_DIR_VC)/$(BUILD)/libprotobuf.lib
-PROTOBUF_LIB = -L$(PROTOBUF_DIR)/lib -lprotobuf
+PROTOBUF_LIB = $(PROTOBUF_DIR_VC)/$(BUILD)/libprotobuf.lib
+PROTOBUF_LIB_CW = -L$(PROTOBUF_DIR)/lib -lprotobuf
 PROTOC_VC = $(PROTOBUF_DIR_VC)/$(BUILD)/protoc.exe
 PROTOC = protoc
 NVCC_ARCH_SIZE = -m32
@@ -183,6 +183,9 @@ test_quant_count: test_quant_count.cc quant_count.h quant_count.cc quant.h \
 	  dquant_unif_cpu.cc dquant_log_cpu.cc \
 	  -o $@ $(LIBS)
 
+test_transform: test_transform.cu
+	$(NVCC) $< -o $@
+
 test_compress: test_compress_cpu
 
 test_compress_cpu: test_compress_cpu.cc test_compress_common.cc \
@@ -200,9 +203,9 @@ test_compress_cpu: test_compress_cpu.cc test_compress_common.cc \
 	  quant_unif_cpu.cc quant_log_cpu.cc quant_count.cc quant.cc \
 	  dquant_unif_cpu.cc dquant_log_cpu.cc param_string.cc \
 	  data_io.cc nixtimer.cc wavelet_compress.pb.cc \
-	  -o $@ $(LIBS) -L/usr/local/lib -lprotobuf
+	  -o $@ $(LIBS) $(PROTOBUF_LIB_CW)
 
-test_compress_gpu.obj: test_compress_gpu.cu wavelet_compress.pb.h
+test_compress_gpu.obj: test_compress_gpu.cu wavelet_compress.pb.h quant.h
 
 TEST_COMPRESS_GPU_OBJS=test_compress_gpu.$(OBJ_EXT) \
   test_compress_common.$(OBJ_EXT) \
