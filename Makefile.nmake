@@ -1,3 +1,11 @@
+# This makefile has started failing when it calls NVCC:
+#           nvcc  -arch sm_30 -m32 -g  --compiler-options /MDd -Iprotobuf-2.6.0\vsprojects\include -D_SCL_SECURE_NO_WARNINGS -c test_compress_gpu.cu
+#   Internal error
+#   NMAKE : fatal error U1077: 'C:\CUDA\v6.5\bin\nvcc.EXE' : return code '0xc0000005'
+#   Stop.
+# Possible solution: https://devtalk.nvidia.com/default/topic/384483/makefiles-and-nvcc/
+# Appending " > nul" to each command line that calls nvcc fixes the problem.
+
 default: convert test_haar_cpu.exe haar.exe test_compress_cpu.exe
 
 EXECS = test_haar_cpu.exe haar.exe test_compress_cpu.exe \
@@ -41,7 +49,8 @@ PROTOC = $(PROTOBUF_DIR)\$(BUILD)\protoc.exe
 JAVAC = javac
 
 NVCC = nvcc $(NVCC_OPT) $(NVCC_ARCH) $(NVCC_ARCH_SIZE) $(CC_OPT_FLAG) \
-  --compiler-options $(CL_OPT_FLAG) -I$(PROTOBUF_DIR)\include
+  --compiler-options $(CL_OPT_FLAG) -I$(PROTOBUF_DIR)\include \
+  -D_SCL_SECURE_NO_WARNINGS
 
 CC = cl /EHsc /nologo $(BUILD_FLAGS) -D_SCL_SECURE_NO_WARNINGS
 
@@ -50,43 +59,43 @@ HAAR_OBJS = haar.obj dwt_cpu.obj dwt_gpu.obj data_io.obj transpose_gpu.obj \
 	    nixtimer.obj
 
 haar.obj: haar.cu
-	$(NVCC) -c haar.cu
+	$(NVCC) -c haar.cu > nul
 
 dwt_cpu.obj: dwt_cpu.cc dwt_cpu.h
-	$(NVCC) -c dwt_cpu.cc
+	$(NVCC) -c dwt_cpu.cc > nul
 
 dwt_gpu.obj: dwt_gpu.cu dwt_gpu.h
-	$(NVCC) -c dwt_gpu.cu
+	$(NVCC) -c dwt_gpu.cu > nul
 
 data_io.obj: data_io.cc data_io.h
-	$(NVCC) -c data_io.cc
+	$(NVCC) -c data_io.cc > nul
 
 transpose_gpu.obj: transpose_gpu.cu transpose_gpu.h
-	$(NVCC) -c transpose_gpu.cu
+	$(NVCC) -c transpose_gpu.cu > nul
 
 nixtimer.obj: nixtimer.cc nixtimer.h
-	$(NVCC) -c nixtimer.cc
+	$(NVCC) -c nixtimer.cc > nul
 
 haar.exe: $(HAAR_OBJS)
-	$(NVCC) $(HAAR_OBJS) -o $@
+	$(NVCC) $(HAAR_OBJS) -o $@ > nul
 
 thresh_cpu.obj: thresh_cpu.cc thresh_cpu.h
-	$(NVCC) -c thresh_cpu.cc
+	$(NVCC) -c thresh_cpu.cc > nul
 
 quant_unif_cpu.obj: quant_unif_cpu.cc quant_unif_cpu.h
-	$(NVCC) -c quant_unif_cpu.cc
+	$(NVCC) -c quant_unif_cpu.cc > nul
 
 dquant_unif_cpu.obj: dquant_unif_cpu.cc dquant_unif_cpu.h
-	$(NVCC) -c dquant_unif_cpu.cc
+	$(NVCC) -c dquant_unif_cpu.cc > nul
 
 quant_log_cpu.obj: quant_log_cpu.cc quant_log_cpu.h
-	$(NVCC) -c quant_log_cpu.cc
+	$(NVCC) -c quant_log_cpu.cc > nul
 
 dquant_log_cpu.obj: dquant_log_cpu.cc dquant_log_cpu.h
-	$(NVCC) -c dquant_log_cpu.cc
+	$(NVCC) -c dquant_log_cpu.cc > nul
 
 test_compress_common.obj: test_compress_common.cc test_compress_common.h
-	$(NVCC) -c test_compress_common.cc
+	$(NVCC) -c test_compress_common.cc > nul
 
 test_haar_cpu.exe: test_haar_cpu.cc dwt_cpu.cc dwt_cpu.h data_io.cc data_io.h \
 	  nixtimer.cc nixtimer.h
@@ -103,8 +112,9 @@ test_haar_thresh_quantLog_cpu.exe: test_haar_thresh_quantLog_cpu.cc dwt_cpu.cc d
 	$(CC) test_haar_thresh_quantLog_cpu.cc dwt_cpu.cc data_io.cc nixtimer.cc thresh_cpu.cc quant_log_cpu.cc dquant_log_cpu.cc quant.cc
 
 # aliases
-test_compress: test_compress_cpu.exe
+test_compress: test_compress_cpu.exe test_compress_gpu.exe
 test_compress_cpu: test_compress_cpu.exe
+test_compress_gpu: test_compress_gpu.exe
 
 test_compress_cpu.exe: test_compress_cpu.cc test_compress_common.cc \
 	dwt_cpu.cc data_io.cc \
@@ -124,22 +134,22 @@ test_compress_cpu.exe: test_compress_cpu.cc test_compress_common.cc \
 	  data_io.cc nixtimer.cc wavelet_compress.pb.cc \
           $(PROTOBUF_DIR)\$(BUILD)\libprotobuf.lib
 
-test_compress_gpu.obj: test_compress_gpu.cu
-	$(NVCC) -c test_compress_gpu.cu
+test_compress_gpu.obj: test_compress_gpu.cu wavelet_compress.pb.h
+	$(NVCC) -c test_compress_gpu.cu > nul
 
 TEST_COMPRESS_GPU_OBJS=test_compress_gpu.obj test_compress_common.obj \
   dwt_cpu.obj dwt_gpu.obj data_io.obj transpose_gpu.obj nixtimer.obj \
   wavelet_compress.pb.obj quant_count.obj param_string.obj
 
 test_compress_gpu.exe: $(TEST_COMPRESS_GPU_OBJS)
-	$(NVCC) $(TEST_COMPRESS_GPU_OBJS) $(PROTOBUF_LIB) -o $@
+	$(NVCC) $(TEST_COMPRESS_GPU_OBJS) $(PROTOBUF_LIB) -o $@ > nul
 
 proto: wavelet_compress.pb.h
 wavelet_compress.pb.h: wavelet_compress.proto
 	$(PROTOC) wavelet_compress.proto --cpp_out=.
 
 wavelet_compress.pb.obj: wavelet_compress.pb.h wavelet_compress.pb.cc
-	$(NVCC) -c wavelet_compress.pb.cc
+	$(NVCC) -c wavelet_compress.pb.cc > nul
 
 test_bit_stream.exe: test_bit_stream.cc bit_stream.h nixtimer.h nixtimer.cc
 	$(CC) test_bit_stream.cc nixtimer.cc

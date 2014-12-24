@@ -33,6 +33,9 @@
 #       4. In Makefile.nmake and Makefile, check that PROTOBUF_DIR,
 #          PROTOBUF_LIB, and PROTOC point to the locations matching
 #          your build.
+#
+#   mkoctfile (Octave C interface)
+#     Install liboctave-dev package.
 # 
 
 default: convert test_haar_cpu haar test_compress_cpu test_compress_gpu
@@ -40,7 +43,7 @@ default: convert test_haar_cpu haar test_compress_cpu test_compress_gpu
 EXECS = test_haar_cpu haar test_compress \
   test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu \
   normalize test_rle test_huffman test_bit_stream test_quant_count \
-  test_compress_gpu list_data image_error test_transform
+  test_compress_gpu list_data image_error test_transform test_lloyd
 
 all: convert $(EXECS) libwaveletcuda.so cudahaar.mex
 
@@ -145,6 +148,11 @@ ImageDiff.class: ImageDiff.java
 test_haar_cpu: test_haar_cpu.cc dwt_cpu.cc data_io.cc
 	$(CC) $^ -o $@ $(LIBS)
 
+test_lloyd: test_lloyd.cc Octave/LloydsAlgorithm/src/c++/lloyds.cpp \
+	  Octave/LloydsAlgorithm/src/c++/lloyds.h
+	$(CC) test_lloyd.cc Octave/LloydsAlgorithm/src/c++/lloyds.cpp \
+	  -IOctave/LloydsAlgorithm/src/c++ -o $@
+
 test_haar_thresh_quantUnif_cpu: test_haar_thresh_quantUnif_cpu.cc \
   dwt_cpu.cc dwt_cpu.h data_io.cc data_io.h nixtimer.cc nixtimer.h \
   thresh_cpu.cc thresh_cpu.h quant_unif_cpu.cc quant_unif_cpu.h \
@@ -204,6 +212,7 @@ test_compress_cpu: test_compress_cpu.cc test_compress_common.cc \
 	  quant_unif_cpu.cc quant_log_cpu.cc quant_count.cc quant.cc \
 	  dquant_unif_cpu.cc dquant_log_cpu.cc param_string.cc \
 	  data_io.cc nixtimer.cc wavelet_compress.pb.cc \
+	  Octave/LloydsAlgorithm/src/c++/lloyds.cpp \
 	  -o $@ $(LIBS) $(PROTOBUF_LIB)
 
 test_compress_gpu.$(OBJ_EXT): test_compress_gpu.cu wavelet_compress.pb.h quant.h
