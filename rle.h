@@ -71,10 +71,12 @@ class EncodeRunLength {
     sink(sink_) {}
 
   void data(int value) {
+    // printf("encode value %d\n", value);
     if (value == prev && length < 255) {
       length++;
     } else {
       if (length > 0) {
+        // printf("output %d, len %d\n", prev, length);
         sink->data(prev, length);
 	outputCount++;
       }

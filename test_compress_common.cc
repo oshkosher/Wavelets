@@ -408,6 +408,8 @@ bool readQuantData(const char *filename, FILE *inf, FileData &f) {
     int value = sign * quantized;
 
     int length = bits.read(8);
+
+    // printf("Read %d * %d\n", length, value);
     
     for (int i=0; i < length; i++)
       *writePos++ = (float)value;
@@ -432,10 +434,18 @@ bool writeQuantData(const char *filename, FILE *outf, FileData &f) {
 
   // XXX see if it's faster to use pointer to traverse f.data[]
 
-  for (int i=0; i < count; i++) {
-    int x = (int) f.data[i];
-    rleEncoder.data(x);
+  if (f.intData) {
+    for (int i=0; i < count; i++) {
+      int x = f.intData[i];
+      rleEncoder.data(x);
+    }
+  } else {
+    for (int i=0; i < count; i++) {
+      int x = (int) f.data[i];
+      rleEncoder.data(x);
+    }
   }
+    
   rleEncoder.end();
 
   printf("%d input values, %d RLE output pairs\n", count,

@@ -206,7 +206,9 @@ test_compress_cpu: test_compress_cpu.cc test_compress_common.cc \
 	  data_io.cc nixtimer.cc wavelet_compress.pb.cc \
 	  -o $@ $(LIBS) $(PROTOBUF_LIB)
 
-test_compress_gpu.obj: test_compress_gpu.cu wavelet_compress.pb.h quant.h
+test_compress_gpu.$(OBJ_EXT): test_compress_gpu.cu wavelet_compress.pb.h quant.h
+
+test_compress_common.$(OBJ_EXT): test_compress_common.cc test_compress_common.h  rle.h param_string.h
 
 TEST_COMPRESS_GPU_OBJS=test_compress_gpu.$(OBJ_EXT) \
   test_compress_common.$(OBJ_EXT) \

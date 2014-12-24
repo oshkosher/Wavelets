@@ -12,10 +12,11 @@
 #include "cuda.h"
 #define HD __host__ __device__
 #define DV __device__
+
 #else
+
 #define HD
 #define DV
-#endif
 
 // For some reason, copysignf is defined on 64-bit Windows, but not 32-bit.
 // And on 64-bit, it's called _copysignf, not copysignf.
@@ -26,6 +27,8 @@
 #define copysignf QuantFunction::quant_copysignf
 #endif
 #endif
+
+#endif // __CUDACC__
 
 
 class QuantFunction {

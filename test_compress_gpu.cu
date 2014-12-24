@@ -318,7 +318,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   copyFromGPUTimer.print();
 
   // write the quantized data to a file
-  FileData fileData(opt, data, size, size);
+  FileData fileData(opt, NULL, (int*)data, size, size);
   fileData.threshold = thresholdValue;
   if (opt.quantizeAlgorithm == QUANT_ALG_UNIFORM ||
       opt.quantizeAlgorithm == QUANT_ALG_LOG) {
@@ -608,11 +608,11 @@ bool check3Quantized(const int *quantizedData_dev, int count,
   CUCHECK(cudaMemcpy(unquantizedData, unquantizedData_dev,
                      count * sizeof(float),
                      cudaMemcpyDeviceToHost));
-
+  /*
   for (int i=0; i < count; i++) {
     printf("%d\t%f\n", quantizedData[i], unquantizedData[i]);
   }
-
+  */
   delete[] quantizedData;
   delete[] unquantizedData;
 

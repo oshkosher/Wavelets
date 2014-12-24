@@ -116,7 +116,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   delete[] sortedAbsData;
 
   // write the quantized data to a file
-  FileData fileData(opt, data, size, size);
+  FileData fileData(opt, data, NULL, size, size);
   fileData.threshold = threshold;
   if (opt.quantizeAlgorithm == QUANT_ALG_UNIFORM ||
       opt.quantizeAlgorithm == QUANT_ALG_LOG) {

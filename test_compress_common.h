@@ -19,16 +19,14 @@ typedef enum {
 
 
 #define DEFAULT_WAVELET_STEPS 3
-#define DEFAULT_THRESHOLD_FRACTION .1
+#define DEFAULT_THRESHOLD_FRACTION .5
 #define DEFAULT_QUANTIZE_BITS 8
-#define DEFAULT_QUANTIZE_ALGORITHM QUANT_ALG_UNIFORM
+#define DEFAULT_QUANTIZE_ALGORITHM QUANT_ALG_LOG
 
 
 /** This holds the the parameters as set by the user on the command line. */
 struct Options {
-  // alternative is to decompress
-  bool doCompress;
-
+  bool doCompress;  // if false, then decompress
   int waveletSteps;
   bool isWaveletTransposeStandard;
   float thresholdFraction;
@@ -41,6 +39,7 @@ struct Options {
     file. All the routines will be given this same structure. */
 struct FileData {
   float *data;
+  int *intData;
   int width, height;
 
   int waveletSteps;
@@ -57,9 +56,10 @@ struct FileData {
 
   // alternative constructor - copy the options that make sense to
   // copy from 'Options'
-  FileData(const Options &opt, float *data_=NULL, int width_=-1,
+  FileData(const Options &opt, float *data_=NULL, int *intData_=NULL, int width_=-1,
 	      int height_=-1) {
     data = data_;
+    intData = intData_;
     width = width_;
     height = height_;
     waveletSteps = opt.waveletSteps;
@@ -88,6 +88,8 @@ public:
   
   // the length will always be 1..255
   void data(int value, int length) {
+    // printf("%d * %d\n", length, value);
+
     // write sign bit
     out->write( (value<0) ? 1 : 0, 1);
 
