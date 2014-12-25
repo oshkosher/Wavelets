@@ -51,13 +51,13 @@ struct FileData {
   std::vector<float> quantBinValues;
 
   // default constructor - invalid values
-  FileData() : data(NULL), width(-1), height(-1), waveletSteps(0),
-		  quantizeBits(0), quantizeAlgorithm(QUANT_ALG_UNKNOWN) {}
+  FileData() : data(NULL), intData(NULL), width(-1), height(-1), 
+    waveletSteps(0), quantizeBits(0), quantizeAlgorithm(QUANT_ALG_UNKNOWN) {}
 
   // alternative constructor - copy the options that make sense to
   // copy from 'Options'
-  FileData(const Options &opt, float *data_=NULL, int *intData_=NULL, int width_=-1,
-	      int height_=-1) {
+  FileData(const Options &opt, float *data_=NULL, int *intData_=NULL,
+           int width_=-1, int height_=-1) {
     data = data_;
     intData = intData_;
     width = width_;

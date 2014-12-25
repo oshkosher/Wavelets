@@ -4,10 +4,9 @@
 
 int main() {
   
-  float points[] = {1, 2, 3, 10, 11, 12, 20, 21, 22,
-                    30, 31, 32, 40, 41, 42, 50, 51, 52};
+  float points[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
   int psize = sizeof points / sizeof(float);
-  float codebook[] = {10, 20, 30};
+  float codebook[] = {-5, -1, 1, 5};
   int csize = sizeof codebook / sizeof(float);
   float *partitions = new float[csize-1];
   float dist, reldist;

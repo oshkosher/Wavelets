@@ -24,8 +24,10 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
 
 void lloyd(float *points, unsigned int psize,float *codebook, unsigned int csize, float *partition, float &dist, float &reldist, unsigned int *groups, float stop_criteria = 10e-7) {
+
 	float   *sum   = (float*)calloc(csize,sizeof(float));
 	unsigned *count = (unsigned*)calloc(csize,sizeof(unsigned));
 
@@ -43,11 +45,11 @@ void lloyd(float *points, unsigned int psize,float *codebook, unsigned int csize
 		float auxp = points[i];
 		pmax = (auxp > pmax) ? auxp : pmax;
 		pmin = (auxp < pmin) ? auxp : pmin;
-		float d = abs(auxp - codebook[0]);
+		float d = fabsf(auxp - codebook[0]);
 		float min = d;
 		unsigned int idx = 0;
 		for(unsigned int j = 1; j < csize; j++) {
-			d = abs(auxp - codebook[j]);
+			d = fabsf(auxp - codebook[j]);
 			
 			if (d < min) {
 				idx = j;
@@ -60,7 +62,7 @@ void lloyd(float *points, unsigned int psize,float *codebook, unsigned int csize
 		dist += codebook[idx] - auxp;
 	}
 	dist /= psize;
-	reldist = abs(dist);
+	reldist = fabsf(dist);
 
 	while(reldist > stop_criteria) {
 		// printf("reldist: %f(%f)\n",reldist,stop_criteria);
@@ -111,11 +113,11 @@ void lloyd(float *points, unsigned int psize,float *codebook, unsigned int csize
 		// Assign points to codebook (for codebook update)
 		for(unsigned int i = 0; i < psize; i++) {
 			float auxp = points[i];
-			float d = abs(auxp - codebook[0]);
+			float d = fabsf(auxp - codebook[0]);
 			float min = d;
 			unsigned int idx = 0;
 			for(unsigned int j = 1; j < csize; j++) {
-				d = abs(auxp - codebook[j]);
+				d = fabsf(auxp - codebook[j]);
 				if (d < min) {
 					idx = j;
 					min = d;
@@ -127,7 +129,7 @@ void lloyd(float *points, unsigned int psize,float *codebook, unsigned int csize
 			dist += codebook[idx] - auxp;
 		}
 		dist /= psize;
-		reldist = abs(reldist - dist);
+		reldist = fabsf(reldist - dist);
 	}  // END WHILE
 
 	free(sum);

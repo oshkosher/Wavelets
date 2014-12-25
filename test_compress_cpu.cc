@@ -7,10 +7,17 @@
 #include "quant_log_cpu.h"
 #include "quant_unif_cpu.h"
 #include "thresh_cpu.h"
+#include "quant.h"
+#include "lloyds.h"
 
 bool compressFile(const char *inputFile, const char *outputFile, Options &opt);
 bool decompressFile(const char *inputFile, const char *outputFile,
 		    Options &opt);
+void applyLloydQuantization(float *inputData, unsigned count, 
+                            int *quantizedData, float threshold,
+                            float maxAbsVal, int bits,
+                            std::vector<float> &quantBinBoundaries,
+                            std::vector<float> &quantBinValues);
 
 
 int main(int argc, char **argv) {
@@ -87,36 +94,48 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   std::vector<float> quantBinBoundaries;
   std::vector<float> quantBinValues;
+  int *quantizedData = NULL;
 
   // quantize the data
   startTime = NixTimer::time();
   switch (opt.quantizeAlgorithm) {
+
   case QUANT_ALG_UNIFORM:
     quant_unif_cpu(size, data, opt.quantizeBits, threshold, maxVal);
     break;
+
   case QUANT_ALG_LOG:
     quant_log_cpu(size, data, opt.quantizeBits, threshold, maxVal);
     break;
+
   case QUANT_ALG_COUNT:
     quant_count_init_sorted_cpu(size*size, sortedAbsData, opt.quantizeBits,
 				threshold, quantBinBoundaries, quantBinValues);
     quant_boundaries_array(quantBinBoundaries, size*size, data);
     break;
+
   case QUANT_ALG_LLOYD:
-    fprintf(stderr, "Lloyd's algorithm not integrated yet.\n");
-    return false;
+    quantizedData = new int[size*size];
+    applyLloydQuantization(data, size*size, quantizedData, threshold, maxVal,
+                           opt.quantizeBits, quantBinBoundaries,
+                           quantBinValues);
+    delete[] data;
+    data = NULL;
+    break;
+
   default:
     fprintf(stderr, "Quantization algorithm %d not found.\n",
             (int)opt.quantizeAlgorithm);
     return false;
   }
+
   elapsed = NixTimer::time() - startTime;
   printf("Apply threshold / quantize: %.2f ms\n", elapsed*1000);
 
   delete[] sortedAbsData;
 
   // write the quantized data to a file
-  FileData fileData(opt, data, NULL, size, size);
+  FileData fileData(opt, data, quantizedData, size, size);
   fileData.threshold = threshold;
   if (opt.quantizeAlgorithm == QUANT_ALG_UNIFORM ||
       opt.quantizeAlgorithm == QUANT_ALG_LOG) {
@@ -179,12 +198,9 @@ bool decompressFile(const char *inputFile, const char *outputFile,
     dquant_log_cpu(size, data, f.quantizeBits, f.threshold, f.quantMaxVal);
     break;
   case QUANT_ALG_COUNT:
-    // check the size of the codebook
+  case QUANT_ALG_LLOYD:
     dequant_codebook_array(f.quantBinValues, size*size, data);
     break;
-  case QUANT_ALG_LLOYD:
-    fprintf(stderr, "Lloyd's algorithm not integrated yet.\n");
-    return false;
   default:
     fprintf(stderr, "Quantization algorithm %d not found.\n",
             (int)f.quantizeAlgorithm);
@@ -208,3 +224,83 @@ bool decompressFile(const char *inputFile, const char *outputFile,
 
   return true;
 }
+
+
+void applyLloydQuantization(float *inputData, unsigned count, 
+                            int *quantizedData, float threshold,
+                            float maxAbsVal, int bits,
+                            std::vector<float> &quantBinBoundaries,
+                            std::vector<float> &quantBinValues) {
+
+  int binCount = 1 << bits;
+  quantBinBoundaries.clear();
+  quantBinValues.clear();
+  float *binBoundaries = new float[binCount-1];
+  float *binValues = new float[binCount];
+
+  assert(maxAbsVal > 0);
+  assert(threshold >= 0);
+  assert(threshold < maxAbsVal);
+
+  // use log quantization to create an initial codebook
+  QuantLog qlog;
+  qlog.init(bits, threshold, maxAbsVal);
+  int half = binCount/2;
+  binValues[half-1] = threshold / -2;
+  binValues[half] = threshold / 2;
+  for (int i=1; i < half; i++) {
+    float dq = qlog.dequant(i);
+    binValues[half+i] = dq;
+    binValues[half-i-1] = -dq;
+  }
+
+  // apply the threshold
+  for (unsigned i=0; i < count; i++)
+    if (inputData[i] <= threshold) inputData[i] = 0;
+
+  /*
+  for (int i=0; i < binCount; i++) {
+    printf("InitCB %d: %f\n", i, binValues[i]);
+  }
+  */
+
+  // fine-tune the codebook and bin boundaries using Lloyd's algorithm.
+  // This also applies the quantization to each value, writing the values
+  // to quantizedData[]
+  float dist, reldist;
+  lloyd(inputData, count, binValues, binCount, binBoundaries, dist,
+        reldist, (unsigned*) quantizedData);
+  // printf("dist = %f, reldist = %f\n", dist, reldist);
+
+  // sanity-check
+  for (int i=0; i < binCount-1; i++) {
+    if (binValues[i] > binValues[i+1]) {
+      printf("ERROR: codebook[%d] > codebook[%d]  (%f > %f)\n",
+             i, i+1, binValues[i], binValues[i+1]);
+    }
+
+    if (binBoundaries[i] < binValues[i] || binBoundaries[i] > binValues[i+1]) {
+      printf("ERROR: partition[%d] (%f) should be between codebook[%d] (%f) and codebook[%d] (%f)\n",
+             i, binBoundaries[i], i, binValues[i], i+1, binValues[i+1]);
+    }
+  }
+  
+  for (int i=0; i < binCount; i++) {
+    quantBinValues.push_back(binValues[i]);
+    // printf("Bin %3d. %f\n", i, binValues[i]);
+    if (i == binCount-1) break;
+    quantBinBoundaries.push_back(binBoundaries[i]);
+    // printf("  %f\n", binBoundaries[i]);
+  }
+
+  /*
+  for (unsigned i=0; i < count; i++) {
+    printf("%f\t%d\n", inputData[i], quantizedData[i]);
+  }
+  */
+
+  delete[] binBoundaries;
+  delete[] binValues;
+}
+
+  

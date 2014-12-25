@@ -206,13 +206,16 @@ test_compress_cpu: test_compress_cpu.cc test_compress_common.cc \
 	dquant_unif_cpu.h dquant_log_cpu.h thresh_cpu.h \
 	bit_stream.h nixtimer.h rle.h param_string.h param_string.cc \
 	quant_count.h quant_count.cc quant.h quant.cc \
-	wavelet_compress.pb.h wavelet_compress.pb.cc
+	wavelet_compress.pb.h wavelet_compress.pb.cc \
+	Octave/LloydsAlgorithm/src/c++/lloyds.cpp \
+	Octave/LloydsAlgorithm/src/c++/lloyds.h
 	$(CC) test_compress_cpu.cc test_compress_common.cc \
 	  dwt_cpu.cc thresh_cpu.cc \
 	  quant_unif_cpu.cc quant_log_cpu.cc quant_count.cc quant.cc \
 	  dquant_unif_cpu.cc dquant_log_cpu.cc param_string.cc \
 	  data_io.cc nixtimer.cc wavelet_compress.pb.cc \
 	  Octave/LloydsAlgorithm/src/c++/lloyds.cpp \
+	  -IOctave/LloydsAlgorithm/src/c++ \
 	  -o $@ $(LIBS) $(PROTOBUF_LIB)
 
 test_compress_gpu.$(OBJ_EXT): test_compress_gpu.cu wavelet_compress.pb.h quant.h
