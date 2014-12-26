@@ -95,7 +95,8 @@ int main() {
       elapsed1 = NixTimer::time() - startTime;
       QuantUniform qu;
       qu.init(bits, threshold, maxVal);
-      QuantizationLooper<QuantUniform> qlu(&qu);
+      QuantizationLooper<QuantUniform> qlu;
+      qlu.init(&qu);
       qlu.quantize(width*height, origData, quantizedData, doComputeErr);
       elapsed2 = qlu.getExecuteTime();
       err = qlu.getError();
@@ -109,7 +110,8 @@ int main() {
       elapsed1 = NixTimer::time() - startTime;
       QuantLog qu;
       qu.init(bits, threshold, maxVal);
-      QuantizationLooper<QuantLog> qlu(&qu);
+      QuantizationLooper<QuantLog> qlu;
+      qlu.init(&qu);
       qlu.quantize(width*height, origData, quantizedData, doComputeErr);
       elapsed2 = qlu.getExecuteTime();
       err = qlu.getError();
@@ -124,7 +126,8 @@ int main() {
       quant_boundaries_array(boundaries, width*height, data);
       elapsed1 = NixTimer::time() - startTime;
       QuantCodebook qu(boundaries, codebook);
-      QuantizationLooper<QuantCodebook> qlu(&qu);
+      QuantizationLooper<QuantCodebook> qlu;
+      qlu.init(&qu);
       qlu.quantize(width*height, origData, quantizedData, doComputeErr);
       elapsed2 = qlu.getExecuteTime();
       err = qlu.getError();
@@ -205,7 +208,8 @@ int main4() {
 
   QuantLog q;
   q.init(bits, threshold, maxVal);
-  QuantizationLooper<QuantLog> ql(&q);
+  QuantizationLooper<QuantLog> ql;
+  ql.init(&q);
   ql.quantize(LEN, orig, iq);
 
   dquant_log_cpu(LEN, data, bits, threshold, maxVal);
