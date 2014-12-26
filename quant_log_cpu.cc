@@ -14,32 +14,25 @@
 // Overwrites data with the new values
 float quant_log_cpu(int len, float *data, int bits, float threshold, float maxVal)
 {
-	int displayCount = 0;
-	int count = len * len;
-	int base = (int)(pow(2.0,bits-1)-1);
-        float lmax = (float)(QuantFunction::quant_log2((float)(maxVal/threshold)));
-	for (int idx = 0; idx < count; idx++)
-	{
-		if (fabsf(data[idx]) <= threshold)
-		{
-			data[idx] = (float)0.0;
-		}
-		else
-		{
-			int sign=data[idx]/fabsf(data[idx]);
-			
-			float lnVal=QuantFunction::quant_log2((float)(fabsf(data[idx]/threshold)));
-			data[idx] = sign*ceil((base*lnVal)/lmax);
-			if ( displayCount > 0 )
-			{
-				displayCount--;
-				std::cout << "Idx: " << idx << " Value: " << data[idx] << std::endl;
-				std::cout << "    sign: " << sign << std::endl;
-				std::cout << "    lnVal: " << lnVal << std::endl;
-				std::cout << "    threshold: " << threshold << " maxVal: " << maxVal << std::endl;
-			}
-		}
-	}
+
+  int count = len * len;
+  int base = (1 << (bits-1)) - 1;
+  float lmax = logf(maxVal/threshold);
+  for (int idx = 0; idx < count; idx++) {
+    float before = data[idx];
+    float absdata = fabsf(data[idx]);
+
+    if (absdata <= threshold) {
+      data[idx] = 0.0f;
+    } else {
+      int sign=data[idx]/absdata;
 	
-	return lmax;
+      float lnVal=logf(absdata/threshold);
+      data[idx] = sign*ceil((base*lnVal)/lmax);
+
+    }
+    printf("%f\t%.0f\n", before, data[idx]);
+  }
+
+  return lmax;
 }

@@ -101,11 +101,29 @@ bool compressFile(const char *inputFile, const char *outputFile,
   switch (opt.quantizeAlgorithm) {
 
   case QUANT_ALG_UNIFORM:
-    quant_unif_cpu(size, data, opt.quantizeBits, threshold, maxVal);
+    // quant_unif_cpu(size, data, opt.quantizeBits, threshold, maxVal);
+    {
+      QuantUniform qunif;
+      qunif.init(opt.quantizeBits, threshold, maxVal);
+      QuantizationLooper<QuantUniform> qloop;
+      qloop.init(&qunif);
+      quantizedData = new int[size*size];
+      qloop.quantize(size*size, data, quantizedData, true);
+      printf("Quantization error: %g\n", qloop.getError());
+    }
     break;
 
   case QUANT_ALG_LOG:
-    quant_log_cpu(size, data, opt.quantizeBits, threshold, maxVal);
+    // quant_log_cpu(size, data, opt.quantizeBits, threshold, maxVal);
+    {
+      QuantLog qlog;
+      qlog.init(opt.quantizeBits, threshold, maxVal);
+      QuantizationLooper<QuantLog> qloop;
+      qloop.init(&qlog);
+      quantizedData = new int[size*size];
+      qloop.quantize(size*size, data, quantizedData, true);
+      printf("Quantization error: %g\n", qloop.getError());
+    }
     break;
 
   case QUANT_ALG_COUNT:

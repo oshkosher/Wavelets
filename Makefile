@@ -38,7 +38,8 @@
 #     Install liboctave-dev package.
 # 
 
-default: convert test_haar_cpu haar test_compress_cpu test_compress_gpu
+default: convert test_haar_cpu haar test_compress_cpu test_compress_gpu \
+	image_error list_data
 
 EXECS = test_haar_cpu haar test_compress \
   test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu \

@@ -68,10 +68,13 @@ template <class Quantizer>
 class QuantizationLooper {
   Quantizer *quantizer;
   double sumErrSquared, executeTime;
+  size_t inputSize;
 
  public:
-  QuantizationLooper(Quantizer *q)
-    : quantizer(q), executeTime(0) {}
+  void init(Quantizer *q) {
+    quantizer = q;
+    executeTime = 0;
+  }
 
   // XXX add peak signal-to-noise ratio
   void quantize(size_t length, const float *dataIn, int *dataOut = NULL,
@@ -80,6 +83,7 @@ class QuantizationLooper {
       dataOut = (int*) dataIn;
 
     sumErrSquared = 0;
+    inputSize = length;
 
     double startTime = NixTimer::time();
 
@@ -97,6 +101,7 @@ class QuantizationLooper {
     } else {
       for (size_t i=0; i < length; i++) {
 	dataOut[i] = quantizer->quant(dataIn[i]);
+        // printf("%f\t%d\n", dataIn[i], dataOut[i]);
       }
     }
 
@@ -119,7 +124,7 @@ class QuantizationLooper {
 
 
   double getError() {
-    return sqrt(sumErrSquared);
+    return sumErrSquared / inputSize;
   }
 
 
@@ -136,12 +141,6 @@ class QuantUniform {
   float scale, invScale;
 
  public:
-  HD QuantUniform() {}
-
-  HD QuantUniform(const QuantUniform &that)
-    : bits(that.bits), base(that.base), threshold(that.threshold),
-    maxVal(that.maxVal), scale(that.scale), invScale(that.invScale) {}
-
   HD void init(int bits_, float threshold_, float maxVal_) {
     bits = bits_;
     threshold = threshold_;

@@ -14,17 +14,18 @@
 // Overwrites data with the new values
 void dquant_log_cpu(int len, float *data, int bits, float threshold, float maxVal)
 {
-	int count = len * len;
-	int base = (int)(pow(2.0,bits-1)-1);
-        float lmax = (float)(QuantFunction::quant_log2((float)(maxVal/threshold)));
+  int count = len * len;
+  int base = (1 << (bits-1)) - 1;
+  float lmax = logf(maxVal/threshold);
+
 	
-	for (int idx = 0; idx < count; idx++ )
-	{
-		if (data[idx] != 0)
-		{
-			int sign=data[idx]/fabsf(data[idx]);
-			float lnVal=fabsf(data[idx]*(lmax/base));
-			data[idx] = sign*threshold*(float)(pow((float)(2.0),lnVal));
-		}
-	}
+  for (int idx = 0; idx < count; idx++ )
+    {
+      if (data[idx] != 0)
+        {
+          int sign=data[idx]/fabsf(data[idx]);
+          float lnVal=fabsf(data[idx]*(lmax/base));
+          data[idx] = sign*threshold*expf(lnVal);
+        }
+    }
 }
