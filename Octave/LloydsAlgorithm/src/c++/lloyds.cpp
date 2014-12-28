@@ -26,7 +26,7 @@
 #include <stdio.h>
 #include <math.h>
 
-void lloyd(float *points, unsigned int psize,float *codebook, unsigned int csize, float *partition, float &dist, float &reldist, unsigned int *groups, float stop_criteria = 10e-7) {
+void lloyd(const float *points, unsigned int psize,float *codebook, unsigned int csize, float *partition, float &dist, float &reldist, unsigned int *groups, float stop_criteria = 10e-7) {
 
 	float   *sum   = (float*)calloc(csize,sizeof(float));
 	unsigned *count = (unsigned*)calloc(csize,sizeof(unsigned));
@@ -130,6 +130,7 @@ void lloyd(float *points, unsigned int psize,float *codebook, unsigned int csize
 		}
 		dist /= psize;
 		reldist = fabsf(reldist - dist);
+		// printf("dist=%g, reldist=%g\n", dist, reldist);
 	}  // END WHILE
 
 	free(sum);
