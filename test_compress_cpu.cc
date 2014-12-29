@@ -72,12 +72,15 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   // adjust the number of wavelet steps in case the user requested too many
   int maxWaveletSteps = dwtMaximumSteps(size);
-  if (opt.waveletSteps > maxWaveletSteps)
+  if (opt.waveletSteps > maxWaveletSteps || opt.waveletSteps < 0)
     opt.waveletSteps = maxWaveletSteps;
 
   // perform the wavelet transform
-  float waveletMs = haar_2d(size, data, false, opt.waveletSteps);
-  printf("Wavelet transform: %.2f ms\n", waveletMs);
+  if (opt.waveletSteps > 0) {
+    float waveletMs = haar_2d(size, data, false, opt.waveletSteps);
+    printf("Wavelet transform (%d steps): %.2f ms\n", 
+           opt.waveletSteps, waveletMs);
+  }
 
   // find the threshold value by sorting
   // XXX use quickselect to speed up
@@ -93,7 +96,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   float *nonzeroData = sortedAbsData + count - nonzeroCount;
 
   elapsed = NixTimer::time() - startTime;
-  printf("threshold = %g, min = %g, max = %g: %.2f ms\n",
+  printf("Compute threshold = %g, min = %g, max = %g: %.2f ms\n",
 	 threshold, minVal, maxVal, elapsed*1000);
 
   std::vector<float> quantBinBoundaries;
@@ -167,7 +170,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   }
 
   elapsed = NixTimer::time() - startTime;
-  printf("Apply threshold / quantize: %.2f ms\n", elapsed*1000);
+  printf("Quantize: %.2f ms\n", elapsed*1000);
 
   // write the quantized data to a file
   FileData fileData(opt, data, quantizedData, size, size);

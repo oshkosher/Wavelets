@@ -18,10 +18,10 @@ typedef enum {
 } QuantizeAlgorithm;
 
 
-#define DEFAULT_WAVELET_STEPS 3
+#define DEFAULT_WAVELET_STEPS -1
 #define DEFAULT_THRESHOLD_FRACTION .5
 #define DEFAULT_QUANTIZE_BITS 8
-#define DEFAULT_QUANTIZE_ALGORITHM QUANT_ALG_LOG
+#define DEFAULT_QUANTIZE_ALGORITHM QUANT_ALG_LLOYD
 
 
 /** This holds the the parameters as set by the user on the command line. */
