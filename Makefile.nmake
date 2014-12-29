@@ -12,7 +12,7 @@ EXECS = test_haar_cpu.exe haar.exe test_compress_cpu.exe \
   test_haar_thresh_quantUnif_cpu.exe test_haar_thresh_quantLog_cpu.exe \
   normalize.exe test_rle.exe test_huffman.exe test_bit_stream.exe \
   test_quant_count.exe test_compress_gpu.exe list_data.exe \
-  image_error.exe
+  image_error.exe histogram.exe
 
 all: WaveletSampleImage.class ImageDiff.class $(EXECS)
 
@@ -161,6 +161,9 @@ normalize.exe: normalize.cc data_io.cc data_io.h
 
 image_error.exe: image_error.cc data_io.cc data_io.h
 	$(CC) image_error.cc data_io.cc
+
+histogram.exe: histogram.cc data_io.cc data_io.h
+	$(CC) histogram.cc data_io.cc
 
 test_rle.exe: test_rle.cc rle.h huffman.h huffman.cc data_io.cc
 	$(CC) test_rle.cc data_io.cc huffman.cc

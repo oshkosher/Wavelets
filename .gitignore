@@ -45,3 +45,6 @@ test_rle
 test_rl.exe
 image_error
 image_error.exe
+histogram
+histogram.exe
+

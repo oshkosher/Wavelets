@@ -6,6 +6,33 @@
 
 // See "data_io.h" for details on the file format.
 
+bool isValidDataFile(const char *filename) {
+  bool success = false;
+
+  FILE *inf = fopen(filename, "rb");
+  if (!inf) return false;
+
+  // try reading the text format
+  int width = -1, height = -1;
+  if (2 == fscanf(inf, "%d cols %d rows", &width, &height) &&
+      width >= 1 && height >= 1) {
+    success = true;
+    goto done;
+  }
+
+  // try reading the binary format
+  char buf[9];
+  if (8 != fread(buf, 1, 8, inf)) goto done;
+  buf[8] = 0;
+  if (!strcmp(buf, "binary \n")) success = true;
+
+ done:
+  fclose(inf);
+
+  return success;
+}  
+  
+
 // check if the given file is in binary format
 static bool isBinary(const char *filename) {
   FILE *inf = fopen(filename, "rb");

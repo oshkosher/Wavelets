@@ -42,7 +42,10 @@ bool writeDataFile(const char *filename, float *data, int width, int height,
 // NOTE: the data is currenly still stored as floats.
 bool writeDataFile(const char *filename, double *data, int width, int height,
                    bool isBinary = true);
-  
+
+// Returns true if the file is a valid text or binary data file, without
+// emitting any error messages.
+bool isValidDataFile(const char *filename);
 
 
 #endif // __DATA_IO__

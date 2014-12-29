@@ -38,15 +38,20 @@
 #     Install liboctave-dev package.
 # 
 
-default: convert test_haar_cpu haar test_compress_cpu test_compress_gpu \
-	image_error list_data
+# build all the tools that don't require CUDA
+default: convert test_haar_cpu test_compress_cpu \
+	image_error list_data histogram
 
 EXECS = test_haar_cpu haar test_compress \
   test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu \
   normalize test_rle test_huffman test_bit_stream test_quant_count \
-  test_compress_gpu list_data image_error test_transform test_lloyd
+  test_compress_gpu list_data image_error test_transform test_lloyd \
+  histogram
 
 all: convert $(EXECS) libwaveletcuda.so cudahaar.mex
+
+# build the tools that require CUDA
+cuda: haar test_compress_gpu
 
 java: WaveletSampleImage.class ImageDiff.class
 
@@ -240,6 +245,9 @@ wavelet_compress.pb.$(OBJ_EXT): wavelet_compress.pb.cc wavelet_compress.pb.h
 
 list_data: list_data.cc data_io.cc data_io.h
 	$(CC) list_data.cc data_io.cc -o $@ $(LIBS)
+
+histogram: histogram.cc data_io.cc data_io.h
+	$(CC) histogram.cc data_io.cc -o $@ $(LIBS)
 
 libwaveletcuda.so: $(CUDA_OBJS) Octave/LloydsAlgorithm/octave_wrapper.cu
 	$(NVCC) -I. -c Octave/LloydsAlgorithm/octave_wrapper.cu
