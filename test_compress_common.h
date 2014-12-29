@@ -31,6 +31,7 @@ struct Options {
   bool isWaveletTransposeStandard;
   float thresholdFraction;
   int quantizeBits;
+  std::string saveBeforeQuantizingFilename;  // -bq option
   QuantizeAlgorithm quantizeAlgorithm;
 };
 

@@ -82,6 +82,17 @@ bool compressFile(const char *inputFile, const char *outputFile,
            opt.waveletSteps, waveletMs);
   }
 
+  // save the intermediate data to a file before quantizing
+  if (opt.saveBeforeQuantizingFilename != "") {
+    const char *filename = opt.saveBeforeQuantizingFilename.c_str();
+    if (!writeDataFile(filename, data, width, height)) {
+                       
+      printf("Failed to write intermediate data file \"%s\".\n", filename);
+    } else {
+      printf("Write intermediate data file \"%s\"\n", filename);
+    }
+  }
+
   // find the threshold value by sorting
   // XXX use quickselect to speed up
   float maxVal, minVal, maxAbsVal, *sortedAbsData;

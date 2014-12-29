@@ -33,6 +33,7 @@ void printHelp() {
          "                 1 and 32.  (default=%d)\n"
          "    -qalg <alorithm> : quantization algorithm: uniform, log, count, or lloyd\n"
          "                       (default = %s)\n"
+         "    -bq <filename> : before quantizing, save a copy of the data this file\n"
          "\n",
          DEFAULT_WAVELET_STEPS,
          DEFAULT_THRESHOLD_FRACTION,
@@ -49,6 +50,7 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
   opt.thresholdFraction = DEFAULT_THRESHOLD_FRACTION;
   opt.quantizeBits = DEFAULT_QUANTIZE_BITS;
   opt.quantizeAlgorithm = DEFAULT_QUANTIZE_ALGORITHM;
+  opt.saveBeforeQuantizingFilename = "";
 
   for (nextArg = 1; nextArg < argc; nextArg++) {
     const char *arg = argv[nextArg];
@@ -88,6 +90,11 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
         fprintf(stderr, "Invalid # quantize bits: \"%s\"\n", arg);
         return false;
       }
+    }
+
+    else if (!strcmp(arg, "-bq")) {
+      if (++nextArg >= argc) printHelp();
+      opt.saveBeforeQuantizingFilename = argv[nextArg];
     }
 
     else if (!strcmp(arg, "-qalg")) {
