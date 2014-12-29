@@ -8,6 +8,6 @@
 // reads that element to get the threshold. Sets max value and minimum value.
 float thresh_cpu(int count, float *data, float compRatio,
 		 int *nonzeroCount, float *maxVal, float *minVal,
-		 float **saveSortedAbsData);
+		 float **saveSortedAbsData = NULL);
 
 #endif // __THRESH_CPU__

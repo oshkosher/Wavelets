@@ -66,8 +66,10 @@ stepCount = abs(stepCount);  // We are using pos in the forward direction and ne
 
    haar_2d(size, data, false, stepCount);
 
-    float maxVal;
-    float threshold = thresh_cpu(size, data, compRatio, &maxVal);  // Calculate the threshold
+   float maxVal, minVal;
+   int nonzeroCount;
+   float threshold = thresh_cpu(size*size, data, compRatio, &nonzeroCount,
+                                &maxVal, &minVal);  // Calculate the threshold
     quant_unif_cpu(size, data, bits, threshold, maxVal);            // Apply threshold and uniform quantization
     //dquant_unif_cpu(size, data, bits, threshold, maxVal);      // reverse quantization
     haar_2d(size, data, true, stepCount);	           // Take the inverse transform

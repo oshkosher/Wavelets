@@ -123,7 +123,7 @@ PROTOBUF_DIR = /usr/local
 PROTOBUF_LIB = -L$(PROTOBUF_DIR)/lib -lprotobuf
 PROTOBUF_LIB_NVCC = $(PROTOBUF_LIB)
 PROTOC = protoc
-NVCC_OPT=--compiler-options -fPIC
+NVCC_SHLIB_OPT=--compiler-options -fPIC
 CLASSPATH_DIR=$(CURDIR)
 
 endif
@@ -137,7 +137,7 @@ NVCC = nvcc $(NVCC_OPT) $(NVCC_ARCH) $(NVCC_ARCH_SIZE) $(NVCC_COMPILER_BINDIR) $
 	$(NVCC) -c $<
 
 CUDA_OBJS=dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) data_io.$(OBJ_EXT) \
-  transpose_gpu.$(OBJ_EXT) nixtimer.$(OBJ_EXT)
+  transpose_gpu.$(OBJ_EXT) nixtimer.$(OBJ_EXT) octave_wrapper.$(OBJ_EXT)
 
 HAAR_OBJS=haar.$(OBJ_EXT) dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) \
   data_io.$(OBJ_EXT) transpose_gpu.$(OBJ_EXT) nixtimer.$(OBJ_EXT)
@@ -273,9 +273,14 @@ list_data: list_data.cc data_io.cc data_io.h
 histogram: histogram.cc data_io.cc data_io.h
 	$(CC) histogram.cc data_io.cc -o $@ $(LIBS)
 
-libwaveletcuda.so: $(CUDA_OBJS) Octave/LloydsAlgorithm/octave_wrapper.cu
-	$(NVCC) -I. -c Octave/LloydsAlgorithm/octave_wrapper.cu
-	$(NVCC) -o $@ --shared $(CUDA_OBJS) octave_wrapper.$(OBJ_EXT)
+libwaveletcuda.so: dwt_cpu.h dwt_cpu.cc dwt_gpu.h dwt_gpu.cu data_io.h data_io.cc \
+  transpose_gpu.h transpose_gpu.cu nixtimer.h nixtimer.cc \
+  Octave/LloydsAlgorithm/octave_wrapper.cu
+	rm -f $(CUDA_OBJS)
+	$(NVCC) $(NVCC_SHLIB_OPT) -I. -c dwt_cpu.cc dwt_gpu.cu data_io.cc \
+	  transpose_gpu.cu nixtimer.cc Octave/LloydsAlgorithm/octave_wrapper.cu
+	$(NVCC) -o $@ --shared $(CUDA_OBJS)
+	rm -f $(CUDA_OBJS)
 
 cudahaar.mex: Octave/LloydsAlgorithm/cudahaar.cc libwaveletcuda.so
 	$(MKOCT) -L. -lwaveletcuda Octave/LloydsAlgorithm/cudahaar.cc

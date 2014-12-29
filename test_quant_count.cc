@@ -78,10 +78,12 @@ int main() {
 
 
   std::vector<float> boundaries, codebook;
-  int bits = 4;
-  float maxVal;
+  int bits = 4, nonzeroCount;
+  float maxVal, minVal;
   double startTime, elapsed1, elapsed2, elapsed3, err;
-  float threshold = thresh_cpu(width, origData, .1, &maxVal);
+  float threshold = thresh_cpu(width*height, origData, .1, &nonzeroCount,
+                               &maxVal, &minVal);
+
   bool doComputeErr = false;
 
   for (int algorithm=1; algorithm <= 3; algorithm++) {

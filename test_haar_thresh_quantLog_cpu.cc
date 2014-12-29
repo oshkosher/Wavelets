@@ -75,8 +75,11 @@ int main_full(int argc, char **argv) {
 		std::cout << "data[idx]:" << data[idx] << std::endl;	
 	}
 
-	float maxVal, minVal;
-	float threshold = thresh_cpu(size, data, compRatio, &maxVal);  // Calculate the threshold
+        float maxVal, minVal;
+        int nonzeroCount;
+        float threshold = thresh_cpu(size*size, data, compRatio, &nonzeroCount,
+                                     &maxVal, &minVal);  // Calculate the threshold
+
     quant_log_cpu(size, data, bits, threshold, maxVal);            // Apply threshold and uniform quantization
 	dquant_log_cpu(size, data, bits, threshold, maxVal);      // reverse quantization
 	haar_2d(size, data, true, abs(stepCount));	           // Take the inverse transform
