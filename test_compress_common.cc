@@ -386,16 +386,20 @@ bool readQuantDataProtoBuf(const char *filename, FileData &f) {
 
 bool readQuantData(const char *filename, FILE *inf, FileData &f) {
   int count = f.width * f.height;
-  f.data = new float[count];
+  if (f.data) {
+    delete[] f.data;
+    f.data = NULL;
+  }
+  f.intData = new int[count];
 
   BitStreamReader bits(inf);
-  float *writePos = f.data;
-  float *endPos = f.data + count;
+  int *writePos = f.intData;
+  int *endPos = f.intData + count;
 
   while (writePos < endPos) {
     if (bits.isEmpty()) {
       printf("Ran out of data reading %s, expected %d entries, got %d\n",
-             filename, f.width * f.height, (int)(writePos - f.data));
+             filename, f.width * f.height, (int)(writePos - f.intData));
       return false;
     }
 
@@ -412,7 +416,7 @@ bool readQuantData(const char *filename, FILE *inf, FileData &f) {
     // printf("Read %d * %d\n", length, value);
     
     for (int i=0; i < length; i++)
-      *writePos++ = (float)value;
+      *writePos++ = value;
   }
   return true;
 }

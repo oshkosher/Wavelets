@@ -48,7 +48,7 @@ unsigned ceilLog2(unsigned x) {
 
 // Returns the maximum number of steps a DWT can take for a given input length
 int dwtMaximumSteps(int length) {
-  return ceilLog2(length) - 1;
+  return ceilLog2(length);
 }
 
 

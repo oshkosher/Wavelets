@@ -142,6 +142,8 @@ CUDA_OBJS=dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) data_io.$(OBJ_EXT) \
 HAAR_OBJS=haar.$(OBJ_EXT) dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) \
   data_io.$(OBJ_EXT) transpose_gpu.$(OBJ_EXT) nixtimer.$(OBJ_EXT)
 
+LLOYD_INC=-IOctave/LloydsAlgorithm/src/c++
+
 haar: $(HAAR_OBJS)
 	$(NVCC) $(HAAR_OBJS) -o $@
 
@@ -157,7 +159,7 @@ test_haar_cpu: test_haar_cpu.cc dwt_cpu.cc data_io.cc
 test_lloyd: test_lloyd.cc Octave/LloydsAlgorithm/src/c++/lloyds.cpp \
 	  Octave/LloydsAlgorithm/src/c++/lloyds.h
 	$(CC) test_lloyd.cc Octave/LloydsAlgorithm/src/c++/lloyds.cpp \
-	  -IOctave/LloydsAlgorithm/src/c++ -o $@
+	  $(LLOYD_INC) -o $@
 
 test_haar_thresh_quantUnif_cpu: test_haar_thresh_quantUnif_cpu.cc \
   dwt_cpu.cc dwt_cpu.h data_io.cc data_io.h nixtimer.cc nixtimer.h \
@@ -203,26 +205,48 @@ test_transform: test_transform.cu
 
 test_compress: test_compress_cpu
 
-test_compress_cpu: test_compress_cpu.cc test_compress_common.cc \
-	dwt_cpu.cc data_io.cc \
-	quant_unif_cpu.cc quant_log_cpu.cc nixtimer.cc \
-	dquant_unif_cpu.cc dquant_log_cpu.cc thresh_cpu.cc \
-	dwt_cpu.h data_io.h \
-	quant_unif_cpu.h quant_log_cpu.h \
-	dquant_unif_cpu.h dquant_log_cpu.h thresh_cpu.h \
-	bit_stream.h nixtimer.h rle.h param_string.h param_string.cc \
-	quant_count.h quant_count.cc quant.h quant.cc \
-	wavelet_compress.pb.h wavelet_compress.pb.cc \
-	Octave/LloydsAlgorithm/src/c++/lloyds.cpp \
-	Octave/LloydsAlgorithm/src/c++/lloyds.h
-	$(CC) test_compress_cpu.cc test_compress_common.cc \
-	  dwt_cpu.cc thresh_cpu.cc \
-	  quant_unif_cpu.cc quant_log_cpu.cc quant_count.cc quant.cc \
-	  dquant_unif_cpu.cc dquant_log_cpu.cc param_string.cc \
-	  data_io.cc nixtimer.cc wavelet_compress.pb.cc \
-	  Octave/LloydsAlgorithm/src/c++/lloyds.cpp \
-	  -IOctave/LloydsAlgorithm/src/c++ \
-	  -o $@ $(LIBS) $(PROTOBUF_LIB)
+test_compress_cpu.o: test_compress_cpu.cc test_compress_common.h \
+	  dwt_cpu.h nixtimer.h thresh_cpu.h quant.h \
+	  Octave/LloydsAlgorithm/src/c++/lloyds.h wavelet_compress.pb.h
+	$(CC) $(LLOYD_INC) -c $<
+
+test_compress_common.o: test_compress_common.cc test_compress_common.h\
+	  rle.h param_string.h
+	$(CC) -c $<
+
+dwt_cpu.o: dwt_cpu.cc dwt_cpu.h nixtimer.h
+	$(CC) -c $<
+
+data_io.o: data_io.cc data_io.h
+	$(CC) -c $<
+
+nixtimer.o: nixtimer.cc nixtimer.h
+	$(CC) -c $<
+
+thresh_cpu.o: thresh_cpu.cc thresh_cpu.h
+	$(CC) -c $<
+
+param_string.o: param_string.cc param_string.h
+	$(CC) -c $<
+
+quant.o: quant.cc quant.h nixtimer.h
+	$(CC) -c $<
+
+wavelet_compress.pb.o: wavelet_compress.pb.cc wavelet_compress.pb.h
+	$(CC) -c $<
+
+lloyds.o: Octave/LloydsAlgorithm/src/c++/lloyds.cpp \
+	  Octave/LloydsAlgorithm/src/c++/lloyds.h
+	$(CC) -c -IOctave/LloydsAlgorithm/src/c++ $< -o $@
+
+TEST_COMPRESS_CPU_OBJS=test_compress_cpu.o \
+	test_compress_common.o dwt_cpu.o data_io.o \
+	nixtimer.o thresh_cpu.o param_string.o \
+	quant.o wavelet_compress.pb.o \
+	lloyds.o
+
+test_compress_cpu: $(TEST_COMPRESS_CPU_OBJS)
+	$(CC) $(TEST_COMPRESS_CPU_OBJS) -o $@ $(LIBS) $(PROTOBUF_LIB)
 
 test_compress_gpu.$(OBJ_EXT): test_compress_gpu.cu wavelet_compress.pb.h quant.h
 
@@ -276,6 +300,6 @@ sendscu: .sendscu
 	touch .sendscu
 
 clean:
-	rm -f *.class *.obj *.o *.exp *.lib *.pdb *.so *~ $(EXECS) \
+	rm -f *.class *.obj *.o *.exp *.lib *.pdb *.so *.gch *~ $(EXECS) \
 	  convert libwaveletcuda.so cudahaar.oct \
 	  wavelet_compress.pb.{h,cc}

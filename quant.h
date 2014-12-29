@@ -71,6 +71,10 @@ class QuantizationLooper {
   size_t inputSize;
 
  public:
+  QuantizationLooper(Quantizer *q = NULL) {
+    init(q);
+  }
+
   void init(Quantizer *q) {
     quantizer = q;
     executeTime = 0;
@@ -92,6 +96,7 @@ class QuantizationLooper {
       for (size_t i=0; i < length; i++) {
 	float originalValue = dataIn[i];
 	dataOut[i] = quantizer->quant(originalValue);
+        // printf("%f\t%d\n", dataIn[i], dataOut[i]);
 	float restoredValue = quantizer->dequant(dataOut[i]);
 	// printf("%g\n", fabsf(originalValue - restoredValue));
 	float err = restoredValue - originalValue;
@@ -141,6 +146,12 @@ class QuantUniform {
   float scale, invScale;
 
  public:
+  QuantUniform() {}
+
+  QuantUniform(int bits_, float threshold_, float maxVal_) {
+    init(bits_, threshold_, maxVal_);
+  }
+
   HD void init(int bits_, float threshold_, float maxVal_) {
     bits = bits_;
     threshold = threshold_;
@@ -195,6 +206,12 @@ class QuantLog {
   float threshold, invThresh, maxVal, lmax, lmaxInv, dqScale;
 
  public:
+  QuantLog() {}
+  
+  QuantLog(int bits_, float threshold_, float maxVal_) {
+    init(bits_, threshold_, maxVal_);
+  }
+
   HD void init(int bits_, float threshold_, float maxVal_) {
     bits = bits_;
     threshold = threshold_;
@@ -237,26 +254,40 @@ class QuantLog {
 
 
 class QuantCodebook {
-  std::vector<float> boundaries, codebook;
+  float lastBoundary;
 
  public:
-  QuantCodebook(const std::vector<float> boundaries_,
-		const std::vector<float> codebook_)
-    : boundaries(boundaries_), codebook(codebook_) {}
+  std::vector<float> boundaries, codebook;
+
+  QuantCodebook() {}
+
+  QuantCodebook(const std::vector<float> &boundaries_,
+		const std::vector<float> &codebook_) {
+    init(boundaries_, codebook_);
+  }
+
+  void init(const std::vector<float> &boundaries_,
+	    const std::vector<float> &codebook_) {
+    boundaries = boundaries_;
+    codebook = codebook_;
+    lastBoundary = boundaries[boundaries.size()-1];
+  }
+
+
+  // Generate boundaries and codebook entries based on bins with
+  // equal numbers of values in each.
+  void initCountBins(int count, float *data, int bits, float thresh);
 
   int quant(float x) const {
 
-    int sign = 1;
-    if (x < 0) {
-      sign = -1;
-      x = -x;
-    }
-
     // if the x is >= the end of the last bin, return the last bin
+    if (x >= lastBoundary) return boundaries.size();
+    /*
     int lastPos = (int)boundaries.size()-1;
     float lastBound = boundaries[lastPos];
     if (x >= lastBound)
-      return sign * (lastPos+1);
+      return lastPos+1;
+    */
 
     // Find the first boundary that is greater than x.
     // For example, if the boundaries are:
@@ -266,22 +297,17 @@ class QuantCodebook {
     // Given .5, it returns 0 because 3 > .5
     // Given 5, it returns 2, because 10 > 5
     // Given 100, it return 3, because no entry is > 100
-  
-    std::vector<float>::const_iterator pos = 
-      std::upper_bound(boundaries.begin(), boundaries.end(), x);
-    int bin = (int) (pos - boundaries.begin());
 
-    return sign * bin;
+    int bin = std::upper_bound(boundaries.begin(), boundaries.end(), x)
+      - boundaries.begin();
+
+    return bin;
   }
 
   float dequant(int x) const {
-    assert(abs(x) < (int)codebook.size());
+    assert(x >= 0 && x < (int)codebook.size());
 
-    if (x < 0) {
-      return - codebook[-x];
-    } else {
-      return codebook[x];
-    }
+    return codebook[x];
   }
   
 };

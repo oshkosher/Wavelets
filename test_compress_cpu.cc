@@ -1,11 +1,6 @@
 #include "test_compress_common.h"
-#include "dquant_log_cpu.h"
-#include "dquant_unif_cpu.h"
 #include "dwt_cpu.h"
 #include "nixtimer.h"
-#include "quant_count.h"
-#include "quant_log_cpu.h"
-#include "quant_unif_cpu.h"
 #include "thresh_cpu.h"
 #include "quant.h"
 #include "lloyds.h"
@@ -13,11 +8,10 @@
 bool compressFile(const char *inputFile, const char *outputFile, Options &opt);
 bool decompressFile(const char *inputFile, const char *outputFile,
 		    Options &opt);
-void applyLloydQuantization(float *inputData, unsigned count, 
-                            int *quantizedData, float threshold,
-                            float maxAbsVal, int bits,
-                            std::vector<float> &quantBinBoundaries,
-                            std::vector<float> &quantBinValues);
+void computeLloydQuantization(const float *inputData, int count, 
+			      float minVal, float maxVal, int bits,
+			      std::vector<float> &quantBinBoundaries,
+			      std::vector<float> &quantBinValues);
 
 
 int main(int argc, char **argv) {
@@ -63,6 +57,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   // pad the data to make it a square power of two, if necessary
   int longSide = width > height ? width : height;
   int size = dwt_padded_length(longSide, 0, true);
+  int count = size * size;
   if (width != size || height != size) {
     startTime = NixTimer::time();
     float *paddedData = dwt_pad_2d(height, width, width, data,
@@ -84,13 +79,22 @@ bool compressFile(const char *inputFile, const char *outputFile,
   float waveletMs = haar_2d(size, data, false, opt.waveletSteps);
   printf("Wavelet transform: %.2f ms\n", waveletMs);
 
-  // find the threshold value
-  float maxVal, *sortedAbsData = NULL;
+  // find the threshold value by sorting
+  // XXX use quickselect to speed up
+  float maxVal, minVal, maxAbsVal, *sortedAbsData;
+  int nonzeroCount;
+  // float *sortedAbsData = NULL;
   startTime = NixTimer::time();
-  float threshold = thresh_cpu(size, data, opt.thresholdFraction,
-                               &maxVal, &sortedAbsData);
+  float threshold = thresh_cpu(count, data, opt.thresholdFraction,
+			       &nonzeroCount, &maxVal, &minVal,
+			       &sortedAbsData);
+			       
+  maxAbsVal = sortedAbsData[count-1];
+  float *nonzeroData = sortedAbsData + count - nonzeroCount;
+
   elapsed = NixTimer::time() - startTime;
-  printf("threshold = %g: %.2f ms\n", threshold, elapsed*1000);
+  printf("threshold = %g, min = %g, max = %g: %.2f ms\n",
+	 threshold, minVal, maxVal, elapsed*1000);
 
   std::vector<float> quantBinBoundaries;
   std::vector<float> quantBinValues;
@@ -103,10 +107,8 @@ bool compressFile(const char *inputFile, const char *outputFile,
   case QUANT_ALG_UNIFORM:
     // quant_unif_cpu(size, data, opt.quantizeBits, threshold, maxVal);
     {
-      QuantUniform qunif;
-      qunif.init(opt.quantizeBits, threshold, maxVal);
-      QuantizationLooper<QuantUniform> qloop;
-      qloop.init(&qunif);
+      QuantUniform qunif(opt.quantizeBits, threshold, maxAbsVal);
+      QuantizationLooper<QuantUniform> qloop(&qunif);
       quantizedData = new int[size*size];
       qloop.quantize(size*size, data, quantizedData, true);
       printf("Quantization error: %g\n", qloop.getError());
@@ -116,10 +118,8 @@ bool compressFile(const char *inputFile, const char *outputFile,
   case QUANT_ALG_LOG:
     // quant_log_cpu(size, data, opt.quantizeBits, threshold, maxVal);
     {
-      QuantLog qlog;
-      qlog.init(opt.quantizeBits, threshold, maxVal);
-      QuantizationLooper<QuantLog> qloop;
-      qloop.init(&qlog);
+      QuantLog qlog(opt.quantizeBits, threshold, maxAbsVal);
+      QuantizationLooper<QuantLog> qloop(&qlog);
       quantizedData = new int[size*size];
       qloop.quantize(size*size, data, quantizedData, true);
       printf("Quantization error: %g\n", qloop.getError());
@@ -127,18 +127,37 @@ bool compressFile(const char *inputFile, const char *outputFile,
     break;
 
   case QUANT_ALG_COUNT:
+    /*
     quant_count_init_sorted_cpu(size*size, sortedAbsData, opt.quantizeBits,
 				threshold, quantBinBoundaries, quantBinValues);
     quant_boundaries_array(quantBinBoundaries, size*size, data);
+    */
+    {
+      QuantCodebook qcb;
+      qcb.initCountBins(count, data, opt.quantizeBits, threshold);
+      quantBinBoundaries = qcb.boundaries;
+      quantBinValues = qcb.codebook;
+      QuantizationLooper<QuantCodebook> qloop(&qcb);
+      quantizedData = new int[count];
+      qloop.quantize(count, data, quantizedData, true);
+      printf("Quantization error: %g\n", qloop.getError());
+    }
     break;
 
-  case QUANT_ALG_LLOYD:
-    quantizedData = new int[size*size];
-    applyLloydQuantization(data, size*size, quantizedData, threshold, maxVal,
-                           opt.quantizeBits, quantBinBoundaries,
-                           quantBinValues);
-    delete[] data;
-    data = NULL;
+  case QUANT_ALG_LLOYD: 
+    {
+      computeLloydQuantization(nonzeroData, nonzeroCount,
+			       threshold, maxAbsVal, opt.quantizeBits,
+			       quantBinBoundaries, quantBinValues);
+      QuantCodebook qcb(quantBinBoundaries, quantBinValues);
+      QuantizationLooper<QuantCodebook> qloop(&qcb);
+      quantizedData = new int[count];
+      qloop.quantize(count, data, quantizedData, true);
+      printf("Quantization error: %g\n", qloop.getError());
+      
+      delete[] data;
+      data = NULL;
+    }
     break;
 
   default:
@@ -149,8 +168,6 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   elapsed = NixTimer::time() - startTime;
   printf("Apply threshold / quantize: %.2f ms\n", elapsed*1000);
-
-  delete[] sortedAbsData;
 
   // write the quantized data to a file
   FileData fileData(opt, data, quantizedData, size, size);
@@ -184,6 +201,7 @@ bool decompressFile(const char *inputFile, const char *outputFile,
 		    Options &opt) {
 
   FileData f;
+  int *inputData;
   float *data;
   int width, height;
   double firstStartTime, startTime, elapsed;
@@ -198,32 +216,57 @@ bool decompressFile(const char *inputFile, const char *outputFile,
   printf("Read %dx%d data file: %.2f ms\n", f.width, f.height,
 	 (NixTimer::time() - startTime) * 1000);
 
-  data = f.data;
+  inputData = f.intData;
   width = f.width;
   height = f.height;
 
-  assert(data != NULL && width > 0 && height > 0);
+  assert(inputData != NULL && width > 0 && height > 0);
   assert(width == height);
   int size = width;
+  int count = width * height;
+  data = new float[count];
 
   // de-quantize the data
   startTime = NixTimer::time();
   switch (f.quantizeAlgorithm) {
   case QUANT_ALG_UNIFORM:
-    dquant_unif_cpu(size, data, f.quantizeBits, f.threshold, f.quantMaxVal);
+    // dquant_unif_cpu(size, data, f.quantizeBits, f.threshold, f.quantMaxVal);
+    {
+      QuantUniform qunif(f.quantizeBits, f.threshold, f.quantMaxVal);
+      QuantizationLooper<QuantUniform> qloop(&qunif);
+      qloop.dequantize(count, inputData, data);
+    }
     break;
+
   case QUANT_ALG_LOG:
-    dquant_log_cpu(size, data, f.quantizeBits, f.threshold, f.quantMaxVal);
+    // dquant_log_cpu(size, data, f.quantizeBits, f.threshold, f.quantMaxVal);
+    {
+      QuantLog qunif(f.quantizeBits, f.threshold, f.quantMaxVal);
+      QuantizationLooper<QuantLog> qloop(&qunif);
+      qloop.dequantize(count, inputData, data);
+    }
     break;
+
   case QUANT_ALG_COUNT:
   case QUANT_ALG_LLOYD:
-    dequant_codebook_array(f.quantBinValues, size*size, data);
+    // dequant_codebook_array(f.quantBinValues, size*size, data);
+    {
+      QuantCodebook qcb;
+      qcb.init(f.quantBinBoundaries, f.quantBinValues);
+      QuantizationLooper<QuantCodebook> qloop(&qcb);
+      qloop.dequantize(count, inputData, data);
+    }
+    
     break;
+
   default:
     fprintf(stderr, "Quantization algorithm %d not found.\n",
             (int)f.quantizeAlgorithm);
     return false;
   }
+
+  delete[] inputData;
+  f.intData = NULL;
 
   printf("Dequantize: %.2f ms\n", (NixTimer::time() - startTime) * 1000);
 
@@ -244,37 +287,56 @@ bool decompressFile(const char *inputFile, const char *outputFile,
 }
 
 
-void applyLloydQuantization(float *inputData, unsigned count, 
-                            int *quantizedData, float threshold,
-                            float maxAbsVal, int bits,
-                            std::vector<float> &quantBinBoundaries,
-                            std::vector<float> &quantBinValues) {
+/*
+  Distribute N bins like this:
 
-  int binCount = 1 << bits;
+                                    1 bin
+                                      |
+    N/2-1 bins    1 bin   N/2-1 bins  v
+  ---negatives--+-------+--positives--x
+                ^   0   ^             ^
+                |       |             |
+          -thresh       +thresh      max
+
+  The negative and positive bins will be mirrored.
+
+  For example, if N = 8, thresh=1, and max=10, one possible
+  set of positive thresholds is: 3, 6
+  And the total set of thresholds will be:
+    -6 -3 -1 1 3 6 10
+  Possible codebook values:
+   -8 -5 -2 0 2 5 8 10
+*/
+void computeLloydQuantization(const float *inputData, int count, 
+			      float minVal, float maxVal, int bits,
+			      std::vector<float> &quantBinBoundaries,
+			      std::vector<float> &quantBinValues) {
+
+  int binCount = (1 << (bits - 1)) - 1;
   quantBinBoundaries.clear();
   quantBinValues.clear();
   float *binBoundaries = new float[binCount-1];
   float *binValues = new float[binCount];
 
-  assert(maxAbsVal > 0);
-  assert(threshold >= 0);
-  assert(threshold < maxAbsVal);
+  assert(minVal > 0);
+  assert(maxVal > minVal);
 
   // use log quantization to create an initial codebook
-  QuantLog qlog;
-  qlog.init(bits, threshold, maxAbsVal);
-  int half = binCount/2;
-  binValues[half-1] = threshold / -2;
-  binValues[half] = threshold / 2;
-  for (int i=1; i < half; i++) {
-    float dq = qlog.dequant(i);
-    binValues[half+i] = dq;
-    binValues[half-i-1] = -dq;
+  QuantLog qlog(bits, minVal, maxVal);
+  for (int i=0; i < binCount; i++) {
+    float dq = qlog.dequant(i+1);
+    binValues[i] = dq;
   }
 
+  /*
   // apply the threshold
-  for (unsigned i=0; i < count; i++)
-    if (inputData[i] <= threshold) inputData[i] = 0;
+  float *data = new float[count];
+  for (unsigned i=0; i < count; i++) {
+    float f = inputData[i];
+    if (fabsf(f) <= threshold) f = 0;
+    data[i] = f;
+  }
+  */
 
   /*
   for (int i=0; i < binCount; i++) {
@@ -282,13 +344,14 @@ void applyLloydQuantization(float *inputData, unsigned count,
   }
   */
 
+
   // fine-tune the codebook and bin boundaries using Lloyd's algorithm.
   // This also applies the quantization to each value, writing the values
   // to quantizedData[]
   float dist, reldist;
+  unsigned *quantizedData = new unsigned[count];
   lloyd(inputData, count, binValues, binCount, binBoundaries, dist,
-        reldist, (unsigned*) quantizedData);
-  // printf("dist = %f, reldist = %f\n", dist, reldist);
+        reldist, quantizedData);
 
   // sanity-check
   for (int i=0; i < binCount-1; i++) {
@@ -302,21 +365,46 @@ void applyLloydQuantization(float *inputData, unsigned count,
              i, binBoundaries[i], i, binValues[i], i+1, binValues[i+1]);
     }
   }
-  
-  for (int i=0; i < binCount; i++) {
-    quantBinValues.push_back(binValues[i]);
-    // printf("Bin %3d. %f\n", i, binValues[i]);
-    if (i == binCount-1) break;
-    quantBinBoundaries.push_back(binBoundaries[i]);
-    // printf("  %f\n", binBoundaries[i]);
+
+  // negative bins
+  quantBinValues.push_back(-binValues[binCount-1]);
+
+  for (int i=binCount-2; i >= 0; i--) {
+    quantBinBoundaries.push_back(-binBoundaries[i]);
+    quantBinValues.push_back(-binValues[i]);
   }
 
+  // zero bin
+  quantBinBoundaries.push_back(-minVal);
+  quantBinValues.push_back(0);
+  quantBinBoundaries.push_back(minVal);
+
+  // positive bins
+  for (int i=0; i < binCount-1; i++) {
+    quantBinValues.push_back(binValues[i]);
+    quantBinBoundaries.push_back(binBoundaries[i]);
+  }    
+  quantBinValues.push_back(binValues[binCount-1]);
+
+  // top bin
+  quantBinBoundaries.push_back(maxVal);
+  quantBinValues.push_back(maxVal);
+
   /*
-  for (unsigned i=0; i < count; i++) {
-    printf("%f\t%d\n", inputData[i], quantizedData[i]);
+  for (size_t i = 0; ; i++) {
+    printf("Bin %3d. %f\n", (int)i, quantBinValues[i]);
+    if (i == quantBinBoundaries.size()) break;
+    printf("  %f\n", quantBinBoundaries[i]);
   }
   */
 
+  /*
+  for (int i=0; i < count; i++) {
+    printf("%g\t%d\n", inputData[i], quantizedData[i]);
+  }
+  */
+  
+  delete[] quantizedData;
   delete[] binBoundaries;
   delete[] binValues;
 }
