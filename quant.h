@@ -146,9 +146,9 @@ class QuantUniform {
   float scale, invScale;
 
  public:
-  QuantUniform() {}
+  HD QuantUniform() {}
 
-  QuantUniform(int bits_, float threshold_, float maxVal_) {
+  HD QuantUniform(int bits_, float threshold_, float maxVal_) {
     init(bits_, threshold_, maxVal_);
   }
 
@@ -206,9 +206,9 @@ class QuantLog {
   float threshold, invThresh, maxVal, lmax, lmaxInv, dqScale;
 
  public:
-  QuantLog() {}
+  HD QuantLog() {}
   
-  QuantLog(int bits_, float threshold_, float maxVal_) {
+  HD QuantLog(int bits_, float threshold_, float maxVal_) {
     init(bits_, threshold_, maxVal_);
   }
 
