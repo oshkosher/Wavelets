@@ -186,7 +186,7 @@ image_error: image_error.cc data_io.cc
 test_rle: test_rle.cc rle.h data_io.cc data_io.h huffman.h huffman.cc
 	$(CC) test_rle.cc huffman.cc data_io.cc -o $@ $(LIBS)
 
-test_huffman: test_huffman.cc huffman.cc huffman.h
+test_huffman: test_huffman.cc huffman.cc huffman.h bit_stack.h
 	$(CC) test_huffman.cc huffman.cc -o $@ $(LIBS)
 
 test_bit_stream: test_bit_stream.cc bit_stream.h nixtimer.h nixtimer.cc
