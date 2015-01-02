@@ -9,6 +9,36 @@
 #include "bit_stream.h"
 
 
+class HuffmanDecoder {
+
+  // Table used to decode bits
+  // This is an array of pairs of integers:
+  // Offset 0:  [left  ] [right ]
+  // Offset 2:  [left  ] [right ]
+  // Offset 4:  [left  ] [right ]
+  //   ...
+  // If the left entry is -1, then this is a leaf node from the tree, and
+  // the right entry contains the value.
+  // Otherwise, if the current bit is 0, use the left entry to get the
+  // offset of the next pair of entries, otherwise the bit is 1, and
+  // use the right entry to get the next offset.
+  std::vector<int> table;
+
+ public:
+  void init(const std::vector<int> &table_) {
+    table = table_;
+  }
+
+  // Read up to 'count' integers from bitStream. Return the number read.
+  int decodeFromStream(int *values, int count, BitStreamReader *bitStream);
+
+  void getDecoderTable(std::vector<int> &table_) {
+    table_ = table;
+  }
+
+};
+
+
 class Huffman {
  public:
 
@@ -17,7 +47,14 @@ class Huffman {
     assert(counts.size() == 0);
     counts.resize(size, 0);
     computed = false;
+    nodeStorage = NULL;
   }
+
+  ~Huffman() {
+    if (nodeStorage) delete[] nodeStorage;
+  }
+
+  int getSize() {return size;}
 
   // increase the count for one entry by one
   void increment(int value) {
@@ -44,16 +81,26 @@ class Huffman {
   int encodedLength(int value);
 
   int getLongestEncodingLength() {return longestBitString;}
-  int getLongestUsedEncodingLength() {return longestUsedBitString;}
 
   void encode(int value, int &length, unsigned bits[]);
   void decode(unsigned bits[], int &value);
 
-  void encodeToStream(int value, BitStreamWriter *bitStream);
-  int decodeFromStream(BitStreamReader *bitStream);
+  // Write values[0..count-1] encoded to bitStream.
+  void encodeToStream(BitStreamWriter *bitStream, const int *values, int count);
+
+  // Read up to 'count' integers from bitStream. Return the number read.
+  int decodeFromStream(int *values, int count, BitStreamReader *bitStream);
+
+  // print the frequency and encoding for each value
+  void printEncoding();
+
+  // fill in the a table that can be used to initialize a decoder table
+  void getDecoderTable(std::vector<int> &table) {
+    decoder.getDecoderTable(table);
+  }
 
   struct Node {
-    int count, value;
+    int value, count;
     int nodeId;   // order in a breadth-first traversal of all nodes;
 
     Node *left, *right, *parent;
@@ -97,25 +144,33 @@ class Huffman {
   // computeHuffmanCoding has been called
   bool computed;
 
-  // Table used to decode bits
-  // This is an array of pairs of integers:
-  // Offset 0:  [left  ] [right ]
-  // Offset 2:  [left  ] [right ]
-  // Offset 4:  [left  ] [right ]
-  //   ...
-  // If the left entry is -1, then this is a leaf node from the tree, and
-  // the right entry contains the value.
-  // Otherwise, if the current bit is 0, use the left entry to get the
-  // offset of the next pair of entries, otherwise the bit is 1, and
-  // use the right entry to get the next offset.
-  int *decodeTable;
+  // Array of all the nodes. May contain unused entries.
+  // The first 'size' nodes are leaf nodes, the rest are interior nodes.
+  // Only computeHuffmanCoding() should use this; everything else should
+  // use 'nodes'.
+  Node *nodeStorage;
+
+  // All used nodes
+  // nodes.size() = 2 * values.size() - 1
+  std::vector<Node*> nodes;
+
+  Node *root;
+
+  // All nodes with nonzero counts, in decreasing count order.
+  // Consider this the 'owner' of all the Node* objects.
+  // When this is destroyed, destroy the nodes.
+  std::vector<Node*> values;
+
+  HuffmanDecoder decoder;
 
   /*
     Table used to encode data.
-    The first size*2 entries are pairs of entries for each value:
+    The first size*2 entries are pairs of entries for each value.
        encodeTable[i*2] = # of bits used to encode value i
        encodeTable[i*2+1] = index in encodeTable of the first word
                             of bits enocoding value i
+
+       If the value's count is 0 these will be 0.
 
     For example, if the encoding for 3 takes 70 bits:
        encodeTable[6] = 70
@@ -125,25 +180,21 @@ class Huffman {
        encodeTable[42] = bits 32..63
        encodeTable[43] = bits 64..69
   */
-  std::vector<int> encodeTable;
+  std::vector<unsigned> encodeTable;
 
   int longestBitString;  // length of the longest encoding
-  int longestUsedBitString;  // length of the longest encoding of a value
-                             // that appeared in the input data
 
-  void buildTables(Node *root);
-
-  // Put the nodes (leaf and internal) in order
-  void orderNodes(Node *root, std::vector<Node*> &nodeTable,
-		  std::vector<Node*> &valueTable);
+  // Put the nodes (leaf and internal) in BFS order
+  void orderNodes(std::vector<Node*> &orderedNodes);
 
   // fill in encodeTable
-  void computeEncodeTable(Node *root,
-			  const std::vector<Node*> &valueTable);
+  void computeEncodeTable();
+
+  // fill in decodeTable
+  void computeDecodeTable();
 
   // traverse the tree, filling in Node::encoding for each node.
   void computeEncodedBits(Node *node, BitStack &bits);
 };
-
 
 #endif // __HUFFMAN_H__

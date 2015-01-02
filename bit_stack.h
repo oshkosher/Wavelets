@@ -35,12 +35,17 @@ class BitStack {
   int pop() {
     if (bitOffset == 0) {
       if (vec.empty()) return 0;
-      bitOffset = 31;
+      bitOffset = 32;
       vec.pop_back();
     }
     
-    int bit = vec[vec.size()-1] & (1u << bitOffset);
     bitOffset--;
+
+    unsigned mask = 1u << bitOffset;
+    int bit = vec[vec.size()-1] & mask;
+
+    // clear the bit
+    vec[vec.size()-1] &= ~mask;
 
     // make sure it's just 1 or 0
     return bit != 0;

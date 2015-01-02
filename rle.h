@@ -72,11 +72,12 @@ class EncodeRunLength {
 
   void data(int value) {
     // printf("encode value %d\n", value);
-    if (value == prev && length < 255) {
+    if (value == prev && length < getMaxLen()) {
       length++;
     } else {
       if (length > 0) {
         // printf("output %d, len %d\n", prev, length);
+	// printf("%d\n", length);
         sink->data(prev, length);
 	outputCount++;
       }
@@ -90,6 +91,9 @@ class EncodeRunLength {
     outputCount++;
     sink->end();
   }
+
+  static int getMaxLen() {return (1 << getBitSize()) - 1;}
+  static int getBitSize() {return 8;}
 
   int getOutputCount() {return outputCount;}
 };

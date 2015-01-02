@@ -206,12 +206,12 @@ test_transform: test_transform.cu
 test_compress: test_compress_cpu
 
 test_compress_cpu.o: test_compress_cpu.cc test_compress_common.h \
-	  dwt_cpu.h nixtimer.h thresh_cpu.h quant.h \
+	  dwt_cpu.h nixtimer.h thresh_cpu.h quant.h bit_stream.h huffman.h \
 	  Octave/LloydsAlgorithm/src/c++/lloyds.h wavelet_compress.pb.h
 	$(CC) $(LLOYD_INC) -c $<
 
 test_compress_common.o: test_compress_common.cc test_compress_common.h\
-	  rle.h param_string.h
+	  rle.h param_string.h bit_stream.h
 	$(CC) -c $<
 
 dwt_cpu.o: dwt_cpu.cc dwt_cpu.h nixtimer.h
@@ -232,6 +232,9 @@ param_string.o: param_string.cc param_string.h
 quant.o: quant.cc quant.h nixtimer.h
 	$(CC) -c $<
 
+huffman.o: huffman.cc huffman.h bit_stream.h bit_stack.h
+	$(CC) -c $<
+
 wavelet_compress.pb.o: wavelet_compress.pb.cc wavelet_compress.pb.h
 	$(CC) -c $<
 
@@ -243,7 +246,7 @@ TEST_COMPRESS_CPU_OBJS=test_compress_cpu.o \
 	test_compress_common.o dwt_cpu.o data_io.o \
 	nixtimer.o thresh_cpu.o param_string.o \
 	quant.o wavelet_compress.pb.o \
-	lloyds.o
+	lloyds.o huffman.o
 
 test_compress_cpu: $(TEST_COMPRESS_CPU_OBJS)
 	$(CC) $(TEST_COMPRESS_CPU_OBJS) -o $@ $(LIBS) $(PROTOBUF_LIB)

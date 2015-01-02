@@ -437,7 +437,7 @@ bool writeQuantData(const char *filename, FILE *outf, FileData &f) {
 
   // this object takes (length,value) run-length pairs and writes
   // them in binary to the given bit stream
-  WriteRLEPairsToBitStream rleToBits(&bits, f.quantizeBits);
+  WriteRLEPairsToBitStream rleToBits(&bits, f.quantizeBits, EncodeRunLength<WriteRLEPairsToBitStream>::getBitSize());
 
   // this object takes data values as input, and passes (length,value)
   // run-length pairs to the rleToBits object
@@ -460,7 +460,35 @@ bool writeQuantData(const char *filename, FILE *outf, FileData &f) {
   rleEncoder.end();
 
   printf("%d input values, %d RLE output pairs\n", count,
-  rleEncoder.getOutputCount());
+	 rleEncoder.getOutputCount());
+  return true;
+}
+
+
+bool writeQuantData_raw(const char *filename, FILE *outf, FileData &f) {
+
+  // write the data
+  BitStreamWriter bits(outf);
+  int count = f.width*f.height;
+
+  if (f.intData) {
+    for (int i=0; i < count; i++) {
+      int x = f.intData[i];
+      bits.write(x, f.quantizeBits);
+    }
+  } else {
+    for (int i=0; i < count; i++) {
+      int x = (int) f.data[i];
+      bits.write(x, f.quantizeBits);
+    }
+  }
+    
+  bits.flush();
+
+  int bytes = (bits.size() + 31) / 32 * 4;
+  printf("%d raw bits = %d bytes written\n",
+	 (int)bits.size(), bytes);
+
   return true;
 }
 

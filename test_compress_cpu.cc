@@ -4,6 +4,8 @@
 #include "thresh_cpu.h"
 #include "quant.h"
 #include "lloyds.h"
+#include "bit_stream.h"
+#include "huffman.h"
 
 bool compressFile(const char *inputFile, const char *outputFile, Options &opt);
 bool decompressFile(const char *inputFile, const char *outputFile,
@@ -12,7 +14,7 @@ void computeLloydQuantization(const float *inputData, int count,
 			      float minVal, float maxVal, int bits,
 			      std::vector<float> &quantBinBoundaries,
 			      std::vector<float> &quantBinValues);
-
+void testHuffman(const int data[], int count, int bitCount);
 
 int main(int argc, char **argv) {
 
@@ -163,6 +165,9 @@ bool compressFile(const char *inputFile, const char *outputFile,
       computeLloydQuantization(nonzeroData, nonzeroCount,
 			       threshold, maxAbsVal, opt.quantizeBits,
 			       quantBinBoundaries, quantBinValues);
+      elapsed = NixTimer::time() - startTime;
+      printf("Lloyd quantization %.2f ms\n", elapsed*1000);
+      startTime = NixTimer::time();
       QuantCodebook qcb(quantBinBoundaries, quantBinValues);
       QuantizationLooper<QuantCodebook> qloop(&qcb);
       quantizedData = new int[count];
@@ -182,6 +187,9 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   elapsed = NixTimer::time() - startTime;
   printf("Quantize: %.2f ms\n", elapsed*1000);
+
+  // Try out huffman encoding
+  // testHuffman(quantizedData, count, opt.quantizeBits);
 
   // write the quantized data to a file
   FileData fileData(opt, data, quantizedData, size, size);
@@ -424,3 +432,60 @@ void computeLloydQuantization(const float *inputData, int count,
 }
 
   
+void testHuffman(const int data[], int count, int bitCount) {
+  double startTime = NixTimer::time();
+  int valueCount = 1 << bitCount;
+  Huffman huff(valueCount);
+  
+  for (int i=0; i < count; i++) {
+    huff.increment(data[i]);
+  }
+
+  huff.computeHuffmanCoding();
+  double elapsed = NixTimer::time() - startTime;
+  printf("Huffman build table %.3f ms\n", elapsed*1000);
+
+  // huff.printEncoding();
+  
+  startTime = NixTimer::time();
+  FILE *f = fopen("huff.out", "wb");
+  BitStreamWriter bitWriter(f);
+  huff.encodeToStream(&bitWriter, data, count);
+  bitWriter.flush();
+  fclose(f);
+  // printf("%llu bits written\n", (long long unsigned) bitWriter.size());
+  size_t bitsWritten = bitWriter.size();
+  int bytesWritten = (bitsWritten + 31) / 32 * 4;
+
+  long long unsigned totalBits = 0;
+  for (int i=0; i < valueCount; i++) {
+    totalBits += huff.encodedLength(i) * huff.getCount(i);
+  }
+
+  printf("Huffman encoding: %d bytes, %.2f bits/pixel, "
+	 "longest encoding = %d bits\n",
+	 bytesWritten, (double)totalBits / count,
+	 huff.getLongestEncodingLength());
+  elapsed = NixTimer::time() - startTime;
+  printf("Huffman write file %.3f ms\n", elapsed*1000);
+
+  startTime = NixTimer::time();
+  f = fopen("huff.out", "rb");
+  BitStreamReader bitReader(f);
+  int *values2 = new int[count];
+  int readCount = huff.decodeFromStream(values2, count, &bitReader);
+  fclose(f);
+  elapsed = NixTimer::time() - startTime;
+  printf("Huffman read file %.3f ms\n", elapsed*1000);
+
+  if (count != readCount)
+    printf("ERROR wrote %d encoded values, read %d\n", count, readCount);
+
+  for (int i=0; i < count; i++) {
+    if (values2[i] != data[i]) {
+      printf("Error at %d: got %d, should be %d\n", i, values2[i], data[i]);
+      break;
+    }
+  }
+  delete[] values2;
+}

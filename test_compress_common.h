@@ -82,12 +82,14 @@ class WriteRLEPairsToBitStream {
 
   // # of bits in the value, not including sign bit
   int valueBits;
+
+  // # of bits in the length
+  int rlBits;
   
 public:
-  WriteRLEPairsToBitStream(BitStreamWriter *out_, int valueBits_)
-    : out(out_), valueBits(valueBits_) {}
+  WriteRLEPairsToBitStream(BitStreamWriter *out_, int valueBits_, int rlBits_)
+    : out(out_), valueBits(valueBits_), rlBits(rlBits_) {}
   
-  // the length will always be 1..255
   void data(int value, int length) {
     // printf("%d * %d\n", length, value);
 
@@ -98,7 +100,7 @@ public:
     out->write(abs(value), valueBits);
     
     // write length
-    out->write(length, 8);
+    out->write(length, rlBits);
   }
 
   void end() {

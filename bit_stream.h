@@ -390,6 +390,22 @@ class BitStreamReader {
       return result;
     }
   }
+
+  /** Read one bit. If empty, return 0. */
+  unsigned readBit() {
+    if (isEmpty()) return 0;
+
+    unsigned bit = (buffer[wordsUsed] >> bitsUsed) & 1;
+
+    bitsUsed++;
+    if (bitsUsed == 32) {
+      bitsUsed = 0;
+      wordsUsed++;
+      if (wordsUsed == wordsBuffered) fillBuffer();
+    }
+
+    return bit;
+  }
   
 
   /** Read 'bitsWanted' bits into 'array' */
