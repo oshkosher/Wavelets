@@ -4,6 +4,7 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include <map>
 #include <algorithm>
 #include "data_io.h"
 
@@ -24,6 +25,33 @@ struct Options {
     yOffset = 0;
     width = -1;
     height = -1;
+  }
+};
+
+
+class FrequencyCounter {
+  map<float,size_t> table;
+  typedef map<float,size_t>::iterator TableIt;
+
+public:
+  void add(float f) {
+    TableIt it = table.find(f);
+    if (it == table.end()) {
+      table[f] = 1;
+    } else {
+      it->second++;
+    }
+  }
+
+  void getMode(float &value, size_t &count) {
+    TableIt maxIt = table.begin();
+    
+    for (TableIt it = maxIt; it != table.end(); it++) {
+      if (it->second > maxIt->second) maxIt = it;
+    }
+
+    value = maxIt->first;
+    count = maxIt->second;
   }
 };
 
@@ -208,12 +236,15 @@ int main(int argc, char **argv) {
     return 0;
   }
 
+  FrequencyCounter counter;
+
   // compute totals for average and standard deviation
   size_t n = data.size();
   for (size_t i=0; i < n; i++) {
     float f = data[i];
     sum += f;
     sum2 += f*f;
+    counter.add(f);
   }
 
   sort(data.begin(), data.end());
@@ -288,9 +319,14 @@ int main(int argc, char **argv) {
   // compute the standard deviation
   double stddev = sqrt((sum2 - (sum*sum) / data.size()) / (data.size()-1));
 
+  float mode;
+  size_t modeCount;
+  counter.getMode(mode, modeCount);
+
   // output some statistics
   printf("range %.7g .. %.7g\n", min, max);
-  printf("count %llu\n", (unsigned long long) data.size());
+  printf("count %llu, mode=%.7g (%llu)\n", (unsigned long long) data.size(),
+	 mode, (unsigned long long) modeCount);
   printf("average %.7g\n", sum / data.size());
   printf("stddev %.7g\n", stddev);
 
