@@ -20,6 +20,22 @@
 
 using namespace std;
 
+/*
+// write just the data part of the file from f.intData using Huffman encoding
+static bool writeDataHuffman(const char *filename, FILE *outf, FileData &f);
+
+// read just the data part of the file into f.intData using Huffman encoding
+static bool readDataHuffman(const char *filename, FILE *inf, FileData &f);
+*/
+
+// unused code - read&write data with simple run-length encoding format
+bool writeQuantDataRLE(const char *filename, FILE *outf, FileData &f);
+bool readQuantDataRLE(const char *filename, FILE *inf, FileData &f);
+
+// also unused - write data raw; for 7-bit quantized data, just
+// write 7 bits per datum, packed with BitStreamWriter.
+bool writeQuantDataRaw(const char *filename, FILE *outf, FileData &f);
+
 
 void printHelp() {
   printf("\n"
@@ -117,111 +133,6 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
 
 
 /**
-   Format: See the source.
-   width (int, 4 bytes)
-   height (int, 4 bytes)
-   wavelet steps (int, 4 bytes)
-   quantize bits (int, 4 bytes)
-   threshold value (float, 4 bytes)
-   quantization algorithm enum value (int, 4 bytes) 
-   maximum value before quantization (float, 4 bytes)
-   all the quantized data (width*height*(# of bits) bits, rounded up to a word)
-*/
-bool writeQuantDataSimple(const char *filename, FileData &f) {
-
-  FILE *outf = fopen(filename, "wb");
-  if (!outf) {
-    printf("Error writing to \"%s\"\n", filename);
-    return false;
-  }
-
-  assert(sizeof f.quantizeAlgorithm == sizeof(int));
-
-  // write parameters to the header
-  fwrite(&f.width, sizeof(int), 1, outf);
-  fwrite(&f.height, sizeof(int), 1, outf);
-  fwrite(&f.waveletSteps, sizeof(int), 1, outf);
-  fwrite(&f.quantizeBits, sizeof(int), 1, outf);
-  fwrite(&f.threshold, sizeof(float), 1, outf);
-  fwrite(&f.quantizeAlgorithm, sizeof(int), 1, outf);
-  // XXX we will need something different for Lloyd's algorithm codebook
-  fwrite(&f.quantMaxVal, sizeof(float), 1, outf);
-    
-  bool success = writeQuantData(filename, outf, f);
-
-  fclose(outf);
-
-  return success;
-}
-
-/**
-   Read the data written by writeQuantData.
-*/
-bool readQuantDataSimple(const char *filename, FileData &f) {
-
-  bool success = false;
-  FILE *inf = fopen(filename, "rb");
-  if (!inf) {
-    printf("Cannot read \"%s\"\n", filename);
-    return false;
-  }
-
-  assert(sizeof f.quantizeAlgorithm == sizeof(int));
-
-  if (1 != fread(&f.width, sizeof(int), 1, inf)) goto fail;
-  if (1 != fread(&f.height, sizeof(int), 1, inf)) goto fail;
-  if (1 != fread(&f.waveletSteps, sizeof(int), 1, inf)) goto fail;
-  if (1 != fread(&f.quantizeBits, sizeof(int), 1, inf)) goto fail;
-  if (1 != fread(&f.threshold, sizeof(float), 1, inf)) goto fail;
-  if (1 != fread(&f.quantizeAlgorithm, sizeof(int), 1, inf)) goto fail;
-  if (1 != fread(&f.quantMaxVal, sizeof(float), 1, inf)) goto fail;
-
-  success = readQuantData(filename, inf, f);
-
- fail:
-  fclose(inf);
-
-  return success;
-
-
-}
-
-
-bool writeQuantDataParamStrings(const char *filename, FileData &f) {
-
-  FILE *outf = fopen(filename, "wb");
-  if (!outf) {
-    printf("Error writing to \"%s\"\n", filename);
-    return false;
-  }
-
-  // write parameters to the header
-  ParamString p;
-  p.setInt("w", f.width);
-  p.setInt("h", f.height);
-  p.setInt("ws", f.waveletSteps);
-  p.setInt("qb", f.quantizeBits);
-  p.setFloat("th", f.threshold);
-  p.set("qa", quantAlgId2Name(f.quantizeAlgorithm));
-  if (f.quantizeAlgorithm == QUANT_ALG_UNIFORM ||
-      f.quantizeAlgorithm == QUANT_ALG_LOG) {
-    p.setFloat("max", f.quantMaxVal);
-  } else {
-    p.setFloatList("qbound", f.quantBinBoundaries);
-    p.setFloatList("cb", f.quantBinValues);
-  }
-
-  p.writeParameters(outf);
-    
-  bool success = writeQuantData(filename, outf, f);
-
-  fclose(outf);
-
-  return success;
-}
-
-
-/**
    Format:
    16 bytes: File type identification string "SCU wavelet 1.0\n"
    4 bytes: The length of the header in bytes, not including the 20 bytes
@@ -229,7 +140,7 @@ bool writeQuantDataParamStrings(const char *filename, FileData &f) {
    variable length: Header, encoded as a Google Protocol Buffer
    variable length: Data. Layout can be determined by reading the header.
 */
-bool writeQuantDataProtoBuf(const char *filename, FileData &f) {
+bool writeQuantData(const char *filename, FileData &f) {
 
   FILE *outf = fopen(filename, "wb");
   if (!outf) {
@@ -242,6 +153,7 @@ bool writeQuantDataProtoBuf(const char *filename, FileData &f) {
   // build the protobuf
   WaveletCompressedImage buf;
 
+  // copy parameters into protocol buffer
   buf.set_width(f.width);
   buf.set_height(f.height);
   buf.set_wavelet_transform_step_count(f.waveletSteps);
@@ -278,7 +190,7 @@ bool writeQuantDataProtoBuf(const char *filename, FileData &f) {
   }
   delete[] codedBuf;
     
-  bool success = writeQuantData(filename, outf, f);
+  bool success = writeQuantDataRLE(filename, outf, f);
 
   fclose(outf);
 
@@ -286,53 +198,7 @@ bool writeQuantDataProtoBuf(const char *filename, FileData &f) {
 }
 
 
-bool readQuantDataParamStrings(const char *filename, FileData &f) {
-
-  FILE *inf = fopen(filename, "rb");
-  if (!inf) {
-    printf("Cannot read \"%s\"\n", filename);
-    return false;
-  }
-
-  ParamString p;
-  p.readParameters(inf);
-  if (!p.getInt("w", f.width)) printf("width not found\n");
-  if (!p.getInt("h", f.height)) printf("height not found\n");
-  if (!p.getInt("ws", f.waveletSteps)) printf("wavelet steps not found\n");
-  if (!p.getInt("qb", f.quantizeBits)) printf("quant bits not found\n");
-  if (!p.getFloat("th", f.threshold)) printf("threshold not found\n");
-  string qa;
-  if (!p.get("qa", qa)) printf("quant alg not found\n");
-  f.quantizeAlgorithm = quantAlgName2Id(qa.c_str());
-  if (f.quantizeAlgorithm == QUANT_ALG_UNIFORM ||
-      f.quantizeAlgorithm == QUANT_ALG_LOG) {
-    if (!p.getFloat("max", f.quantMaxVal)) printf("max value not found\n");
-  } else {
-    if (!p.getFloatList("cb", f.quantBinValues)) {
-      printf("codebook not found\n");
-      return false;
-    }
-
-    // check the codebook size
-    if (f.quantBinValues.size() != (size_t)(1 << f.quantizeBits)) {
-      fprintf(stderr, "Error: quantization of %d bits, but codebook has %d "
-	      "entries (should be %d)\n",
-	      f.quantizeBits, (int)f.quantBinValues.size(), 
-	      (1 << f.quantizeBits));
-      return false;
-    }
-
-  }
-
-  bool success = readQuantData(filename, inf, f);
-
-  fclose(inf);
-
-  return success;
-}
-
-
-bool readQuantDataProtoBuf(const char *filename, FileData &f) {
+bool readQuantData(const char *filename, FileData &f) {
 
   FILE *inf = fopen(filename, "rb");
   if (!inf) {
@@ -366,13 +232,13 @@ bool readQuantDataProtoBuf(const char *filename, FileData &f) {
   }
   delete[] codedBuf;
 
+  // copy parameters from protocol buffer
   f.width = buf.width();
   f.height = buf.height();
   f.waveletSteps = buf.wavelet_transform_step_count();
   f.quantizeBits = buf.quantize_bits();
   f.threshold = buf.threshold_value();
   f.quantMaxVal = buf.quant_max_value();
-  // buf.wavelet_algorithm();
   f.quantizeAlgorithm = quantProtoId2AlgId(buf.quantization_algorithm());
 
   f.quantBinBoundaries.resize(buf.quant_bin_boundaries_size());
@@ -383,7 +249,7 @@ bool readQuantDataProtoBuf(const char *filename, FileData &f) {
   for (int i=0; i < buf.quant_bin_values_size(); i++)
     f.quantBinValues[i] = buf.quant_bin_values(i);
 
-  bool success = readQuantData(filename, inf, f);
+  bool success = readQuantDataRLE(filename, inf, f);
   
   fclose(inf);
 
@@ -391,11 +257,47 @@ bool readQuantDataProtoBuf(const char *filename, FileData &f) {
 }
 
 
-bool readQuantData(const char *filename, FILE *inf, FileData &f) {
+bool writeQuantDataRLE(const char *filename, FILE *outf, FileData &f) {
+
+  // write the data
+  BitStreamWriter bits(outf);
+  int count = f.width*f.height;
+
+  // this object takes (length,value) run-length pairs and writes
+  // them in binary to the given bit stream
+  WriteRLEPairsToBitStream rleToBits(&bits, f.quantizeBits, EncodeRunLength<WriteRLEPairsToBitStream>::getBitSize());
+
+  // this object takes data values as input, and passes (length,value)
+  // run-length pairs to the rleToBits object
+  EncodeRunLength<WriteRLEPairsToBitStream> rleEncoder(&rleToBits);
+
+  // XXX see if it's faster to use pointer to traverse f.data[]
+
+  if (f.intData) {
+    for (int i=0; i < count; i++) {
+      int x = f.intData[i];
+      rleEncoder.data(x);
+    }
+  } else {
+    for (int i=0; i < count; i++) {
+      int x = (int) f.floatData[i];
+      rleEncoder.data(x);
+    }
+  }
+    
+  rleEncoder.end();
+
+  printf("%d input values, %d RLE output pairs\n", count,
+	 rleEncoder.getOutputCount());
+  return true;
+}
+
+
+bool readQuantDataRLE(const char *filename, FILE *inf, FileData &f) {
   int count = f.width * f.height;
-  if (f.data) {
-    delete[] f.data;
-    f.data = NULL;
+  if (f.floatData) {
+    delete[] f.floatData;
+    f.floatData = NULL;
   }
   f.intData = new int[count];
 
@@ -429,43 +331,7 @@ bool readQuantData(const char *filename, FILE *inf, FileData &f) {
 }
 
 
-bool writeQuantData(const char *filename, FILE *outf, FileData &f) {
-
-  // write the data
-  BitStreamWriter bits(outf);
-  int count = f.width*f.height;
-
-  // this object takes (length,value) run-length pairs and writes
-  // them in binary to the given bit stream
-  WriteRLEPairsToBitStream rleToBits(&bits, f.quantizeBits, EncodeRunLength<WriteRLEPairsToBitStream>::getBitSize());
-
-  // this object takes data values as input, and passes (length,value)
-  // run-length pairs to the rleToBits object
-  EncodeRunLength<WriteRLEPairsToBitStream> rleEncoder(&rleToBits);
-
-  // XXX see if it's faster to use pointer to traverse f.data[]
-
-  if (f.intData) {
-    for (int i=0; i < count; i++) {
-      int x = f.intData[i];
-      rleEncoder.data(x);
-    }
-  } else {
-    for (int i=0; i < count; i++) {
-      int x = (int) f.data[i];
-      rleEncoder.data(x);
-    }
-  }
-    
-  rleEncoder.end();
-
-  printf("%d input values, %d RLE output pairs\n", count,
-	 rleEncoder.getOutputCount());
-  return true;
-}
-
-
-bool writeQuantData_raw(const char *filename, FILE *outf, FileData &f) {
+bool writeQuantDataRaw(const char *filename, FILE *outf, FileData &f) {
 
   // write the data
   BitStreamWriter bits(outf);
@@ -478,7 +344,7 @@ bool writeQuantData_raw(const char *filename, FILE *outf, FileData &f) {
     }
   } else {
     for (int i=0; i < count; i++) {
-      int x = (int) f.data[i];
+      int x = (int) f.floatData[i];
       bits.write(x, f.quantizeBits);
     }
   }
