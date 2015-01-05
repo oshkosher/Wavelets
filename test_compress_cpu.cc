@@ -203,7 +203,8 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   startTime = NixTimer::time();
 
-  if (!writeQuantData(outputFile, fileData)) return false;
+  if (!writeQuantData(outputFile, fileData, opt.printHuffmanEncoding))
+    return false;
     
   elapsed = NixTimer::time() - startTime;
   printf("Write data file: %.2f ms\n", elapsed*1000);

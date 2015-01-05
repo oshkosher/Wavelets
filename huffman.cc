@@ -178,7 +178,7 @@ void Huffman::computeDecodeTable() {
   for (size_t i=0; i < treeOrderedNodes.size(); i++) {
     Node *node = treeOrderedNodes[i];
     if (node->isLeaf()) {
-      decodeTable[2*i] = -1;
+      decodeTable[2*i] = 0;
       decodeTable[2*i+1] = node->value;
     } else {
       decodeTable[2*i] = node->left->nodeId;
@@ -247,7 +247,9 @@ void Huffman::encodeToStream(BitStreamWriter *bitStream,
   assert(computed);
   unsigned *encodedData = encodeTable.data();
 
+  // printf("encoding huff\n");
   for (int i = 0; i < count; i++) {
+    // printf("%d\n", values[i]);
     unsigned value = values[i];
     unsigned bitCount = encodedData[value*2];
     unsigned bitDataOffset = encodedData[value*2+1];
@@ -265,16 +267,17 @@ int Huffman::decodeFromStream(int *values, int count,
 // Read up to 'count' integers from bitStream. Return the number read.
 int HuffmanDecoder::decodeFromStream(int *values, int count,
 				     BitStreamReader *bitStream) {
-
+  // printf("decode ");
   for (int i=0; i < count; i++) {
     int pos = 0;
     if (bitStream->isEmpty()) return i;
     while (true) {
       unsigned bit = bitStream->readBit();
+      // putchar(bit ? '1' : '0');
       pos = table[pos + bit] * 2;
-      if (table[pos] == -1) {
+      if (table[pos] == 0) {
 	values[i] = table[pos+1];
-	// printf("%d\n", values[i]);
+        // printf(" %d\n", values[i]);
 	break;
       }
     }

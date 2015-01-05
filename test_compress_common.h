@@ -31,6 +31,7 @@ struct Options {
   bool isWaveletTransposeStandard;
   float thresholdFraction;
   int quantizeBits;
+  bool printHuffmanEncoding; // print the bit encoding of each value
   std::string saveBeforeQuantizingFilename;  // -bq option
   QuantizeAlgorithm quantizeAlgorithm;
 };
@@ -51,6 +52,8 @@ struct FileData {
   std::vector<float> quantBinBoundaries;
   std::vector<float> quantBinValues;
 
+  std::vector<int> huffmanDecodeTable;
+
   // default constructor - invalid values
   FileData() : floatData(NULL), intData(NULL), width(-1), height(-1), 
     waveletSteps(0), quantizeBits(0), quantizeAlgorithm(QUANT_ALG_UNKNOWN) {}
@@ -68,7 +71,6 @@ struct FileData {
     quantizeAlgorithm = opt.quantizeAlgorithm;
     threshold = 0;
     quantMaxVal = 0;
-    quantizeAlgorithm = QUANT_ALG_UNKNOWN;
   }
 };
 
@@ -115,7 +117,8 @@ void printHelp();
 bool parseOptions(int argc, char **argv, Options &opt, int &nextArg);
 
 // Write fileData to a file
-bool writeQuantData(const char *filename, FileData &fileData);
+bool writeQuantData(const char *filename, FileData &fileData,
+                    bool printEncoding);
 
 // Read FileData from a file
 bool readQuantData(const char *filename, FileData &fileData);

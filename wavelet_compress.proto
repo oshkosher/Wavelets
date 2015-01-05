@@ -1,3 +1,6 @@
+// For documentation on protocol buffers, see:
+//   https://developers.google.com/protocol-buffers/docs/proto
+
 message WaveletCompressedImage {
   required int32 width = 1;
   required int32 height = 2;
@@ -49,5 +52,7 @@ message WaveletCompressedImage {
   // AKA the codebook.
   // For N quantizeBits, there are 2^N quantize values.
   repeated float quant_bin_values = 12 [packed=true];
+
+  repeated int32 huffman_encode_table = 13 [packed=true];
 }
 
