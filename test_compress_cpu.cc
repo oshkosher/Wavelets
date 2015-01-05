@@ -1,3 +1,4 @@
+#include <google/protobuf/stubs/common.h>
 #include "test_compress_common.h"
 #include "dwt_cpu.h"
 #include "nixtimer.h"
@@ -33,6 +34,10 @@ int main(int argc, char **argv) {
   } else {
     result = decompressFile(inputFile, outputFile, opt);
   }
+
+  // deallocate static protobuf data
+  google::protobuf::ShutdownProtobufLibrary();
+
   if (result == false) return 1;
 
   return 0;
@@ -187,11 +192,15 @@ bool compressFile(const char *inputFile, const char *outputFile,
   elapsed = NixTimer::time() - startTime;
   printf("Quantize: %.2f ms\n", elapsed*1000);
 
+  nonzeroData = NULL;
+  delete[] sortedAbsData;
+  sortedAbsData = NULL;
+
   // Try out huffman encoding
   // testHuffman(quantizedData, count, opt.quantizeBits);
 
   // write the quantized data to a file
-  FileData fileData(opt, data, quantizedData, size, size);
+  FileData fileData(opt, NULL, quantizedData, size, size);
   fileData.threshold = threshold;
   if (opt.quantizeAlgorithm == QUANT_ALG_UNIFORM ||
       opt.quantizeAlgorithm == QUANT_ALG_LOG) {
@@ -211,6 +220,8 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   elapsed = NixTimer::time() - firstStartTime;
   printf("Total: %.2f ms\n", elapsed*1000);
+
+  if (quantizedData) delete[] quantizedData;
 
   delete[] data;
 
