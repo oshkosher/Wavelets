@@ -329,9 +329,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   }
 
   startTime = NixTimer::time();
-  // if (!writeQuantDataSimple(outputFile, fileData)) return false;
-  // if (!writeQuantDataParamStrings(outputFile, fileData)) return false;
-  if (!writeQuantDataProtoBuf(outputFile, fileData)) return false;
+  if (!writeQuantData(outputFile, fileData)) return false;
   elapsed = NixTimer::time() - startTime;
   printf("Write data file: %.2f ms\n", elapsed*1000);
 
@@ -352,8 +350,6 @@ bool decompressFile(const char *inputFile, const char *outputFile,
 
   firstStartTime = startTime = NixTimer::time();
 
-  // if (!readQuantDataSimple(inputFile, f)) return false;
-  // if (!readQuantDataParamStrings(inputFile, f)) return false;
   if (!readQuantDataProtoBuf(inputFile, f)) return false;
 
   elapsed = NixTimer::time() - startTime;
