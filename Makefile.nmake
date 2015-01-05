@@ -6,17 +6,29 @@
 # Possible solution: https://devtalk.nvidia.com/default/topic/384483/makefiles-and-nvcc/
 # Appending " > nul" to each command line that calls nvcc fixes the problem.
 
-default: convert test_haar_cpu.exe haar.exe test_compress_cpu.exe
+# build all the tools that don't require CUDA
+default: test_haar_cpu.exe test_compress_cpu.exe image_error.exe \
+  list_data.exe histogram.exe java
 
 EXECS = test_haar_cpu.exe haar.exe test_compress_cpu.exe \
   test_haar_thresh_quantUnif_cpu.exe test_haar_thresh_quantLog_cpu.exe \
   normalize.exe test_rle.exe test_huffman.exe test_bit_stream.exe \
   test_quant_count.exe test_compress_gpu.exe list_data.exe \
-  image_error.exe histogram.exe
+  image_error.exe test_transform.exe test_lloyd.exe histogram.exe
 
-all: WaveletSampleImage.class ImageDiff.class $(EXECS)
+all: $(EXECS) java
 
+# build the tools that require CUDA
+cuda: haar.exe test_compress_gpu.exe
+
+java: WaveletSampleImage.class ImageDiff.class
+
+oct: cudahaar.mex
+
+# Set this to YES or NO, to select between a Debug or Release build
 IS_DEBUG=YES
+# IS_DEBUG=NO
+
 
 !IF "$(IS_DEBUG)"=="YES"
 BUILD=Debug
@@ -94,6 +106,12 @@ quant_log_cpu.obj: quant_log_cpu.cc quant_log_cpu.h
 dquant_log_cpu.obj: dquant_log_cpu.cc dquant_log_cpu.h
 	$(NVCC) -c dquant_log_cpu.cc > nul
 
+quant.obj: quant.h quant.cc
+	$(NVCC) -c quant.cc > nul
+
+huffman.obj: huffman.h huffman.cc
+	$(NVCC) -c huffman.cc > nul
+
 test_compress_common.obj: test_compress_common.cc test_compress_common.h
 	$(NVCC) -c test_compress_common.cc > nul
 
@@ -111,29 +129,31 @@ test_haar_thresh_quantLog_cpu.exe: test_haar_thresh_quantLog_cpu.cc dwt_cpu.cc d
 	  dquant_log_cpu.cc dquant_log_cpu.h quant.h quant.cc
 	$(CC) test_haar_thresh_quantLog_cpu.cc dwt_cpu.cc data_io.cc nixtimer.cc thresh_cpu.cc quant_log_cpu.cc dquant_log_cpu.cc quant.cc
 
+LLOYD_INC=/IOctave/LloydsAlgorithm/src/c++
+
 # aliases
 test_compress: test_compress_cpu.exe test_compress_gpu.exe
 test_compress_cpu: test_compress_cpu.exe
 test_compress_gpu: test_compress_gpu.exe
 
-test_compress_cpu.exe: test_compress_cpu.cc test_compress_common.cc \
-	dwt_cpu.cc data_io.cc \
-	quant_unif_cpu.cc quant_log_cpu.cc nixtimer.cc \
-	dquant_unif_cpu.cc dquant_log_cpu.cc thresh_cpu.cc \
-	dwt_cpu.h data_io.h \
-	quant_unif_cpu.h quant_log_cpu.h \
-	dquant_unif_cpu.h dquant_log_cpu.h thresh_cpu.h \
-	bit_stream.h nixtimer.h rle.h param_string.h param_string.cc \
-	quant_count.h quant_count.cc \
-	wavelet_compress.pb.h wavelet_compress.pb.cc \
-        Octave/LloydsAlgorithm/src/c++/lloyds.cpp
-	$(CC) /I$(PROTOBUF_DIR)\include /IOctave/LloydsAlgorithm/src/c++ \
+test_compress_cpu.exe: test_compress_cpu.cc \
+  bit_stack.h bit_stream.h \
+  data_io.h data_io.cc \
+  dwt_cpu.h dwt_cpu.cc \
+  huffman.cc huffman.h \
+  Octave/LloydsAlgorithm/src/c++/lloyds.cpp \
+  Octave/LloydsAlgorithm/src/c++/lloyds.h \
+  nixtimer.h nixtimer.cc \
+  quant.h quant.cc \
+  rle.h \
+  test_compress_common.h test_compress_common.cc \
+  thresh_cpu.h thresh_cpu.cc \
+  wavelet_compress.pb.h wavelet_compress.pb.cc
+	$(CC) /I$(PROTOBUF_DIR)\include $(LLOYD_INC) \
 	  test_compress_cpu.cc test_compress_common.cc \
-          dwt_cpu.cc thresh_cpu.cc \
-	  quant_unif_cpu.cc quant_log_cpu.cc quant_count.cc \
-	  dquant_unif_cpu.cc dquant_log_cpu.cc param_string.cc \
-	  data_io.cc nixtimer.cc wavelet_compress.pb.cc \
-          Octave/LloydsAlgorithm/src/c++/lloyds.cpp \
+          dwt_cpu.cc data_io.cc nixtimer.cc thresh_cpu.cc \
+	  quant.cc wavelet_compress.pb.cc \
+          Octave/LloydsAlgorithm/src/c++/lloyds.cpp huffman.cc \
           $(PROTOBUF_DIR)\$(BUILD)\libprotobuf.lib
 
 test_compress_gpu.obj: test_compress_gpu.cu wavelet_compress.pb.h
@@ -141,7 +161,7 @@ test_compress_gpu.obj: test_compress_gpu.cu wavelet_compress.pb.h
 
 TEST_COMPRESS_GPU_OBJS=test_compress_gpu.obj test_compress_common.obj \
   dwt_cpu.obj dwt_gpu.obj data_io.obj transpose_gpu.obj nixtimer.obj \
-  wavelet_compress.pb.obj quant_count.obj param_string.obj
+  wavelet_compress.pb.obj quant.obj huffman.obj
 
 test_compress_gpu.exe: $(TEST_COMPRESS_GPU_OBJS)
 	$(NVCC) $(TEST_COMPRESS_GPU_OBJS) $(PROTOBUF_LIB) -o $@ > nul
@@ -152,6 +172,12 @@ wavelet_compress.pb.h: wavelet_compress.proto
 
 wavelet_compress.pb.obj: wavelet_compress.pb.h wavelet_compress.pb.cc
 	$(NVCC) -c wavelet_compress.pb.cc > nul
+
+test_transform.exe: test_transform.cu
+	$(NVCC) test_transform.cu -o test_transform.exe > nul
+
+test_lloyd.exe: test_lloyd.cc Octave/LloydsAlgorithm/src/c++/lloyds.cpp Octave/LloydsAlgorithm/src/c++/lloyds.h
+	$(CC) $(LLOYD_INC) test_lloyd.cc Octave/LloydsAlgorithm/src/c++/lloyds.cpp
 
 test_bit_stream.exe: test_bit_stream.cc bit_stream.h nixtimer.h nixtimer.cc
 	$(CC) test_bit_stream.cc nixtimer.cc

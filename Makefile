@@ -42,7 +42,7 @@
 default: convert test_haar_cpu test_compress_cpu \
 	image_error list_data histogram
 
-EXECS = test_haar_cpu haar test_compress \
+EXECS = test_haar_cpu haar test_compress_cpu \
   test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu \
   normalize test_rle test_huffman test_bit_stream test_quant_count \
   test_compress_gpu list_data image_error test_transform test_lloyd \
@@ -203,15 +203,15 @@ test_quant_count: test_quant_count.cc quant_count.h quant_count.cc quant.h \
 test_transform: test_transform.cu
 	$(NVCC) $< -o $@
 
-test_compress: test_compress_cpu
+test_compress: test_compress_cpu test_compress_gpu
 
 test_compress_cpu.o: test_compress_cpu.cc test_compress_common.h \
 	  dwt_cpu.h nixtimer.h thresh_cpu.h quant.h bit_stream.h huffman.h \
 	  Octave/LloydsAlgorithm/src/c++/lloyds.h wavelet_compress.pb.h
 	$(CC) $(LLOYD_INC) -c $<
 
-test_compress_common.o: test_compress_common.cc test_compress_common.h\
-	  rle.h param_string.h bit_stream.h nixtimer.h huffman.h
+test_compress_common.o: test_compress_common.cc test_compress_common.h \
+	  rle.h bit_stream.h nixtimer.h huffman.h
 	$(CC) -c $<
 
 dwt_cpu.o: dwt_cpu.cc dwt_cpu.h nixtimer.h
@@ -244,7 +244,7 @@ lloyds.o: Octave/LloydsAlgorithm/src/c++/lloyds.cpp \
 
 TEST_COMPRESS_CPU_OBJS=test_compress_cpu.o \
 	test_compress_common.o dwt_cpu.o data_io.o \
-	nixtimer.o thresh_cpu.o param_string.o \
+	nixtimer.o thresh_cpu.o \
 	quant.o wavelet_compress.pb.o \
 	lloyds.o huffman.o
 
@@ -253,13 +253,13 @@ test_compress_cpu: $(TEST_COMPRESS_CPU_OBJS)
 
 test_compress_gpu.$(OBJ_EXT): test_compress_gpu.cu wavelet_compress.pb.h quant.h
 
-test_compress_common.$(OBJ_EXT): test_compress_common.cc test_compress_common.h  rle.h param_string.h
+test_compress_common.$(OBJ_EXT): test_compress_common.cc test_compress_common.h  rle.h
 
 TEST_COMPRESS_GPU_OBJS=test_compress_gpu.$(OBJ_EXT) \
   test_compress_common.$(OBJ_EXT) \
   dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) huffman.$(OBJ_EXT) \
   data_io.$(OBJ_EXT) transpose_gpu.$(OBJ_EXT) nixtimer.$(OBJ_EXT) \
-  wavelet_compress.pb.$(OBJ_EXT) quant_count.$(OBJ_EXT) param_string.$(OBJ_EXT)
+  wavelet_compress.pb.$(OBJ_EXT) quant_count.$(OBJ_EXT)
 
 test_compress_gpu: $(TEST_COMPRESS_GPU_OBJS)
 	$(NVCC) $(TEST_COMPRESS_GPU_OBJS) -o $@ $(PROTOBUF_LIB_NVCC)

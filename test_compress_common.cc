@@ -198,12 +198,11 @@ bool writeQuantData(const char *filename, FileData &f, bool printEncoding) {
 
   int huffDecodeTableSize = buf.ByteSize() - sizeBeforeHufftable;
   /*
-  printf("Decode table\n");
+  printf("Decode table, %d entries\n", (int)huffDecodeTable.size());
   for (size_t i=0; i < huffDecodeTable.size(); i += 2) {
     printf("%4d: %d %d\n", (int)i, huffDecodeTable[i], huffDecodeTable[i+1]);
   }
   */
-  printf("Huff decode table %d entries\n", (int)huffDecodeTable.size());
 
   assert(sizeof(unsigned) == 4);
   unsigned codedLen = (unsigned) buf.ByteSize();
