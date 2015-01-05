@@ -257,7 +257,7 @@ test_compress_common.$(OBJ_EXT): test_compress_common.cc test_compress_common.h 
 
 TEST_COMPRESS_GPU_OBJS=test_compress_gpu.$(OBJ_EXT) \
   test_compress_common.$(OBJ_EXT) \
-  dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) \
+  dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) huffman.$(OBJ_EXT) \
   data_io.$(OBJ_EXT) transpose_gpu.$(OBJ_EXT) nixtimer.$(OBJ_EXT) \
   wavelet_compress.pb.$(OBJ_EXT) quant_count.$(OBJ_EXT) param_string.$(OBJ_EXT)
 

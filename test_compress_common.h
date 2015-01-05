@@ -118,7 +118,7 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg);
 
 // Write fileData to a file
 bool writeQuantData(const char *filename, FileData &fileData,
-                    bool printEncoding);
+                    bool printEncoding = false);
 
 // Read FileData from a file
 bool readQuantData(const char *filename, FileData &fileData);
