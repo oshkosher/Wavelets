@@ -47,32 +47,37 @@ int main(int argc, char **argv) {
 bool compressFile(const char *inputFile, const char *outputFile,
                   Options &opt) {
 
-  // read the data file
-  float *data;
-  int width, height;
+  Data2d data, quantizedData;
   double firstStartTime, startTime, elapsed;
 
   firstStartTime = startTime = NixTimer::time();
 
-  if (!readDataFile(inputFile, &data, &width, &height)) return 1;
+  // read the data file
+  if (!readDataFile(inputFile, &data.floatData, &data.width, &data.height))
+    return 1;
   elapsed = NixTimer::time() - startTime;
-  printf("Read %dx%d data file: %.2f ms\n", width, height, elapsed * 1000);
+  printf("Read %dx%d data file: %.2f ms\n", data.width, data.height,
+         elapsed * 1000);
 
   // pad the data to make it a square power of two, if necessary
-  int longSide = width > height ? width : height;
+  int longSide = data.width > data.height ? data.width : data.height;
   int size = dwt_padded_length(longSide, 0, true);
   int count = size * size;
-  if (width != size || height != size) {
+  if (data.width != size || data.height != size) {
     startTime = NixTimer::time();
-    float *paddedData = dwt_pad_2d(height, width, width, data,
+    float *paddedData = dwt_pad_2d(data.height, data.width, data.width,
+                                   data.floatData,
                                    size, size, size,
                                    NULL, REFLECT);
     elapsed = NixTimer::time() - startTime;
     printf("Pad data: %.2f ms\n", elapsed*1000);
-    delete[] data;
-    data = paddedData;
-    width = height = size;
+    delete[] data.floatData;
+    data.floatData = paddedData;
+    data.width = data.height = size;
   }
+
+  const int width = data.width;
+  const int height = data.height;
 
   // adjust the number of wavelet steps in case the user requested too many
   int maxWaveletSteps = dwtMaximumSteps(size);
@@ -81,7 +86,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   // perform the wavelet transform
   if (opt.waveletSteps > 0) {
-    float waveletMs = haar_2d(size, data, false, opt.waveletSteps,
+    float waveletMs = haar_2d(size, data.floatData, false, opt.waveletSteps,
                               opt.isWaveletTransposeStandard);
     printf("Wavelet transform (%d steps): %.2f ms\n", 
            opt.waveletSteps, waveletMs);
@@ -90,7 +95,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   // save the intermediate data to a file before quantizing
   if (opt.saveBeforeQuantizingFilename != "") {
     const char *filename = opt.saveBeforeQuantizingFilename.c_str();
-    if (!writeDataFile(filename, data, width, height)) {
+    if (!writeDataFile(filename, data.floatData, width, height)) {
                        
       printf("Failed to write intermediate data file \"%s\".\n", filename);
     } else {
@@ -104,62 +109,58 @@ bool compressFile(const char *inputFile, const char *outputFile,
   int nonzeroCount;
   // float *sortedAbsData = NULL;
   startTime = NixTimer::time();
-  float threshold = thresh_cpu(count, data, opt.thresholdFraction,
-			       &nonzeroCount, &maxVal, &minVal,
-			       &sortedAbsData);
+  opt.thresholdValue = thresh_cpu(count, data.floatData, opt.thresholdFraction,
+                                  &nonzeroCount, &maxVal, &minVal,
+                                  &sortedAbsData);
 			       
   maxAbsVal = sortedAbsData[count-1];
+
+  // NOTE: nonzeroData points to data in sortedAbsData, don't deallocate both
   float *nonzeroData = sortedAbsData + count - nonzeroCount;
 
   elapsed = NixTimer::time() - startTime;
   printf("Compute threshold = %g, min = %g, max = %g: %.2f ms\n",
-	 threshold, minVal, maxVal, elapsed*1000);
+	 opt.thresholdValue, minVal, maxVal, elapsed*1000);
 
-  std::vector<float> quantBinBoundaries;
-  std::vector<float> quantBinValues;
-  int *quantizedData = NULL;
+  // std::vector<float> quantBinBoundaries;
+  // std::vector<float> quantBinValues;
+
+  quantizedData.initInts(width, height);
 
   // quantize the data
   startTime = NixTimer::time();
   switch (opt.quantizeAlgorithm) {
 
   case QUANT_ALG_UNIFORM:
-    // quant_unif_cpu(size, data, opt.quantizeBits, threshold, maxVal);
     {
-      QuantUniform qunif(opt.quantizeBits, threshold, maxAbsVal);
+      QuantUniform qunif(opt.quantizeBits, opt.thresholdValue, maxAbsVal);
       QuantizationLooper<QuantUniform> qloop(&qunif, opt.quantizeBits);
-      quantizedData = new int[size*size];
-      qloop.quantize(size*size, data, quantizedData, true);
+      qloop.quantize(count, data.floatData, quantizedData.intData, true);
       printf("Quantization error: %g\n", qloop.getError());
+      opt.maxAbsVal = maxAbsVal;
     }
     break;
 
   case QUANT_ALG_LOG:
-    // quant_log_cpu(size, data, opt.quantizeBits, threshold, maxVal);
     {
-      QuantLog qlog(opt.quantizeBits, threshold, maxAbsVal);
+      QuantLog qlog(opt.quantizeBits, opt.thresholdValue, maxAbsVal);
       QuantizationLooper<QuantLog> qloop(&qlog, opt.quantizeBits);
-      quantizedData = new int[size*size];
-      qloop.quantize(size*size, data, quantizedData, true);
+      qloop.quantize(count, data.floatData, quantizedData.intData, true);
       printf("Quantization error: %g\n", qloop.getError());
+      opt.maxAbsVal = maxAbsVal;
     }
     break;
 
   case QUANT_ALG_COUNT:
-    /*
-    quant_count_init_sorted_cpu(size*size, sortedAbsData, opt.quantizeBits,
-				threshold, quantBinBoundaries, quantBinValues);
-    quant_boundaries_array(quantBinBoundaries, size*size, data);
-    */
     {
       QuantCodebook qcb;
-      qcb.initCountBins(count, data, opt.quantizeBits, threshold);
+      qcb.initCountBins(count, data.floatData, opt.quantizeBits,
+                        opt.thresholdValue);
       // qcb.printCodebook();
-      quantBinBoundaries = qcb.boundaries;
-      quantBinValues = qcb.codebook;
+      opt.quantBinBoundaries = qcb.boundaries;
+      opt.quantBinValues = qcb.codebook;
       QuantizationLooper<QuantCodebook> qloop(&qcb, opt.quantizeBits);
-      quantizedData = new int[count];
-      qloop.quantize(count, data, quantizedData, true);
+      qloop.quantize(count, data.floatData, quantizedData.intData, true);
       printf("Quantization error: %g\n", qloop.getError());
     }
     break;
@@ -168,19 +169,15 @@ bool compressFile(const char *inputFile, const char *outputFile,
     {
       computeLloydQuantization(nonzeroData, nonzeroCount,
 			       opt.quantizeBits,
-			       quantBinBoundaries, quantBinValues);
+			       opt.quantBinBoundaries, opt.quantBinValues);
       elapsed = NixTimer::time() - startTime;
       printf("Lloyd quantization %.2f ms\n", elapsed*1000);
       startTime = NixTimer::time();
-      QuantCodebook qcb(quantBinBoundaries, quantBinValues);
+      QuantCodebook qcb(opt.quantBinBoundaries, opt.quantBinValues);
       // qcb.printCodebook();
       QuantizationLooper<QuantCodebook> qloop(&qcb, opt.quantizeBits);
-      quantizedData = new int[count];
-      qloop.quantize(count, data, quantizedData, true);
+      qloop.quantize(count, data.floatData, quantizedData.intData, true);
       printf("Quantization error: %g\n", qloop.getError());
-      
-      delete[] data;
-      data = NULL;
     }
     break;
 
@@ -201,19 +198,10 @@ bool compressFile(const char *inputFile, const char *outputFile,
   // testHuffman(quantizedData, count, opt.quantizeBits);
 
   // write the quantized data to a file
-  FileData fileData(opt, NULL, quantizedData, size, size);
-  fileData.threshold = threshold;
-  if (opt.quantizeAlgorithm == QUANT_ALG_UNIFORM ||
-      opt.quantizeAlgorithm == QUANT_ALG_LOG) {
-    fileData.quantMaxVal = maxVal;
-  } else {
-    fileData.quantBinBoundaries = quantBinBoundaries;
-    fileData.quantBinValues = quantBinValues;
-  }
 
   startTime = NixTimer::time();
 
-  if (!writeQuantData(outputFile, fileData, opt.printHuffmanEncoding))
+  if (!writeQuantData(outputFile, quantizedData, opt))
     return false;
     
   elapsed = NixTimer::time() - startTime;
@@ -222,97 +210,82 @@ bool compressFile(const char *inputFile, const char *outputFile,
   elapsed = NixTimer::time() - firstStartTime;
   printf("Total: %.2f ms\n", elapsed*1000);
 
-  if (quantizedData) delete[] quantizedData;
-
-  delete[] data;
-
   return true;
 }
 
 bool decompressFile(const char *inputFile, const char *outputFile,
 		    Options &opt) {
 
-  FileData f;
-  int *inputData;
-  float *data;
-  int width, height;
+  Data2d quantizedData, data;
   double firstStartTime, startTime, elapsed;
 
   firstStartTime = startTime = NixTimer::time();
 
-  if (!readQuantData(inputFile, f)) return false;
+  if (!readQuantData(inputFile, quantizedData, opt)) return false;
+
+  const int width = quantizedData.width;
+  const int height = quantizedData.height;
 
   elapsed = NixTimer::time() - startTime;
-  printf("Read %dx%d data file: %.2f ms\n", f.width, f.height,
+  printf("Read %dx%d data file: %.2f ms\n", width, height,
 	 (NixTimer::time() - startTime) * 1000);
 
-  inputData = f.intData;
-  width = f.width;
-  height = f.height;
-
-  assert(inputData != NULL && width > 0 && height > 0);
+  assert(quantizedData.intData != NULL && width > 0 && height > 0);
   assert(width == height);
   int size = width;
   int count = width * height;
-  data = new float[count];
+  data.initFloats(width, height);
 
   // de-quantize the data
   startTime = NixTimer::time();
-  switch (f.quantizeAlgorithm) {
+  switch (opt.quantizeAlgorithm) {
   case QUANT_ALG_UNIFORM:
-    // dquant_unif_cpu(size, data, f.quantizeBits, f.threshold, f.quantMaxVal);
     {
-      QuantUniform qunif(f.quantizeBits, f.threshold, f.quantMaxVal);
+      QuantUniform qunif(opt.quantizeBits, opt.thresholdValue, opt.maxAbsVal);
       QuantizationLooper<QuantUniform> qloop(&qunif, opt.quantizeBits);
-      qloop.dequantize(count, inputData, data);
+      qloop.dequantize(count, quantizedData.intData, data.floatData);
     }
     break;
 
   case QUANT_ALG_LOG:
-    // dquant_log_cpu(size, data, f.quantizeBits, f.threshold, f.quantMaxVal);
     {
-      QuantLog qunif(f.quantizeBits, f.threshold, f.quantMaxVal);
+      QuantLog qunif(opt.quantizeBits, opt.thresholdValue, opt.maxAbsVal);
       QuantizationLooper<QuantLog> qloop(&qunif, opt.quantizeBits);
-      qloop.dequantize(count, inputData, data);
+      qloop.dequantize(count, quantizedData.intData, data.floatData);
     }
     break;
 
   case QUANT_ALG_COUNT:
   case QUANT_ALG_LLOYD:
-    // dequant_codebook_array(f.quantBinValues, size*size, data);
     {
       QuantCodebook qcb;
-      qcb.init(f.quantBinBoundaries, f.quantBinValues);
+      qcb.init(opt.quantBinBoundaries, opt.quantBinValues);
       QuantizationLooper<QuantCodebook> qloop(&qcb, opt.quantizeBits);
-      qloop.dequantize(count, inputData, data);
+      qloop.dequantize(count, quantizedData.intData, data.floatData);
     }
     
     break;
 
   default:
     fprintf(stderr, "Quantization algorithm %d not found.\n",
-            (int)f.quantizeAlgorithm);
+            (int)opt.quantizeAlgorithm);
     return false;
   }
-
-  delete[] inputData;
-  f.intData = NULL;
 
   printf("Dequantize: %.2f ms\n", (NixTimer::time() - startTime) * 1000);
 
   // perform inverse wavelet transform
-  elapsed = haar_2d(size, data, true, f.waveletSteps,
-                    f.isWaveletTransposeStandard);
+  elapsed = haar_2d(size, data.floatData, true, opt.waveletSteps,
+                    opt.isWaveletTransposeStandard);
   printf("Wavelet inverse transform: %.2f ms\n", elapsed);
 
   // write the reconstructed data
   startTime = NixTimer::time();
-  if (!writeDataFile(outputFile, data, size, size, true)) return false;
+  if (!writeDataFile(outputFile, data.floatData, data.width, data.height))
+    return false;
   printf("Write file: %.2f ms\n", (NixTimer::time() - startTime) * 1000);
 
   printf("Total: %.2f ms\n", (NixTimer::time() - firstStartTime) * 1000);
-
-  delete[] data;
 
   return true;
 }

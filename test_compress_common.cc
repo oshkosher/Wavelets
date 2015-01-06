@@ -25,17 +25,11 @@ using namespace std;
 
 // read&write just the data part of the file to&from f.intData
 // using Huffman encoding
-static void initHuffman(Huffman &huff, FileData &f);
-static bool writeQuantDataHuffman(Huffman &huff, FILE *outf, FileData &f);
-static bool readQuantDataHuffman(HuffmanDecoder &huff, FILE *inf, FileData &f);
-
-// unused code - read&write data with simple run-length encoding format
-bool writeQuantDataRLE(const char *filename, FILE *outf, FileData &f);
-bool readQuantDataRLE(const char *filename, FILE *inf, FileData &f);
-
-// also unused - write data raw; for 7-bit quantized data, just
-// write 7 bits per datum, packed with BitStreamWriter.
-bool writeQuantDataRaw(const char *filename, FILE *outf, FileData &f);
+static void initHuffman(Huffman &huff, const Data2d &data, int quantizeBits);
+static bool writeQuantDataHuffman(Huffman &huff, FILE *outf,
+                                  const Data2d &data, int quantizeBits);
+static bool readQuantDataHuffman(HuffmanDecoder &huff, FILE *inf,
+                                 Data2d &data);
 
 
 void printHelp() {
@@ -64,14 +58,7 @@ void printHelp() {
 
 
 bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
-  opt.doCompress = true;
-  opt.waveletSteps = DEFAULT_WAVELET_STEPS;
-  opt.isWaveletTransposeStandard = false;
-  opt.thresholdFraction = DEFAULT_THRESHOLD_FRACTION;
-  opt.quantizeBits = DEFAULT_QUANTIZE_BITS;
-  opt.quantizeAlgorithm = DEFAULT_QUANTIZE_ALGORITHM;
-  opt.saveBeforeQuantizingFilename = "";
-  opt.printHuffmanEncoding = false;
+  opt.init();
 
   for (nextArg = 1; nextArg < argc; nextArg++) {
     const char *arg = argv[nextArg];
@@ -153,12 +140,12 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
    variable length: Header, encoded as a Google Protocol Buffer
    variable length: Data. Layout can be determined by reading the header.
 */
-bool writeQuantData(const char *filename, FileData &f, bool printEncoding) {
+bool writeQuantData(const char *filename, const Data2d &data, Options &opt) {
 
   // initialize the huffman encoding
   Huffman huff;
-  initHuffman(huff, f);
-  if (printEncoding) huff.printEncoding();
+  initHuffman(huff, data, opt.quantizeBits);
+  if (opt.printHuffmanEncoding) huff.printEncoding();
   
   FILE *outf = fopen(filename, "wb");
   if (!outf) {
@@ -172,25 +159,25 @@ bool writeQuantData(const char *filename, FileData &f, bool printEncoding) {
   WaveletCompressedImage buf;
 
   // copy parameters into protocol buffer
-  buf.set_width(f.width);
-  buf.set_height(f.height);
-  buf.set_wavelet_transform_step_count(f.waveletSteps);
-  buf.set_standard_transpose(f.isWaveletTransposeStandard);
-  buf.set_quantize_bits(f.quantizeBits);
-  buf.set_threshold_value(f.threshold);
+  buf.set_width(data.width);
+  buf.set_height(data.height);
+  buf.set_wavelet_transform_step_count(opt.waveletSteps);
+  buf.set_standard_transpose(opt.isWaveletTransposeStandard);
+  buf.set_quantize_bits(opt.quantizeBits);
+  buf.set_threshold_value(opt.thresholdValue);
   buf.set_wavelet_algorithm(WaveletCompressedImage_WaveletAlgorithm_HAAR);
-  buf.set_quantization_algorithm(quantAlgId2ProtoId(f.quantizeAlgorithm));
+  buf.set_quantization_algorithm(quantAlgId2ProtoId(opt.quantizeAlgorithm));
 
   int sizeBeforeCodebook = buf.ByteSize();
 
-  if (f.quantizeAlgorithm == QUANT_ALG_UNIFORM ||
-      f.quantizeAlgorithm == QUANT_ALG_LOG) {
-    buf.set_quant_max_value(f.quantMaxVal);
+  if (opt.quantizeAlgorithm == QUANT_ALG_UNIFORM ||
+      opt.quantizeAlgorithm == QUANT_ALG_LOG) {
+    buf.set_quant_max_value(opt.maxAbsVal);
   } else {
-    for (size_t i=0; i < f.quantBinBoundaries.size(); i++)
-      buf.add_quant_bin_boundaries(f.quantBinBoundaries[i]);
-    for (size_t i=0; i < f.quantBinValues.size(); i++)
-      buf.add_quant_bin_values(f.quantBinValues[i]);
+    for (size_t i=0; i < opt.quantBinBoundaries.size(); i++)
+      buf.add_quant_bin_boundaries(opt.quantBinBoundaries[i]);
+    for (size_t i=0; i < opt.quantBinValues.size(); i++)
+      buf.add_quant_bin_values(opt.quantBinValues[i]);
   }
 
   int sizeBeforeHufftable = buf.ByteSize();
@@ -211,6 +198,7 @@ bool writeQuantData(const char *filename, FileData &f, bool printEncoding) {
   }
   */
 
+  // get the size of the header and write the size to the file
   assert(sizeof(unsigned) == 4);
   unsigned codedLen = (unsigned) buf.ByteSize();
   fwrite(&codedLen, sizeof codedLen, 1, outf);
@@ -218,6 +206,7 @@ bool writeQuantData(const char *filename, FileData &f, bool printEncoding) {
          codedLen, codebookSize, huffDecodeTableSize,
          (int)huffDecodeTable.size());;
 
+  // encode the header
   char *codedBuf = new char[codedLen];
   assert(codedBuf);
   if (!buf.SerializeToArray(codedBuf, codedLen)) {
@@ -225,13 +214,14 @@ bool writeQuantData(const char *filename, FileData &f, bool printEncoding) {
     return false;
   }
 
+  // write the header to the file
   if (fwrite(codedBuf, 1, codedLen, outf) != codedLen) {
     fprintf(stderr, "Failed to write encoded parameters to file\n");
     return false;
   }
   delete[] codedBuf;
     
-  bool success = writeQuantDataHuffman(huff, outf, f);
+  bool success = writeQuantDataHuffman(huff, outf, data, opt.quantizeBits);
 
   fclose(outf);
 
@@ -239,7 +229,7 @@ bool writeQuantData(const char *filename, FileData &f, bool printEncoding) {
 }
 
 
-bool readQuantData(const char *filename, FileData &f) {
+bool readQuantData(const char *filename, Data2d &data, Options &opt) {
 
   FILE *inf = fopen(filename, "rb");
   if (!inf) {
@@ -274,22 +264,21 @@ bool readQuantData(const char *filename, FileData &f) {
   delete[] codedBuf;
 
   // copy parameters from protocol buffer
-  f.width = buf.width();
-  f.height = buf.height();
-  f.waveletSteps = buf.wavelet_transform_step_count();
-  f.isWaveletTransposeStandard = buf.standard_transpose();
-  f.quantizeBits = buf.quantize_bits();
-  f.threshold = buf.threshold_value();
-  f.quantMaxVal = buf.quant_max_value();
-  f.quantizeAlgorithm = quantProtoId2AlgId(buf.quantization_algorithm());
+  data.initInts(buf.width(), buf.height());
+  opt.waveletSteps = buf.wavelet_transform_step_count();
+  opt.isWaveletTransposeStandard = buf.standard_transpose();
+  opt.quantizeBits = buf.quantize_bits();
+  opt.thresholdValue = buf.threshold_value();
+  opt.maxAbsVal = buf.quant_max_value();
+  opt.quantizeAlgorithm = quantProtoId2AlgId(buf.quantization_algorithm());
 
-  f.quantBinBoundaries.resize(buf.quant_bin_boundaries_size());
+  opt.quantBinBoundaries.resize(buf.quant_bin_boundaries_size());
   for (int i=0; i < buf.quant_bin_boundaries_size(); i++)
-    f.quantBinBoundaries[i] = buf.quant_bin_boundaries(i);
+    opt.quantBinBoundaries[i] = buf.quant_bin_boundaries(i);
 
-  f.quantBinValues.resize(buf.quant_bin_values_size());
+  opt.quantBinValues.resize(buf.quant_bin_values_size());
   for (int i=0; i < buf.quant_bin_values_size(); i++)
-    f.quantBinValues[i] = buf.quant_bin_values(i);
+    opt.quantBinValues[i] = buf.quant_bin_values(i);
 
   // get the Huffman decode table from the protocol buffer
   vector<int> huffDecodeTable;
@@ -299,7 +288,7 @@ bool readQuantData(const char *filename, FileData &f) {
   HuffmanDecoder huffDecoder;
   huffDecoder.init(huffDecodeTable);
 
-  bool success = readQuantDataHuffman(huffDecoder, inf, f);
+  bool success = readQuantDataHuffman(huffDecoder, inf, data);
   
   fclose(inf);
 
@@ -307,20 +296,20 @@ bool readQuantData(const char *filename, FileData &f) {
 }
 
 
-static void initHuffman(Huffman &huff, FileData &f) {
+static void initHuffman(Huffman &huff, const Data2d &data, int quantizeBits) {
 
   double startTime = NixTimer::time();
 
-  int count = f.width*f.height;
+  int count = data.count();
 
   // number of possible values
-  int valueCount = 1 << f.quantizeBits;
+  int valueCount = 1 << quantizeBits;
   huff.init(valueCount);
 
-  assert(f.floatData == NULL && f.intData != NULL);
+  assert(data.floatData == NULL && data.intData != NULL);
 
   // train the huffman encoder
-  for (int i=0; i < count; i++) huff.increment(f.intData[i]);
+  for (int i=0; i < count; i++) huff.increment(data.intData[i]);
 
   huff.computeHuffmanCoding();
   double elapsed = NixTimer::time() - startTime;
@@ -329,16 +318,16 @@ static void initHuffman(Huffman &huff, FileData &f) {
 
 
 static bool writeQuantDataHuffman(Huffman &huff, FILE *outf,
-                                  FileData &f) {
+                                  const Data2d &data, int quantizeBits) {
 
   // write the data
   BitStreamWriter bitWriter(outf);
-  int count = f.width*f.height;
+  int count = data.count();
 
   // number of possible values
-  int valueCount = 1 << f.quantizeBits;
+  int valueCount = 1 << quantizeBits;
   
-  huff.encodeToStream(&bitWriter, f.intData, count);
+  huff.encodeToStream(&bitWriter, data.intData, count);
   bitWriter.flush();
 
   // printf("%llu bits written\n", (long long unsigned) bitWriter.size());
@@ -358,122 +347,20 @@ static bool writeQuantDataHuffman(Huffman &huff, FILE *outf,
 }
 
 
-static bool readQuantDataHuffman(HuffmanDecoder &huff, FILE *inf, FileData &f) {
+static bool readQuantDataHuffman(HuffmanDecoder &huff, FILE *inf,
+                                 Data2d &data) {
 
   BitStreamReader bitReader(inf);
 
-  int count = f.width * f.height;
-  f.intData = new int[count];
-  assert(f.intData);
+  int count = data.count();
+  assert(data.intData && !data.floatData);
 
-  int readCount = huff.decodeFromStream(f.intData, count, &bitReader);
+  int readCount = huff.decodeFromStream(data.intData, count, &bitReader);
 
   if (count != readCount) {
     printf("ERROR: read only %d of %d values\n", count, readCount);
     return false;
   }
-
-  return true;
-}
-
-
-bool writeQuantDataRLE(const char *filename, FILE *outf, FileData &f) {
-
-  // write the data
-  BitStreamWriter bits(outf);
-  int count = f.width*f.height;
-
-  // this object takes (length,value) run-length pairs and writes
-  // them in binary to the given bit stream
-  WriteRLEPairsToBitStream rleToBits(&bits, f.quantizeBits, EncodeRunLength<WriteRLEPairsToBitStream>::getBitSize());
-
-  // this object takes data values as input, and passes (length,value)
-  // run-length pairs to the rleToBits object
-  EncodeRunLength<WriteRLEPairsToBitStream> rleEncoder(&rleToBits);
-
-  // XXX see if it's faster to use pointer to traverse f.data[]
-
-  if (f.intData) {
-    for (int i=0; i < count; i++) {
-      int x = f.intData[i];
-      rleEncoder.data(x);
-    }
-  } else {
-    for (int i=0; i < count; i++) {
-      int x = (int) f.floatData[i];
-      rleEncoder.data(x);
-    }
-  }
-    
-  rleEncoder.end();
-
-  printf("%d input values, %d RLE output pairs\n", count,
-	 rleEncoder.getOutputCount());
-  return true;
-}
-
-
-bool readQuantDataRLE(const char *filename, FILE *inf, FileData &f) {
-  int count = f.width * f.height;
-  if (f.floatData) {
-    delete[] f.floatData;
-    f.floatData = NULL;
-  }
-  f.intData = new int[count];
-
-  BitStreamReader bits(inf);
-  int *writePos = f.intData;
-  int *endPos = f.intData + count;
-
-  while (writePos < endPos) {
-    if (bits.isEmpty()) {
-      printf("Ran out of data reading %s, expected %d entries, got %d\n",
-             filename, f.width * f.height, (int)(writePos - f.intData));
-      return false;
-    }
-
-    // read sign bit, value, length
-    int sign = bits.read(1);
-    // map 1,0 -> 2,0 -> -2,0 -> -1,1
-    sign = 1 - (sign * 2);
-
-    int quantized = bits.read(f.quantizeBits);
-    int value = sign * quantized;
-
-    int length = bits.read(8);
-
-    // printf("Read %d * %d\n", length, value);
-    
-    for (int i=0; i < length; i++)
-      *writePos++ = value;
-  }
-  return true;
-}
-
-
-bool writeQuantDataRaw(const char *filename, FILE *outf, FileData &f) {
-
-  // write the data
-  BitStreamWriter bits(outf);
-  int count = f.width*f.height;
-
-  if (f.intData) {
-    for (int i=0; i < count; i++) {
-      int x = f.intData[i];
-      bits.write(x, f.quantizeBits);
-    }
-  } else {
-    for (int i=0; i < count; i++) {
-      int x = (int) f.floatData[i];
-      bits.write(x, f.quantizeBits);
-    }
-  }
-    
-  bits.flush();
-
-  int bytes = (bits.size() + 31) / 32 * 4;
-  printf("%d raw bits = %d bytes written\n",
-	 (int)bits.size(), bytes);
 
   return true;
 }

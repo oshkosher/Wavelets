@@ -22,10 +22,16 @@ typedef enum {
 #define DEFAULT_THRESHOLD_FRACTION .5
 #define DEFAULT_QUANTIZE_BITS 8
 #define DEFAULT_QUANTIZE_ALGORITHM QUANT_ALG_LLOYD
+#define DEFAULT_WAVELET_TRANSPOSE_STANDARD false
 
-/** This holds the the parameters as set by the user on the command line. */
+/** This holds the the parameters as set by the user on the command line,
+    and the ones saved in the data file. */
 struct Options {
-  bool doCompress;  // if false, then decompress
+
+  // if false, then decompress
+  bool doCompress;
+
+  // # of wavelet steps. Negative value does the maximum.
   int waveletSteps;
 
   // if true, then do all wavelet steps in the x direction before doing all
@@ -33,53 +39,109 @@ struct Options {
   // if false, do one x step, then one y step, and repeat
   bool isWaveletTransposeStandard;
 
+  // fraction of the data that is rounded down to zero before quantizing
   float thresholdFraction;
-  int quantizeBits;
-  bool printHuffmanEncoding; // print the bit encoding of each value
-  std::string saveBeforeQuantizingFilename;  // -bq option
-  QuantizeAlgorithm quantizeAlgorithm;
-};
 
-/** This holds all the data that will be written to or read from the data file. 
-*/
-struct FileData {
-  float *floatData;
-  int *intData;
-  int width, height;
-
-  int waveletSteps;
-  bool isWaveletTransposeStandard;
+  // # of bits into which the data is quantized
   int quantizeBits;
-  float threshold;  // threshold value, not the proportion
-  float quantMaxVal;  // maximum absolute value in the data;
-                      // used in uniform and log quantization; 
+
+  // the algorithms used to quantize
   QuantizeAlgorithm quantizeAlgorithm;
+
+  // After computing the bit encoding of each value, print the encodings
+  bool printHuffmanEncoding;
+
+  // -bq option : if not "", save a copy data in this file before quantizing
+  std::string saveBeforeQuantizingFilename;
+
+
+  // the following data is just for the save file; it does not correspond
+  // to command line arguments
+
+  /*
+  int width, height;  // size of the 2-d image
+  float *floatData;   // pre-quantized data is stored here
+  int *intData;       // post-quantized data is stored here
+  */
+
+  float thresholdValue; // value computed via thresholdFraction
+
+  // maximum absolute value in the data; used in uniform and log quantization
+  float maxAbsVal;  
+
+  // boundaries between codebook entries, use this to quantize data
   std::vector<float> quantBinBoundaries;
+
+  // codebook - values assigned to each quantized value, use this to dequantize
   std::vector<float> quantBinValues;
 
+  // table use to decode Huffman-encoded bits. See huffman.h (HuffmanDecoder)
+  // for an explanation
   std::vector<int> huffmanDecodeTable;
 
-  // default constructor - invalid values
-  FileData() : floatData(NULL), intData(NULL), width(-1), height(-1), 
-    waveletSteps(0), isWaveletTransposeStandard(false),
-    quantizeBits(0), quantizeAlgorithm(QUANT_ALG_UNKNOWN) {}
+  Options() {
+    init();
+  }
 
-  // alternative constructor - copy the options that make sense to
-  // copy from 'Options'
-  FileData(const Options &opt, float *floatData_=NULL, int *intData_=NULL,
-           int width_=-1, int height_=-1) {
-    floatData = floatData_;
-    intData = intData_;
-    width = width_;
-    height = height_;
-    waveletSteps = opt.waveletSteps;
-    isWaveletTransposeStandard = opt.isWaveletTransposeStandard;
-    quantizeBits = opt.quantizeBits;
-    quantizeAlgorithm = opt.quantizeAlgorithm;
-    threshold = 0;
-    quantMaxVal = 0;
+  void init() {
+    doCompress = true;
+    waveletSteps = DEFAULT_WAVELET_STEPS;
+    isWaveletTransposeStandard = DEFAULT_WAVELET_TRANSPOSE_STANDARD;
+    thresholdFraction = DEFAULT_THRESHOLD_FRACTION;
+    quantizeBits = DEFAULT_QUANTIZE_BITS;
+    quantizeAlgorithm = DEFAULT_QUANTIZE_ALGORITHM;
+    printHuffmanEncoding = false;
+    saveBeforeQuantizingFilename = "";
+
+    /*
+    width = height = -1;
+    floatData = NULL;
+    intData = NULL;
+    */
+
+    thresholdValue = 0;
+    maxAbsVal = 0;
+    quantBinBoundaries.clear();
+    quantBinValues.clear();
+    huffmanDecodeTable.clear();
   }
 };
+
+
+// Store 2d data
+struct Data2d {
+  int width, height;
+  float *floatData;
+  int *intData;
+
+  Data2d() {
+    width = height = -1;
+    floatData = NULL;
+    intData = NULL;
+  }
+
+  ~Data2d() {
+    if (floatData) delete[] floatData;
+    if (intData) delete[] intData;
+  }
+
+  void initInts(int width_, int height_) {
+    width = width_;
+    height = height_;
+    floatData = NULL;
+    intData = new int[width*height];
+  }
+
+  void initFloats(int width_, int height_) {
+    width = width_;
+    height = height_;
+    floatData = new float[width*height];
+    intData = NULL;
+  }
+
+  int count() const {return width*height;}
+};
+
 
 
 QuantizeAlgorithm quantAlgName2Id(const char *name);
@@ -89,46 +151,14 @@ WaveletCompressedImage_QuantizationAlgorithm quantAlgId2ProtoId
 QuantizeAlgorithm quantProtoId2AlgId
   (WaveletCompressedImage_QuantizationAlgorithm protoId);
 
-class WriteRLEPairsToBitStream {
-  BitStreamWriter *out;
-
-  // # of bits in the value, not including sign bit
-  int valueBits;
-
-  // # of bits in the length
-  int rlBits;
-  
-public:
-  WriteRLEPairsToBitStream(BitStreamWriter *out_, int valueBits_, int rlBits_)
-    : out(out_), valueBits(valueBits_), rlBits(rlBits_) {}
-  
-  void data(int value, int length) {
-    // printf("%d * %d\n", length, value);
-
-    // write sign bit
-    out->write( (value<0) ? 1 : 0, 1);
-
-    // write value
-    out->write(abs(value), valueBits);
-    
-    // write length
-    out->write(length, rlBits);
-  }
-
-  void end() {
-    out->flush();
-  }
-};
-
 void printHelp();
 bool parseOptions(int argc, char **argv, Options &opt, int &nextArg);
 
 // Write fileData to a file
-bool writeQuantData(const char *filename, FileData &fileData,
-                    bool printEncoding = false);
+bool writeQuantData(const char *filename, const Data2d &data, Options &opt);
 
 // Read FileData from a file
-bool readQuantData(const char *filename, FileData &fileData);
+bool readQuantData(const char *filename, Data2d &data, Options &opt);
 
 
 #endif // __TEST_COMPRESS_COMMON_H__
