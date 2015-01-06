@@ -1,8 +1,10 @@
+// For documentation on protocol buffers, see:
+//   https://developers.google.com/protocol-buffers/docs/proto
+
 message WaveletCompressedImage {
   required int32 width = 1;
   required int32 height = 2;
   required int32 wavelet_transform_step_count = 3;
-
 
   enum WaveletAlgorithm {
     HAAR = 1;
@@ -14,11 +16,7 @@ message WaveletCompressedImage {
   // standard or nonstandard transform
   // standard: do all transform steps, then transpose
   // nonstandard: do one transform step, transpose, repeat
-  enum WaveletTranspose {
-    STANDARD = 1;    // do all transform steps, then transpose
-    NONSTANDARD = 2; // do one transform step, transpose, repeat
-  }
-  optional WaveletTranspose wavelet_transpose = 5 [default = NONSTANDARD];
+  optional bool standard_transpose = 5 [default = false];
 
   // This proportion of the original data that was replaced with zero.
   // It will be a value between 0 and 1.
@@ -49,5 +47,7 @@ message WaveletCompressedImage {
   // AKA the codebook.
   // For N quantizeBits, there are 2^N quantize values.
   repeated float quant_bin_values = 12 [packed=true];
+
+  repeated int32 huffman_encode_table = 13 [packed=true];
 }
 

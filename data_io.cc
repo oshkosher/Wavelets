@@ -175,7 +175,9 @@ bool readDataFile(const char *filename, double **data,
 static bool writeBinaryDataFile(const char *filename, float *data, 
                                 int width, int height) {
 
+#ifndef NDEBUG
   static unsigned endianCheck = 0x11223344;
+#endif
                          
   FILE *outf = fopen(filename, "wb");
   if (!outf) {

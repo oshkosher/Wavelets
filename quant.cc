@@ -102,10 +102,23 @@ void QuantCodebook::initCountBins(int count, float *data,
     binLeftIdx = binRightIdxFrac;
   }
     
-  // use the positive extrema as the first codebook entry
+  // use the positive extrema as the last codebook entry
   codebook.push_back(sorted[count-1]);
 
-  lastBoundary = boundaries[boundaries.size()-1];
+  // and give it its own bin
+  lastBoundary = .01f * sorted[count-2] + .99f * sorted[count-1];
+  boundaries[boundaries.size()-1] = lastBoundary;
 
   delete[] sorted;
+}
+
+
+void QuantCodebook::printCodebook() {
+  printf("Codebook:\n");
+
+  for (size_t i = 0; ; i++) {
+    printf("Bin %3d. %f\n", (int)i, codebook[i]);
+    if (i == boundaries.size()) break;
+    printf("  %f\n", boundaries[i]);
+  }
 }

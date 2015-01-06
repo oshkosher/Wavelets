@@ -17,7 +17,7 @@ class HuffmanDecoder {
   // Offset 2:  [left  ] [right ]
   // Offset 4:  [left  ] [right ]
   //   ...
-  // If the left entry is -1, then this is a leaf node from the tree, and
+  // If the left entry is 0, then this is a leaf node from the tree, and
   // the right entry contains the value.
   // Otherwise, if the current bit is 0, use the left entry to get the
   // offset of the next pair of entries, otherwise the bit is 1, and
@@ -42,8 +42,17 @@ class HuffmanDecoder {
 class Huffman {
  public:
 
+  Huffman() {
+    init(0);
+  }
+
   // Initialize a histogram with 'size' entries
-  Huffman(int size_) : size(size_) {
+  Huffman(int size_) {
+    init(size_);
+  }
+
+  void init(int size_) {
+    size = size_;
     assert(counts.size() == 0);
     counts.resize(size, 0);
     computed = false;

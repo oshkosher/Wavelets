@@ -69,20 +69,24 @@ class QuantizationLooper {
   Quantizer *quantizer;
   double sumErrSquared, executeTime;
   size_t inputSize;
+  unsigned maxQuantizedValue;
 
  public:
-  QuantizationLooper(Quantizer *q = NULL) {
-    init(q);
+  QuantizationLooper(Quantizer *q = NULL, int quantizeBits = 0) {
+    init(q, quantizeBits);
   }
 
-  void init(Quantizer *q) {
+  void init(Quantizer *q, int quantizeBits) {
     quantizer = q;
+    maxQuantizedValue = 1u << quantizeBits;
     executeTime = 0;
   }
 
   // XXX add peak signal-to-noise ratio
   void quantize(size_t length, const float *dataIn, int *dataOut = NULL,
 		bool doComputeErr = false) {
+    assert(quantizer != NULL && maxQuantizedValue > 1);
+
     if (dataOut == NULL)
       dataOut = (int*) dataIn;
 
@@ -101,12 +105,14 @@ class QuantizationLooper {
 	// printf("%g\n", fabsf(originalValue - restoredValue));
 	float err = restoredValue - originalValue;
 	sumErrSquared += err*err;
+        assert(dataOut[i] >= 0 && dataOut[i] < maxQuantizedValue);
       }
 
     } else {
       for (size_t i=0; i < length; i++) {
 	dataOut[i] = quantizer->quant(dataIn[i]);
         // printf("%f\t%d\n", dataIn[i], dataOut[i]);
+        assert(dataOut[i] >= 0 && dataOut[i] < maxQuantizedValue);
       }
     }
 
@@ -115,12 +121,15 @@ class QuantizationLooper {
 
 
   void dequantize(size_t length, int *dataIn, float *dataOut = NULL) {
+    assert(quantizer != NULL && maxQuantizedValue > 1);
+
     if (dataOut == NULL)
       dataOut = (float*) dataIn;
 
     double startTime = NixTimer::time();
 
     for (size_t i=0; i < length; i++) {
+      assert(dataIn[i] >= 0 && dataIn[i] < maxQuantizedValue);
       dataOut[i] = quantizer->dequant(dataIn[i]);
     }
 
@@ -181,15 +190,17 @@ class QuantUniform {
     float absx = fabsf(x);
 
     // apply threshold
-    if (absx <= threshold) return 0;
+    if (absx <= threshold) return base;
 
     float scaled = (absx - threshold) * scale + 1;
     if (scaled >= base) scaled = base;
 
-    return (int) copysignf(scaled, x);
+    // add the base to shift the range from -base/2..base/2 to 0..base
+    return (int) copysignf(scaled, x) + base;
   }
 
   HD float dequant(int x) const {
+    x -= base;
     if (x == 0) {
       return 0;
     } else if (x > 0) {
@@ -233,7 +244,7 @@ class QuantLog {
   HD int quant(float x) const {
 
     float absx = fabsf(x);
-    if (absx <= threshold) return 0;
+    if (absx <= threshold) return base;
     // int sign=x/fabsf(x);
     
     float lnVal = logf(absx * invThresh);
@@ -241,10 +252,11 @@ class QuantLog {
 
     if (result > base) result = base;
 
-    return (int) copysignf(result, x);
+    return (int) copysignf(result, x) + base;
   }
 
   HD float dequant(int x) const {
+    x -= base;
     if (x == 0) return 0;
     // int sign=x/abs(x);
     float lnVal=fabsf(x*dqScale);
@@ -277,6 +289,8 @@ class QuantCodebook {
   // Generate boundaries and codebook entries based on bins with
   // equal numbers of values in each.
   void initCountBins(int count, float *data, int bits, float thresh);
+
+  void printCodebook();
 
   int quant(float x) const {
 

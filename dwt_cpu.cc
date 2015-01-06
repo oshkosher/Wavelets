@@ -22,7 +22,7 @@ static void haar_inv
 
 
 template<typename T>
-static float haar_inv_2d(int size, T *data, int stepCount);
+static float haar_inv_2d(int size, T *data, int stepCount, bool standard);
 
 
 // return the number of high-order zero bits in a 32 bit integer
@@ -399,7 +399,8 @@ void transpose_square_submatrix(int total_size, int submatrix_size,
   Returns the number of milliseconds elapsed.
 */
 template<typename T>
-static float haar_2d_tmpl(int size, T *data, bool inverse, int stepCount) {
+static float haar_2d_tmpl(int size, T *data, bool inverse, int stepCount,
+                          bool standardTranspose = false) {
 
   // check that stepCount is valid
   int maxSteps = dwtMaximumSteps(size);
@@ -407,73 +408,119 @@ static float haar_2d_tmpl(int size, T *data, bool inverse, int stepCount) {
     stepCount = maxSteps;
 
   if (inverse)
-    return haar_inv_2d(size, data, stepCount);
+    return haar_inv_2d(size, data, stepCount, standardTranspose);
 
   double startSec = NixTimer::time();
 
-  int stepLength = size;
-  for (int step = 0; step < stepCount; step++) {
+  if (standardTranspose) {
 
-    // transform rows
-    T *p = data;
-    for (int row=0; row < stepLength; row++) {
-      haar_internal(stepLength, p, 1);
-      p += size;
+    for (int i = 0; i < 2; i++) {
+
+      int stepLength = size;
+      for (int step = 0; step < stepCount; step++) {
+
+        // transform rows
+        T *p = data;
+        for (int row=0; row < size; row++) {
+          haar_internal(stepLength, p, 1);
+          p += size;
+        }
+
+        stepLength >>= 1;
+      }
+
+      transpose_square(size, data);
     }
 
-    transpose_square_submatrix(size, stepLength, data);
+  } else {
 
-    // transform columns
-    p = data;
-    for (int col=0; col < stepLength; col++) {
-      haar_internal(stepLength, p, 1);
-      p += size;
+    int stepLength = size;
+    for (int step = 0; step < stepCount; step++) {
+
+      // transform rows
+      T *p = data;
+      for (int row=0; row < stepLength; row++) {
+        haar_internal(stepLength, p, 1);
+        p += size;
+      }
+
+      transpose_square_submatrix(size, stepLength, data);
+
+      // transform columns
+      p = data;
+      for (int col=0; col < stepLength; col++) {
+        haar_internal(stepLength, p, 1);
+        p += size;
+      }
+
+      transpose_square_submatrix(size, stepLength, data);
+
+      stepLength >>= 1;
     }
 
-    transpose_square_submatrix(size, stepLength, data);
-
-    stepLength >>= 1;
   }
 
   return (float) (1000 * (NixTimer::time() - startSec));
 }
 
 float haar_2d(int size, float *data, bool inverse,
-              int stepCount) {
-  return haar_2d_tmpl(size, data, inverse, stepCount);
+              int stepCount, bool standardTranspose) {
+  return haar_2d_tmpl(size, data, inverse, stepCount, standardTranspose);
 }
 
 float haar_2d(int size, double *data, bool inverse,
-              int stepCount) {
-  return haar_2d_tmpl(size, data, inverse, stepCount);
+              int stepCount, bool standardTranspose) {
+  return haar_2d_tmpl(size, data, inverse, stepCount, standardTranspose);
 }
 
 
 template<typename T>
 static float haar_inv_2d(int size, T *data,
-                         int stepCount) {
+                         int stepCount, bool standard) {
 
   double startSec = NixTimer::time();
 
-  for (int step = stepCount; step >= 1; step--) {
-    int stepLength = size >> (step-1);
-    
-    transpose_square_submatrix(size, stepLength, data);
+  if (standard) {
 
-    // transform columns
-    T *p = data;
-    for (int row=0; row < stepLength; row++) {
-      haar_inv(stepLength, p, 1);
-      p += size;
+    for (int i=0; i < 2; i++) {
+
+      transpose_square(size, data);
+
+      for (int step = stepCount; step >= 1; step--) {
+        int stepLength = size >> (step-1);
+
+        // transform columns
+        T *p = data;
+        for (int row=0; row < size; row++) {
+          haar_inv(stepLength, p, 1);
+          p += size;
+        }
+
+      }
     }
 
-    transpose_square_submatrix(size, stepLength, data);
+  } else {
 
-    // transform rows
-    p = data;
-    for (int col=0; col < stepLength; col++) {
-      haar_inv(stepLength, p, 1);
-      p += size;
+    for (int step = stepCount; step >= 1; step--) {
+      int stepLength = size >> (step-1);
+    
+      transpose_square_submatrix(size, stepLength, data);
+
+      // transform columns
+      T *p = data;
+      for (int row=0; row < stepLength; row++) {
+        haar_inv(stepLength, p, 1);
+        p += size;
+      }
+
+      transpose_square_submatrix(size, stepLength, data);
+
+      // transform rows
+      p = data;
+      for (int col=0; col < stepLength; col++) {
+        haar_inv(stepLength, p, 1);
+        p += size;
+      }
     }
   }
 
