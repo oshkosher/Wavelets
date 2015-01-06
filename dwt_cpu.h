@@ -45,10 +45,12 @@ void haar(int length, double data[], bool inverse = false,
 // Haar wavelet transform. on a 2-d square of data
 // Returns the time the operation took in milliseconds.
 float haar_2d(int size, float *data,
-              bool inverse = false, int stepCount = -1);
+              bool inverse = false, int stepCount = -1,
+              bool standardTranspose = false);
 
 float haar_2d(int size, double *data,
-              bool inverse = false, int stepCount = -1);
+              bool inverse = false, int stepCount = -1,
+              bool standardTranspose = false);
 
 typedef enum {
   ZERO_FILL,  // fill pad elements with zero

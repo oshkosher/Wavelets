@@ -52,6 +52,7 @@ void printHelp() {
          "                       (default = %s)\n"
          "    -bq <filename> : before quantizing, save a copy of the data this file\n"
          "    -enc : print the bit encoding of each value\n"
+         "    -std : use standard wavelet transpose order\n"
          "\n",
          DEFAULT_WAVELET_STEPS,
          DEFAULT_THRESHOLD_FRACTION,
@@ -65,6 +66,7 @@ void printHelp() {
 bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
   opt.doCompress = true;
   opt.waveletSteps = DEFAULT_WAVELET_STEPS;
+  opt.isWaveletTransposeStandard = false;
   opt.thresholdFraction = DEFAULT_THRESHOLD_FRACTION;
   opt.quantizeBits = DEFAULT_QUANTIZE_BITS;
   opt.quantizeAlgorithm = DEFAULT_QUANTIZE_ALGORITHM;
@@ -129,6 +131,10 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
       opt.printHuffmanEncoding = true;
     }
 
+    else if (!strcmp(arg, "-std")) {
+      opt.isWaveletTransposeStandard = true;
+    }
+
     else {
       fprintf(stderr, "Unrecognized option: \"%s\"\n", arg);
       return false;
@@ -169,6 +175,7 @@ bool writeQuantData(const char *filename, FileData &f, bool printEncoding) {
   buf.set_width(f.width);
   buf.set_height(f.height);
   buf.set_wavelet_transform_step_count(f.waveletSteps);
+  buf.set_standard_transpose(f.isWaveletTransposeStandard);
   buf.set_quantize_bits(f.quantizeBits);
   buf.set_threshold_value(f.threshold);
   buf.set_wavelet_algorithm(WaveletCompressedImage_WaveletAlgorithm_HAAR);
@@ -270,6 +277,7 @@ bool readQuantData(const char *filename, FileData &f) {
   f.width = buf.width();
   f.height = buf.height();
   f.waveletSteps = buf.wavelet_transform_step_count();
+  f.isWaveletTransposeStandard = buf.standard_transpose();
   f.quantizeBits = buf.quantize_bits();
   f.threshold = buf.threshold_value();
   f.quantMaxVal = buf.quant_max_value();

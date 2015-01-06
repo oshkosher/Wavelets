@@ -23,12 +23,16 @@ typedef enum {
 #define DEFAULT_QUANTIZE_BITS 8
 #define DEFAULT_QUANTIZE_ALGORITHM QUANT_ALG_LLOYD
 
-
 /** This holds the the parameters as set by the user on the command line. */
 struct Options {
   bool doCompress;  // if false, then decompress
   int waveletSteps;
+
+  // if true, then do all wavelet steps in the x direction before doing all
+  //          steps in the y direction
+  // if false, do one x step, then one y step, and repeat
   bool isWaveletTransposeStandard;
+
   float thresholdFraction;
   int quantizeBits;
   bool printHuffmanEncoding; // print the bit encoding of each value
@@ -44,6 +48,7 @@ struct FileData {
   int width, height;
 
   int waveletSteps;
+  bool isWaveletTransposeStandard;
   int quantizeBits;
   float threshold;  // threshold value, not the proportion
   float quantMaxVal;  // maximum absolute value in the data;
@@ -56,7 +61,8 @@ struct FileData {
 
   // default constructor - invalid values
   FileData() : floatData(NULL), intData(NULL), width(-1), height(-1), 
-    waveletSteps(0), quantizeBits(0), quantizeAlgorithm(QUANT_ALG_UNKNOWN) {}
+    waveletSteps(0), isWaveletTransposeStandard(false),
+    quantizeBits(0), quantizeAlgorithm(QUANT_ALG_UNKNOWN) {}
 
   // alternative constructor - copy the options that make sense to
   // copy from 'Options'
@@ -67,6 +73,7 @@ struct FileData {
     width = width_;
     height = height_;
     waveletSteps = opt.waveletSteps;
+    isWaveletTransposeStandard = opt.isWaveletTransposeStandard;
     quantizeBits = opt.quantizeBits;
     quantizeAlgorithm = opt.quantizeAlgorithm;
     threshold = 0;

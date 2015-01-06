@@ -81,7 +81,8 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   // perform the wavelet transform
   if (opt.waveletSteps > 0) {
-    float waveletMs = haar_2d(size, data, false, opt.waveletSteps);
+    float waveletMs = haar_2d(size, data, false, opt.waveletSteps,
+                              opt.isWaveletTransposeStandard);
     printf("Wavelet transform (%d steps): %.2f ms\n", 
            opt.waveletSteps, waveletMs);
   }
@@ -300,7 +301,8 @@ bool decompressFile(const char *inputFile, const char *outputFile,
   printf("Dequantize: %.2f ms\n", (NixTimer::time() - startTime) * 1000);
 
   // perform inverse wavelet transform
-  elapsed = haar_2d(size, data, true, f.waveletSteps);
+  elapsed = haar_2d(size, data, true, f.waveletSteps,
+                    f.isWaveletTransposeStandard);
   printf("Wavelet inverse transform: %.2f ms\n", elapsed);
 
   // write the reconstructed data
@@ -414,7 +416,7 @@ void computeLloydQuantization
     }
 
     if (binBoundaries[i] < binValues[i] || binBoundaries[i] > binValues[i+1]) {
-      printf("ERROR: partition[%d] (%f) should be between codebook[%d] (%f) and codebook[%d] (%f)\n",
+      printf("ERROR: partition[%d] (%.8g) should be between codebook[%d] (%.8g) and codebook[%d] (%.8g)\n",
              i, binBoundaries[i], i, binValues[i], i+1, binValues[i+1]);
     }
   }
