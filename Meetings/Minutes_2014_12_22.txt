@@ -1,0 +1,58 @@
+Minutes of Weekly Meeting of the Wavelet Group
+
+Date: Monday, December 22nd, 2014
+
+Time: Noon to 1 PM
+
+Present: All connected remotely.  David Concha, Anupam Goyal, Ed Karrels, Bonnie Smithson, Sergio Zarantonello
+
+
+Discussions:
+
+Bonnie mentioned the following:
+
+1. She plans to break the movie she has, into cubelets and post these on the FTP site.  Bonnie plans to make 14 clips.  Various formats under consideration are MPEG-4, JPEG, PNG, and AVI.
+
+2. For H.264, there are 11 panels of configuration options (she emailed images of these 11 panels to Serge and Anupam).  At default values of these configuration options, H.264 compress quite well.
+
+Serge mentioned the following:
+
+1. “bzip2” should be used for lossless compression.  Currently, the C-language code uses “zlib” for this part.
+
+2. From Haar compression, we need to move to “9-7” wavelet compression.
+
+3. For the C-language code:
+a. It should be made to work with 3-D and not 2-D for processing of data.
+b. It should be converted “standard” form rather than the current “non-standard”, for wavelet transform.  For a 256^3 cubelet, it should first process along x-direction its 256^2 vectors at all levels, then do the same along y-direction, and finally along z-direction.
+c. It works with symmetry/mirroring, whereas MatLab code works by folding over.
+
+4. We should design our code so that it can be easily extended to higher than three dimensions, such as for hyper-structural images.
+
+5. We should have the ability to convert cubelet data, e.g. from a seismic application, into a tiled format.
+
+6. For a 256^3 data, available as 256 JPEG images, each stored in a 256 x 256 array, he can run these in MatLab. 
+
+Ed mentioned the following:
+
+1. He has not yet included Lloyd’s algorithm in his code.
+
+2. For GPU programming, we should keep memory accesses contiguous.
+
+David mentioned the following:
+
+1. Processing along x-direction of the dataset is better.
+
+
+Currently the following three programs are working:
+
+1. Haar code on Maria’s machine including the code to convert color, non-square image to a monochrome, square data file.
+
+2. 2-D, non-standard “9-7” wavelet code on Maria’s machine.
+
+3. 3-D, standard, “9-7” wavelet code in MatLab on Octave.
+
+H.264 compression should be specific to the video.  A consideration is how far to compress.
+
+A user-friendly installation of AVISynth should be looked into. 
+
+The movie should be broken into clips of 256 frames each.  The size of the file would be 256^3 x 1 byte.  This, Anupam later computed to be 16.777216 MB.
