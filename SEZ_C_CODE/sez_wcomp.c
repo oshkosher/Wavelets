@@ -37,18 +37,28 @@ float*  qS;
 
 /* Hard-wired filter length */
     S->nq = 9;
+
+    /* cache the 'radius' of the filter, half its length */
     nq_half = (int) (S->nq)/2;
 
 /*  Processing levels & offsets */
+
+    // set up column indices
     if (nc >= S->nq && S->lev_c != 0){ 
+        // if given -1, do the maximum number of levels
         if (S->lev_c==-1){
     	  S->lev_c = (int) floor( log( ((float) nc))/log(2) - 2);
         }
+
+        // number of columns after expansion
         S->nc_ext = ceilf(nc/pow(2,S->lev_c))*pow(2,S->lev_c) + 2*nq_half; 
-        S->ic_0 = nq_half; 
-        S->ic_1 = (int) ((S->nc_ext)-(S->nc))/2;
-        S->jc_0 = (S->nc_ext) - nq_half - 1; 
-        S->jc_1 = (S->nc) + (S->ic_1) -1; 
+
+        // set up mirrored data
+        S->ic_0 = nq_half;                        // expanded data start
+        S->ic_1 = (int) ((S->nc_ext)-(S->nc))/2;  // initial data start
+        S->jc_0 = (S->nc_ext) - nq_half - 1;      // expanded data end
+        S->jc_1 = (S->nc) + (S->ic_1) -1;         // initial data end
+
     }
     else {
 	S->lev_c=0;
@@ -58,6 +68,8 @@ float*  qS;
         S->jc_0 = nc-1; 
         S->jc_1 = nc-1; 
     }
+
+    // set up row indices
     if (nr >= S->nq && S->lev_r != 0){ 
         if (S->lev_r==-1){
     	  S->lev_r =  (int) floor( log( ((float) nr))/log(2) - 2 );
