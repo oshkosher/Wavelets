@@ -60,7 +60,7 @@ void normalizeRegion(float data[], int totalWidth,
   for (int j=0; j < height; j++) {
     for (int i=0; i < width; i++) {
       float p = getPixel(x + i, y + j, data, totalWidth);
-      setPixel((p + offset) * scale, x+i, y+j, data, totalWidth);
+      setPixel((p + offset) * scale - .5f, x+i, y+j, data, totalWidth);
     }
   }
 }  
