@@ -120,7 +120,7 @@ class QuantizationLooper {
   }
 
 
-  void dequantize(size_t length, int *dataIn, float *dataOut = NULL) {
+  void dequantize(size_t length, const int *dataIn, float *dataOut = NULL) {
     assert(quantizer != NULL && maxQuantizedValue > 1);
 
     if (dataOut == NULL)

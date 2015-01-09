@@ -211,7 +211,7 @@ test_compress_cpu.o: test_compress_cpu.cc test_compress_common.h \
 	$(CC) $(LLOYD_INC) -c $<
 
 test_compress_common.o: test_compress_common.cc test_compress_common.h \
-	  rle.h bit_stream.h nixtimer.h huffman.h
+	  rle.h bit_stream.h nixtimer.h huffman.h dwt_cpu.h
 	$(CC) -c $<
 
 dwt_cpu.o: dwt_cpu.cc dwt_cpu.h nixtimer.h

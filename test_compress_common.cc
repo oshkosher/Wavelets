@@ -25,9 +25,11 @@ using namespace std;
 
 // read&write just the data part of the file to&from f.intData
 // using Huffman encoding
-static void initHuffman(Huffman &huff, const Data2d &data, int quantizeBits);
+static void initHuffman(Huffman &huff, const Data2d &data, int quantizeBits,
+                        bool quiet);
 static bool writeQuantDataHuffman(Huffman &huff, FILE *outf,
-                                  const Data2d &data, int quantizeBits);
+                                  const Data2d &data, int quantizeBits,
+                                  bool quiet);
 static bool readQuantDataHuffman(HuffmanDecoder &huff, FILE *inf,
                                  Data2d &data);
 
@@ -47,6 +49,7 @@ void printHelp() {
          "    -bq <filename> : before quantizing, save a copy of the data this file\n"
          "    -enc : print the bit encoding of each value\n"
          "    -std : use standard wavelet transpose order\n"
+         "    -q : be quiet; suppess all output\n"
          "\n",
          DEFAULT_WAVELET_STEPS,
          DEFAULT_THRESHOLD_FRACTION,
@@ -122,6 +125,15 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
       opt.isWaveletTransposeStandard = true;
     }
 
+    else if (!strcmp(arg, "-q")) {
+      opt.quiet = true;
+    }
+
+    else if (!strcmp(arg, "-experiment")) {
+      opt.runQuantizationExperiments = true;
+      opt.quiet = true;
+    }
+
     else {
       fprintf(stderr, "Unrecognized option: \"%s\"\n", arg);
       return false;
@@ -140,11 +152,14 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
    variable length: Header, encoded as a Google Protocol Buffer
    variable length: Data. Layout can be determined by reading the header.
 */
-bool writeQuantData(const char *filename, const Data2d &data, Options &opt) {
+bool writeQuantData(const char *filename, const Data2d &data, Options &opt,
+                    int *fileSizeBytes) {
+  
+  if (fileSizeBytes) *fileSizeBytes = 0;
 
   // initialize the huffman encoding
   Huffman huff;
-  initHuffman(huff, data, opt.quantizeBits);
+  initHuffman(huff, data, opt.quantizeBits, opt.quiet);
   if (opt.printHuffmanEncoding) huff.printEncoding();
   
   FILE *outf = fopen(filename, "wb");
@@ -202,9 +217,10 @@ bool writeQuantData(const char *filename, const Data2d &data, Options &opt) {
   assert(sizeof(unsigned) == 4);
   unsigned codedLen = (unsigned) buf.ByteSize();
   fwrite(&codedLen, sizeof codedLen, 1, outf);
-  printf("Header %u bytes (codebook %d bytes, %d bytes huff decode[%d])\n",
-         codedLen, codebookSize, huffDecodeTableSize,
-         (int)huffDecodeTable.size());;
+  if (!opt.quiet)
+    printf("Header %u bytes (codebook %d bytes, %d bytes huff decode[%d])\n",
+           codedLen, codebookSize, huffDecodeTableSize,
+           (int)huffDecodeTable.size());;
 
   // encode the header
   char *codedBuf = new char[codedLen];
@@ -221,8 +237,11 @@ bool writeQuantData(const char *filename, const Data2d &data, Options &opt) {
   }
   delete[] codedBuf;
     
-  bool success = writeQuantDataHuffman(huff, outf, data, opt.quantizeBits);
+  bool success = writeQuantDataHuffman(huff, outf, data, opt.quantizeBits,
+                                       opt.quiet);
 
+  if (fileSizeBytes) *fileSizeBytes = (int) ftell(outf);
+  
   fclose(outf);
 
   return success;
@@ -296,7 +315,8 @@ bool readQuantData(const char *filename, Data2d &data, Options &opt) {
 }
 
 
-static void initHuffman(Huffman &huff, const Data2d &data, int quantizeBits) {
+static void initHuffman(Huffman &huff, const Data2d &data, int quantizeBits,
+                        bool quiet) {
 
   double startTime = NixTimer::time();
 
@@ -313,12 +333,14 @@ static void initHuffman(Huffman &huff, const Data2d &data, int quantizeBits) {
 
   huff.computeHuffmanCoding();
   double elapsed = NixTimer::time() - startTime;
-  printf("Huffman build table %.3f ms\n", elapsed*1000);
+  if (!quiet)
+    printf("Huffman build table %.3f ms\n", elapsed*1000);
 }
 
 
 static bool writeQuantDataHuffman(Huffman &huff, FILE *outf,
-                                  const Data2d &data, int quantizeBits) {
+                                  const Data2d &data, int quantizeBits,
+                                  bool quiet) {
 
   // write the data
   BitStreamWriter bitWriter(outf);
@@ -338,10 +360,11 @@ static bool writeQuantDataHuffman(Huffman &huff, FILE *outf,
   for (int i=0; i < valueCount; i++)
     totalBits += huff.encodedLength(i) * huff.getCount(i);
 
-  printf("Huffman encoding: %d bytes, %.2f bits/pixel, "
-	 "longest encoding = %d bits\n",
-	 bytesWritten, (double)totalBits / count,
-	 huff.getLongestEncodingLength());
+  if (!quiet)
+    printf("Huffman encoding: %d bytes, %.2f bits/pixel, "
+           "longest encoding = %d bits\n",
+           bytesWritten, (double)totalBits / count,
+           huff.getLongestEncodingLength());
 
   return true;
 }

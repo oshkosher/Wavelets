@@ -27,6 +27,8 @@ float thresh_cpu(int count, float *data, float compRatio,
 
   *maxVal = *minVal = data[0];
 
+  // compute the absolute values of every element, and at the same time
+  // find the largest (most positive) and smallest (most negative) values
   for (int idx = 0; idx < count; idx++) {
     absData[idx] = fabsf(data[idx]);
     if (data[idx] < *minVal) {

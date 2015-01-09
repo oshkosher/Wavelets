@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <string>
+#include "dwt_cpu.h"
 #include "data_io.h"
 #include "bit_stream.h"
 #include "wavelet_compress.pb.h"
@@ -23,6 +24,7 @@ typedef enum {
 #define DEFAULT_QUANTIZE_BITS 8
 #define DEFAULT_QUANTIZE_ALGORITHM QUANT_ALG_LLOYD
 #define DEFAULT_WAVELET_TRANSPOSE_STANDARD false
+#define DEFAULT_PADDING_METHOD REFLECT
 
 /** This holds the the parameters as set by the user on the command line,
     and the ones saved in the data file. */
@@ -30,6 +32,9 @@ struct Options {
 
   // if false, then decompress
   bool doCompress;
+
+  // suppress output
+  bool quiet;
 
   // # of wavelet steps. Negative value does the maximum.
   int waveletSteps;
@@ -79,12 +84,15 @@ struct Options {
   // for an explanation
   std::vector<int> huffmanDecodeTable;
 
+  bool runQuantizationExperiments;
+
   Options() {
     init();
   }
 
   void init() {
     doCompress = true;
+    quiet = false;
     waveletSteps = DEFAULT_WAVELET_STEPS;
     isWaveletTransposeStandard = DEFAULT_WAVELET_TRANSPOSE_STANDARD;
     thresholdFraction = DEFAULT_THRESHOLD_FRACTION;
@@ -104,6 +112,8 @@ struct Options {
     quantBinBoundaries.clear();
     quantBinValues.clear();
     huffmanDecodeTable.clear();
+
+    runQuantizationExperiments = false;
   }
 };
 
@@ -126,6 +136,7 @@ struct Data2d {
   }
 
   void initInts(int width_, int height_) {
+    assert(intData == NULL);
     width = width_;
     height = height_;
     floatData = NULL;
@@ -133,6 +144,7 @@ struct Data2d {
   }
 
   void initFloats(int width_, int height_) {
+    assert(floatData == NULL);
     width = width_;
     height = height_;
     floatData = new float[width*height];
@@ -155,7 +167,9 @@ void printHelp();
 bool parseOptions(int argc, char **argv, Options &opt, int &nextArg);
 
 // Write fileData to a file
-bool writeQuantData(const char *filename, const Data2d &data, Options &opt);
+// If fileSizeBytes is not NULL, store the size of the output file in it.
+bool writeQuantData(const char *filename, const Data2d &data, Options &opt,
+                    int *fileSizeBytes = NULL);
 
 // Read FileData from a file
 bool readQuantData(const char *filename, Data2d &data, Options &opt);

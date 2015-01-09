@@ -1,4 +1,5 @@
 #include <google/protobuf/stubs/common.h>
+#include <algorithm>
 #include "test_compress_common.h"
 #include "dwt_cpu.h"
 #include "nixtimer.h"
@@ -15,6 +16,21 @@ void computeLloydQuantization(const float *inputData, int count, int bits,
 			      std::vector<float> &quantBinBoundaries,
 			      std::vector<float> &quantBinValues);
 void testHuffman(const int data[], int count, int bitCount);
+
+// pad the data to make it a square power of two, if it isn't already
+void padData(Data2d &data, DWTPadding padMethod = REFLECT, bool quiet = false);
+
+// quantize the data
+bool quantize(const Data2d &data, Data2d &quantizedData, float maxAbsVal,
+              Options &opt, const float *nonzeroData, int nonzeroCount,
+              float *quantErrorOut = NULL);
+
+bool dequantize(const Data2d &quantizedData, Data2d &data, Options &opt);
+
+void quantizationExperiments(const Data2d &data, Options &opt,
+                             const float *sortedAbsData,
+                             float maxAbsVal);
+                
 
 int main(int argc, char **argv) {
 
@@ -49,6 +65,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   Data2d data, quantizedData;
   double firstStartTime, startTime, elapsed;
+  const bool quiet = opt.quiet;
 
   firstStartTime = startTime = NixTimer::time();
 
@@ -56,28 +73,17 @@ bool compressFile(const char *inputFile, const char *outputFile,
   if (!readDataFile(inputFile, &data.floatData, &data.width, &data.height))
     return 1;
   elapsed = NixTimer::time() - startTime;
-  printf("Read %dx%d data file: %.2f ms\n", data.width, data.height,
-         elapsed * 1000);
+  if (!quiet)
+    printf("Read %dx%d data file: %.2f ms\n", data.width, data.height,
+           elapsed * 1000);
 
   // pad the data to make it a square power of two, if necessary
-  int longSide = data.width > data.height ? data.width : data.height;
-  int size = dwt_padded_length(longSide, 0, true);
-  int count = size * size;
-  if (data.width != size || data.height != size) {
-    startTime = NixTimer::time();
-    float *paddedData = dwt_pad_2d(data.height, data.width, data.width,
-                                   data.floatData,
-                                   size, size, size,
-                                   NULL, REFLECT);
-    elapsed = NixTimer::time() - startTime;
-    printf("Pad data: %.2f ms\n", elapsed*1000);
-    delete[] data.floatData;
-    data.floatData = paddedData;
-    data.width = data.height = size;
-  }
+  padData(data, DEFAULT_PADDING_METHOD, quiet);
 
   const int width = data.width;
   const int height = data.height;
+  assert(width == height);
+  const int size = width, count = size*size;
 
   // adjust the number of wavelet steps in case the user requested too many
   int maxWaveletSteps = dwtMaximumSteps(size);
@@ -88,26 +94,27 @@ bool compressFile(const char *inputFile, const char *outputFile,
   if (opt.waveletSteps > 0) {
     float waveletMs = haar_2d(size, data.floatData, false, opt.waveletSteps,
                               opt.isWaveletTransposeStandard);
-    printf("Wavelet transform (%d steps): %.2f ms\n", 
-           opt.waveletSteps, waveletMs);
+    if (!quiet)
+      printf("Wavelet transform (%d steps): %.2f ms\n", 
+             opt.waveletSteps, waveletMs);
   }
 
   // save the intermediate data to a file before quantizing
   if (opt.saveBeforeQuantizingFilename != "") {
     const char *filename = opt.saveBeforeQuantizingFilename.c_str();
     if (!writeDataFile(filename, data.floatData, width, height)) {
-                       
       printf("Failed to write intermediate data file \"%s\".\n", filename);
     } else {
-      printf("Write intermediate data file \"%s\"\n", filename);
+      if (!quiet)
+        printf("Write intermediate data file \"%s\"\n", filename);
     }
   }
 
   // find the threshold value by sorting
-  // XXX use quickselect to speed up
-  float maxVal, minVal, maxAbsVal, *sortedAbsData;
+  // XXX try using quickselect to speed up
+  float maxVal, minVal, maxAbsVal, *sortedAbsData = NULL;
   int nonzeroCount;
-  // float *sortedAbsData = NULL;
+
   startTime = NixTimer::time();
   opt.thresholdValue = thresh_cpu(count, data.floatData, opt.thresholdFraction,
                                   &nonzeroCount, &maxVal, &minVal,
@@ -115,28 +122,140 @@ bool compressFile(const char *inputFile, const char *outputFile,
 			       
   maxAbsVal = sortedAbsData[count-1];
 
+  // nonzeroCount is the number of nonzero entries (those whose absolute
+  // values are greater than thresholdValue) in sortedAbsData[].
+  // Since sortedAbsData is sorted, those are all at the end of the array.
+  // Set nonzeroData to point to the beginning of that nonzero data.
   // NOTE: nonzeroData points to data in sortedAbsData, don't deallocate both
   float *nonzeroData = sortedAbsData + count - nonzeroCount;
 
   elapsed = NixTimer::time() - startTime;
-  printf("Compute threshold = %g, min = %g, max = %g: %.2f ms\n",
-	 opt.thresholdValue, minVal, maxVal, elapsed*1000);
+  if (!quiet)
+    printf("Compute threshold = %g, min = %g, max = %g: %.2f ms\n",
+           opt.thresholdValue, minVal, maxVal, elapsed*1000);
 
-  // std::vector<float> quantBinBoundaries;
-  // std::vector<float> quantBinValues;
+  // don't write a data file; just run some experiments testing different
+  // quantization settings
+  if (opt.runQuantizationExperiments) {
+    quantizationExperiments(data, opt, sortedAbsData, maxAbsVal);
+    return true;
+  }
 
-  quantizedData.initInts(width, height);
+  if (!quantize(data, quantizedData, maxAbsVal, opt, nonzeroData,
+                nonzeroCount)) return false;
 
-  // quantize the data
+  // deallocate sortedAbsData
+  delete[] sortedAbsData;
+  nonzeroData = NULL;
+  sortedAbsData = NULL;
+
+  // write the quantized data to a file
+
   startTime = NixTimer::time();
-  switch (opt.quantizeAlgorithm) {
 
+  if (!writeQuantData(outputFile, quantizedData, opt))
+    return false;
+    
+  if (!quiet) {
+    printf("Write data file: %.2f ms\n", (NixTimer::time() - startTime)*1000);
+    printf("Total: %.2f ms\n", (NixTimer::time() - firstStartTime)*1000);
+  }
+
+  return true;
+}
+
+bool decompressFile(const char *inputFile, const char *outputFile,
+		    Options &opt) {
+
+  Data2d quantizedData, data;
+  double firstStartTime, startTime, elapsed;
+
+  firstStartTime = startTime = NixTimer::time();
+
+  // read the compressed file
+  if (!readQuantData(inputFile, quantizedData, opt)) return false;
+
+  const int width = quantizedData.width;
+  const int height = quantizedData.height;
+
+  elapsed = NixTimer::time() - startTime;
+  if (!opt.quiet)
+    printf("Read %dx%d data file: %.2f ms\n", width, height,
+           (NixTimer::time() - startTime) * 1000);
+
+  assert(quantizedData.intData != NULL && width > 0 && height > 0);
+  assert(width == height);
+  int size = width;
+
+  // de-quantize the data
+  dequantize(quantizedData, data, opt);
+
+  // perform inverse wavelet transform
+  elapsed = haar_2d(size, data.floatData, true, opt.waveletSteps,
+                    opt.isWaveletTransposeStandard);
+  if (!opt.quiet)
+    printf("Wavelet inverse transform: %.2f ms\n", elapsed);
+
+  // write the reconstructed data
+  startTime = NixTimer::time();
+  if (!writeDataFile(outputFile, data.floatData, data.width, data.height))
+    return false;
+
+  if (!opt.quiet) {
+    printf("Write file: %.2f ms\n", (NixTimer::time() - startTime) * 1000);
+    printf("Total: %.2f ms\n", (NixTimer::time() - firstStartTime) * 1000);
+  }
+
+  return true;
+}
+
+
+void padData(Data2d &data, DWTPadding padMethod, bool quiet) {
+  int longSide = data.width > data.height ? data.width : data.height;
+  int size = dwt_padded_length(longSide, 0, true);
+  if (data.width != size || data.height != size) {
+    double startTime = NixTimer::time();
+    float *paddedData = dwt_pad_2d(data.height, data.width, data.width,
+                                   data.floatData, size, size, size,
+                                   NULL, padMethod);
+    double elapsed = NixTimer::time() - startTime;
+    if (!quiet)
+      printf("Pad data from %dx%d to %dx%d: %.2f ms\n",
+             data.width, data.height, size, size,
+             elapsed*1000);
+    delete[] data.floatData;
+    data.floatData = paddedData;
+    data.width = data.height = size;
+  }
+}
+
+
+bool quantize(const Data2d &data, Data2d &quantizedData, float maxAbsVal,
+              Options &opt, const float *nonzeroData, int nonzeroCount,
+              float *quantErrorOut) {
+
+  float quantErr = -1;
+
+  // allocate memory for the quantized data if it isn't already
+  if (quantizedData.intData) {
+    assert(quantizedData.width == data.width &&
+           quantizedData.height == data.height);
+  } else {
+    quantizedData.initInts(data.width, data.height);
+  }
+
+  const int count = data.width * data.height;
+
+  double startTime = NixTimer::time();
+
+  switch (opt.quantizeAlgorithm) {
+    
   case QUANT_ALG_UNIFORM:
-    {
+    {  // use a new code block so we can allocate new variables
       QuantUniform qunif(opt.quantizeBits, opt.thresholdValue, maxAbsVal);
       QuantizationLooper<QuantUniform> qloop(&qunif, opt.quantizeBits);
       qloop.quantize(count, data.floatData, quantizedData.intData, true);
-      printf("Quantization error: %g\n", qloop.getError());
+      quantErr = qloop.getError();
       opt.maxAbsVal = maxAbsVal;
     }
     break;
@@ -146,7 +265,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
       QuantLog qlog(opt.quantizeBits, opt.thresholdValue, maxAbsVal);
       QuantizationLooper<QuantLog> qloop(&qlog, opt.quantizeBits);
       qloop.quantize(count, data.floatData, quantizedData.intData, true);
-      printf("Quantization error: %g\n", qloop.getError());
+      quantErr = qloop.getError();
       opt.maxAbsVal = maxAbsVal;
     }
     break;
@@ -161,7 +280,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
       opt.quantBinValues = qcb.codebook;
       QuantizationLooper<QuantCodebook> qloop(&qcb, opt.quantizeBits);
       qloop.quantize(count, data.floatData, quantizedData.intData, true);
-      printf("Quantization error: %g\n", qloop.getError());
+      quantErr = qloop.getError();
     }
     break;
 
@@ -170,14 +289,15 @@ bool compressFile(const char *inputFile, const char *outputFile,
       computeLloydQuantization(nonzeroData, nonzeroCount,
 			       opt.quantizeBits,
 			       opt.quantBinBoundaries, opt.quantBinValues);
-      elapsed = NixTimer::time() - startTime;
-      printf("Lloyd quantization %.2f ms\n", elapsed*1000);
+      double elapsed = NixTimer::time() - startTime;
+      if (!opt.quiet)
+        printf("Lloyd quantization %.2f ms\n", elapsed*1000);
       startTime = NixTimer::time();
       QuantCodebook qcb(opt.quantBinBoundaries, opt.quantBinValues);
       // qcb.printCodebook();
       QuantizationLooper<QuantCodebook> qloop(&qcb, opt.quantizeBits);
       qloop.quantize(count, data.floatData, quantizedData.intData, true);
-      printf("Quantization error: %g\n", qloop.getError());
+      quantErr = qloop.getError();
     }
     break;
 
@@ -187,57 +307,29 @@ bool compressFile(const char *inputFile, const char *outputFile,
     return false;
   }
 
-  elapsed = NixTimer::time() - startTime;
-  printf("Quantize: %.2f ms\n", elapsed*1000);
+  if (quantErr >= 0) {
+    if (!opt.quiet)
+      printf("Quantization error: %g\n", quantErr);
+    if (quantErrorOut) *quantErrorOut = quantErr;
+  }
 
-  nonzeroData = NULL;
-  delete[] sortedAbsData;
-  sortedAbsData = NULL;
-
-  // Try out huffman encoding
-  // testHuffman(quantizedData, count, opt.quantizeBits);
-
-  // write the quantized data to a file
-
-  startTime = NixTimer::time();
-
-  if (!writeQuantData(outputFile, quantizedData, opt))
-    return false;
-    
-  elapsed = NixTimer::time() - startTime;
-  printf("Write data file: %.2f ms\n", elapsed*1000);
-
-  elapsed = NixTimer::time() - firstStartTime;
-  printf("Total: %.2f ms\n", elapsed*1000);
+  double elapsed = NixTimer::time() - startTime;
+  if (!opt.quiet)
+    printf("Quantize: %.2f ms\n", elapsed*1000);
 
   return true;
 }
 
-bool decompressFile(const char *inputFile, const char *outputFile,
-		    Options &opt) {
 
-  Data2d quantizedData, data;
-  double firstStartTime, startTime, elapsed;
+bool dequantize(const Data2d &quantizedData, Data2d &data, Options &opt) {
 
-  firstStartTime = startTime = NixTimer::time();
+  double startTime = NixTimer::time();
 
-  if (!readQuantData(inputFile, quantizedData, opt)) return false;
+  // allocate memory for the dequantized data
+  data.initFloats(quantizedData.width, quantizedData.height);
 
-  const int width = quantizedData.width;
-  const int height = quantizedData.height;
+  const int count = data.width * data.height;
 
-  elapsed = NixTimer::time() - startTime;
-  printf("Read %dx%d data file: %.2f ms\n", width, height,
-	 (NixTimer::time() - startTime) * 1000);
-
-  assert(quantizedData.intData != NULL && width > 0 && height > 0);
-  assert(width == height);
-  int size = width;
-  int count = width * height;
-  data.initFloats(width, height);
-
-  // de-quantize the data
-  startTime = NixTimer::time();
   switch (opt.quantizeAlgorithm) {
   case QUANT_ALG_UNIFORM:
     {
@@ -273,19 +365,6 @@ bool decompressFile(const char *inputFile, const char *outputFile,
   }
 
   printf("Dequantize: %.2f ms\n", (NixTimer::time() - startTime) * 1000);
-
-  // perform inverse wavelet transform
-  elapsed = haar_2d(size, data.floatData, true, opt.waveletSteps,
-                    opt.isWaveletTransposeStandard);
-  printf("Wavelet inverse transform: %.2f ms\n", elapsed);
-
-  // write the reconstructed data
-  startTime = NixTimer::time();
-  if (!writeDataFile(outputFile, data.floatData, data.width, data.height))
-    return false;
-  printf("Write file: %.2f ms\n", (NixTimer::time() - startTime) * 1000);
-
-  printf("Total: %.2f ms\n", (NixTimer::time() - firstStartTime) * 1000);
 
   return true;
 }
@@ -323,11 +402,16 @@ void computeLloydQuantization
   float *binValues = new float[binCount];
 
   // inputData is sorted, use it to get minVal and maxVal
-  float minVal = inputData[0];
-
   // Skip the last entry in inputData[] because it is often much larger than
   // the rest and skews the results
   float maxVal = inputData[count-2];
+  assert(maxVal > 0);
+
+  float minVal = inputData[0];
+  if (minVal <= 0) {
+    const float *nonzeroIdx = std::upper_bound(inputData, inputData+count, 0);
+    minVal = *nonzeroIdx;
+  }
 
   assert(minVal > 0);
   assert(maxVal > minVal);
@@ -384,13 +468,13 @@ void computeLloydQuantization
   // sanity-check
   for (int i=0; i < binCount-1; i++) {
     if (binValues[i] > binValues[i+1]) {
-      printf("ERROR: codebook[%d] > codebook[%d]  (%f > %f)\n",
-             i, i+1, binValues[i], binValues[i+1]);
+      fprintf(stderr, "ERROR: codebook[%d] > codebook[%d]  (%f > %f)\n",
+              i, i+1, binValues[i], binValues[i+1]);
     }
 
     if (binBoundaries[i] < binValues[i] || binBoundaries[i] > binValues[i+1]) {
-      printf("ERROR: partition[%d] (%.8g) should be between codebook[%d] (%.8g) and codebook[%d] (%.8g)\n",
-             i, binBoundaries[i], i, binValues[i], i+1, binValues[i+1]);
+      fprintf(stderr, "ERROR: partition[%d] (%.8g) should be between codebook[%d] (%.8g) and codebook[%d] (%.8g)\n",
+              i, binBoundaries[i], i, binValues[i], i+1, binValues[i+1]);
     }
   }
 
@@ -487,4 +571,62 @@ void testHuffman(const int data[], int count, int bitCount) {
     }
   }
   delete[] values2;
+}
+
+
+void quantizationExperiments(const Data2d &data, Options &opt,
+                             const float *sortedAbsData,
+                             float maxAbsVal) {
+  
+  Data2d quantizedData;
+
+  // allocate memory once for the quantized data
+  quantizedData.initInts(data.width, data.height);
+  const int count = data.width * data.height;
+
+  float quantErr;
+  int fileSize;
+
+  // print header row
+  printf("Bits\t" "ThresholdPct\t" "Log10MeanSqErr\t" "CompressionRatio\n");
+
+  // try different values for quantizeBits and thresholdFraction
+
+  for (opt.quantizeBits = 4; opt.quantizeBits <= 12; opt.quantizeBits++) {
+
+    for (float thresholdFraction = 0.15f; thresholdFraction < 0.95f;
+         thresholdFraction += 0.05f) {
+      
+      int threshIdx = (int)(thresholdFraction * count);
+      opt.thresholdValue = sortedAbsData[threshIdx];
+
+      int nonzeroCount = count - threshIdx - 1;
+      const float *nonzeroData = sortedAbsData + count - nonzeroCount;
+
+      // quantize, saving the error rate
+      if (!quantize(data, quantizedData, maxAbsVal, opt,
+                    nonzeroData, nonzeroCount, &quantErr)) break;
+
+      // write to a dummy file, saving the file size
+      if (!writeQuantData("test_compress_cpu.experiment.wz",
+                          quantizedData, opt, &fileSize)) break;
+
+      // check quantError just in case, to avoid calling log(0)
+      if (quantErr <= 0) {
+        quantErr = 0;
+      } else {
+        quantErr = log(quantErr) / log(10);
+      }
+
+      double compressionRatio = 100.0 * (count - fileSize) / count;
+
+      // write a row of data
+      printf("%d\t%.1f\t%.7g\t%f\n", opt.quantizeBits, thresholdFraction*100,
+             quantErr, compressionRatio);
+      fflush(stdout);
+    }
+  }
+      
+      
+
 }
