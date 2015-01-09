@@ -166,9 +166,39 @@ void testMisc() {
   printf("OK.\n");
 }
 
+void testCDF97() {
+
+  // float data[] = {0, 0, 0, 0, 0, 5, 9, 2, 3, 0, 0, 0, 0, 0};
+  // float data[] = {0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0};
+  // float data[] = {0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0};
+  // float data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  // [7 2 3 4 5 3 1 5 7 1 9 2 4 8 2 6]
+  float data[] = {7, 2, 3, 4, 5, 3, 1, 5, 7, 1, 9, 2, 4, 8, 2, 6};
+  int length = sizeof data / sizeof(float);
+
+  /*
+  // write data file for SEZ_C_CODE
+  FILE *outf = fopen("sez.in", "wb");
+  for (int row=0; row < 16; row++)
+    fwrite(data, sizeof(float), length, outf);
+  fclose(outf);
+  printf("Wrote sez.in\n");
+  */
+
+  int resultLength = 0;
+  float *resultData = NULL;
+  cdf97(length, data, 4, &resultLength, &resultData);
+
+  for (int i=0; i < resultLength; i++)
+    printf("%f, ", resultData[i]);
+  putchar('\n');
+
+}
+
 int main(int argc, char **argv) {
   // testMisc();
   // testPad();
+  // testCDF97();
 
   main_full(argc, argv);
 

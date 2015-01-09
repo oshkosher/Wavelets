@@ -10,6 +10,22 @@
 
 #define MIN(x,y) (((x) < (y)) ? (x) : (y))
 
+static const float CDF97_ANALYSIS_LOWPASS_FILTER[] = {
+   .85269867900940,
+   .377402855612650,
+  -.110624404418420,
+  -.02384946501938,
+   .037828455506995
+};
+
+static const float CDF97_ANALYSIS_HIGHPASS_FILTER[] = {
+  -.788485616405660,
+   .418092273222210,
+   .040689417609558,
+  -.064538882628938
+};
+
+
 // This is different from the externally visible haar() function
 // in that no sanity check is done on the stepCount argument.
 template<typename T>
@@ -527,4 +543,134 @@ static float haar_inv_2d(int size, T *data,
   return (float) (1000 * (NixTimer::time() - startSec));
 }
 
+
+/*
+  Wrap an array such that if you reference values beyond the ends
+  of the array, the results will be mirrored array values.
+
+  For example, given an array with 7 elements: 0 1 2 3 4 5 6
+  Request array[0..6] and you'll get the usual values array[0..6].
+  array[-1] returns array[1], array[-2] return array[2], etc.
+  array[7] returns array[5], array[8] return array[4], etc.
+*/
+class MirroredArray {
+  float *array;
+  int length;  // length of the actual data
+
+public:
+  MirroredArray(float *array_, int length_)
+    : array(array_), length(length_) {}
+
+  float operator[] (int offset) const {
+
+    // negative offset: mirror to a positive
+    if (offset < 0) offset = -offset;
+
+    // past the end: fold it back, repeat if necessary
+    while (offset >= length) {
+      offset = length*2 - offset - 2;
+
+      if (offset < 0) offset = -offset;
+    }
+
+    return array[offset];
+  }
+
+  void setLength(int len) {length = len;}
+};
+
+
+// Like MirroredArray, but simpler. Ask for an invalid index and you get 0.
+class ZeroExtendedArray {
+  float *array;
+  int length;  // length of the actual data
+
+public:
+  ZeroExtendedArray(float *array_, int length_)
+    : array(array_), length(length_) {}
+
+  float operator[] (int offset) const {
+
+    if (offset < 0 || offset >= length) return 0;
+
+    return array[offset];
+  }
+
+  void setLength(int len) {length = len;}
+};
+        
+
+void cdf97(int inputLength, const float inputData[], int stepCount,
+           int *resultLength, float **resultData) {
+
+  int len = dwt_padded_length(inputLength, stepCount, false);
+  float *outputData, *tmpData = new float[len];
+
+  if (*resultData) {
+    outputData = *resultData;
+  } else {
+    *resultData = outputData = new float[len];
+  }
+
+  // how many cells are inserted before the original data
+  int inputDataOffset = (len - inputLength) / 2;
+
+  // copy input data into place
+  memcpy(outputData+inputDataOffset, inputData, sizeof(float) * len);
+
+  // replicate the first element
+  for (int i=0; i < inputDataOffset; i++)
+    outputData[i] = inputData[0];
+
+  // replicate the last element
+  for (int i=inputLength+inputDataOffset; i < len; i++)
+    outputData[i] = inputData[inputLength-1];
+
+  // encapsulate the array, automatically mirror indices past the ends
+  MirroredArray array(outputData, len);
+  // ZeroExtendedArray array(outputData, len);
+
+  int stepLength = len;
+  for (int stepNo=0; stepNo < stepCount; stepNo++, stepLength /= 2) {
+
+    array.setLength(stepLength);
+
+    int arrayIdx = 0, lowIdx = 0, hiIdx = stepLength/2;
+    while (arrayIdx < stepLength) {
+
+      // Apply the low pass filter convolution.
+      // It's symmetric, so apply coefficient N to array[i+N] and array[i-N].
+      float sum = CDF97_ANALYSIS_LOWPASS_FILTER[0] * array[arrayIdx];
+      for (int filterIdx = 1; filterIdx <= 4; filterIdx++) {
+        sum += CDF97_ANALYSIS_LOWPASS_FILTER[filterIdx]
+          * (array[arrayIdx + filterIdx] + array[arrayIdx - filterIdx]);
+      }
+      tmpData[lowIdx++] = sum;
+
+      arrayIdx++;
+
+      sum = CDF97_ANALYSIS_HIGHPASS_FILTER[0] * array[arrayIdx];
+      for (int filterIdx = 1; filterIdx <= 3; filterIdx++) {
+        sum += CDF97_ANALYSIS_HIGHPASS_FILTER[filterIdx]
+          * (array[arrayIdx + filterIdx] + array[arrayIdx - filterIdx]);
+      }
+      tmpData[hiIdx++] = sum;
+
+      arrayIdx++;
+    }
+
+    // overwrite outputData with the results
+    memcpy(outputData, tmpData, sizeof(float) * stepLength);
+
+    printf("After step %d\n", stepNo);
+    for (int i=0; i < len; i++)
+      printf("%f, ", outputData[i]);
+    putchar('\n');
+  }
+
+  delete[] tmpData;
+
+  *resultLength = len;
+  *resultData = outputData;
+}
 
