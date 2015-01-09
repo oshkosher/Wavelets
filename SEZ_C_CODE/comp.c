@@ -28,7 +28,8 @@ dat_in: input 1D array of dimensions nz*nx*ny.
    int n_in,n_ou,na,nb,sbs_c,sbs_r,ind_min_wc;
    int len_wc,qlen,bytes_in,int_ou; 
    size_t bytes_ou;
-    
+
+   // see main_comp.c where par_int[] is assigned. nc=nz, nr=nx, ns=ny
    nc  = par_int[0];
    nr  = par_int[1];
    ns  = par_int[2];

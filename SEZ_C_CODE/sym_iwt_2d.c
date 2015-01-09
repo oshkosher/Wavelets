@@ -94,7 +94,11 @@
           	for (ir=S->ir_0;ir <= S->jr_0;ir++) {
 			frst = ir*(S->nc_ext)+(S->ic_0);
 			scnd = frst+len;             
-			/* interleave rows  */  
+			/* interleave columns:
+                           frst=0, scnd=4
+                           S->Win  0 1 2 3 4 5 6 7
+                           S->Wou  0 4 1 5 2 6 3 7
+                         */  
         		for (kk=0;kk<len;kk++){
 				ik = frst+2*kk;
 				jk = ik+1;

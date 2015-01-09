@@ -17,9 +17,12 @@ typedef struct sez_wcomp_par_s {
 
     int     nr_ext, nc_ext;  // number of row,columns after expansion
 
-    int     ir_0, ic_0;  // index of the first element in each row, col
-    int     ir_1, ic_1;  // 0=expanded data, 1=initial data
-    int     jr_0, jc_0;  // index of the last element in each row, col
+    // i=start, j=end
+    // r=rows, c=cols
+    // 0=expanded data, 1=input data
+    int     ir_0, ic_0;
+    int     ir_1, ic_1;
+    int     jr_0, jc_0;
     int     jr_1, jc_1;
 
     int     lev_r, lev_c;  // # of transform levels for rows, columns
