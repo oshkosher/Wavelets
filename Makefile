@@ -46,7 +46,7 @@ default: convert test_haar_cpu test_compress_cpu \
 EXECS = test_haar_cpu haar test_compress_cpu \
   test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu \
   normalize test_rle test_huffman test_bit_stream test_quant_count \
-  test_compress_gpu list_data image_error test_transform test_lloyd \
+  list_data image_error test_transform test_lloyd \
   histogram test_cubelet_file
 
 all: convert $(EXECS) libwaveletcuda.so cudahaar.mex
