@@ -42,11 +42,12 @@
 default: convert test_haar_cpu test_compress_cpu \
 	image_error list_data histogram
 
+
 EXECS = test_haar_cpu haar test_compress_cpu \
   test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu \
   normalize test_rle test_huffman test_bit_stream test_quant_count \
   test_compress_gpu list_data image_error test_transform test_lloyd \
-  histogram
+  histogram test_cubelet_file
 
 all: convert $(EXECS) libwaveletcuda.so cudahaar.mex
 
@@ -241,6 +242,12 @@ wavelet_compress.pb.o: wavelet_compress.pb.cc wavelet_compress.pb.h
 lloyds.o: Octave/LloydsAlgorithm/src/c++/lloyds.cpp \
 	  Octave/LloydsAlgorithm/src/c++/lloyds.h
 	$(CC) -c -IOctave/LloydsAlgorithm/src/c++ $< -o $@
+
+cubelet_file.o: cubelet_file.cc cubelet_file.h wavelet_compress.pb.h
+	$(CC) -c $<
+
+test_cubelet_file: test_cubelet_file.cc cubelet_file.o wavelet_compress.pb.o
+	$(CC) $^ $(PROTOBUF_LIB) -o $@
 
 TEST_COMPRESS_CPU_OBJS=test_compress_cpu.o \
 	test_compress_common.o dwt_cpu.o data_io.o \

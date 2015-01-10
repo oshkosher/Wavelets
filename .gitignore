@@ -12,6 +12,9 @@
 *.ilk
 .send*
 *.class
+*.data
+*.out
+foo*
 haar
 haar.exe
 list_data
