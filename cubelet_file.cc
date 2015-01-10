@@ -71,7 +71,8 @@ static bool readProtobuf(FILE *inf, google::protobuf::Message *message,
   // read the length
   uint32_t codedLen;
   if (fread(&codedLen, sizeof codedLen, 1, inf) != 1) {
-    fprintf(stderr, "Failed to read message buffer size\n");
+    // this will happen naturally at EOF
+    // fprintf(stderr, "Failed to read message buffer size\n");
     return false;
   }
 

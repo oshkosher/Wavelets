@@ -64,7 +64,7 @@ message CubeletBuffer {
   optional uint32 z_offset = 6 [default = 0];
 
   enum DataType {
-    UINT8 = 1;  // 1-byte unsigned int
+    UINT8 = 1;   // 1-byte unsigned int, or raw bytes
     FLOAT32 = 2; // 4-byte float
   }
   required DataType data_type = 7;
