@@ -47,7 +47,7 @@ EXECS = test_haar_cpu haar test_compress_cpu \
   test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu \
   normalize test_rle test_huffman test_bit_stream test_quant_count \
   list_data image_error test_transform test_lloyd \
-  histogram test_cubelet_file
+  histogram test_cubelet_file cubelet_convert
 
 all: convert $(EXECS) libwaveletcuda.so cudahaar.mex
 
@@ -248,6 +248,10 @@ cubelet_file.o: cubelet_file.cc cubelet_file.h wavelet_compress.pb.h
 
 test_cubelet_file: test_cubelet_file.cc cubelet_file.o wavelet_compress.pb.o
 	$(CC) $^ $(PROTOBUF_LIB) -o $@
+
+cubelet_convert: cubelet_convert.cc cubelet_file.o wavelet_compress.pb.o
+	$(CC) $^ $(PROTOBUF_LIB) -o $@
+
 
 TEST_COMPRESS_CPU_OBJS=test_compress_cpu.o \
 	test_compress_common.o dwt_cpu.o data_io.o \

@@ -130,6 +130,10 @@ class CubeletStreamReader {
     dataHasBeenRead = false;
   }
 
+  ~CubeletStreamReader() {
+    close();
+  }
+
  private:
   FILE *inf;
 

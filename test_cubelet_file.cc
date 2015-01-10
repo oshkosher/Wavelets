@@ -38,6 +38,17 @@ void readFile(const char *filename) {
     printf("Cubelet %dx%dx%d, offset %d,%d,%d\n",
            cube.width, cube.height, cube.depth,
            cube.x_offset, cube.y_offset, cube.z_offset);
+
+    float *data = (float*) in.getData();
+
+    for (unsigned y=0; y < cube.height; y++) {
+      for (unsigned x=0; x < cube.width; x++) {
+        printf("%6.2f", data[y*cube.width + x]);
+      }
+      printf("\n");
+    }
+    printf("\n");
+
   }
 
 }
