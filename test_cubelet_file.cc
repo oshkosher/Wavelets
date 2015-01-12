@@ -40,15 +40,33 @@ void readFile(const char *filename) {
            cube.width, cube.height, cube.depth,
            cube.xOffset, cube.yOffset, cube.zOffset);
 
-    float *data = (float*) in.getData();
+    /*
+    if (cube.datatype == Cubelet::CUBELET_FLOAT32) {
 
-    for (unsigned y=0; y < cube.height; y++) {
-      for (unsigned x=0; x < cube.width; x++) {
-        printf("%6.2f", data[y*cube.width + x]);
+      float *data = (float*) in.getData();
+
+      for (unsigned y=0; y < cube.height; y++) {
+        for (unsigned x=0; x < cube.width; x++) {
+          printf("%6.2f", data[y*cube.width + x]);
+        }
+        printf("\n");
       }
-      printf("\n");
+
+    } else if (cube.datatype == Cubelet::CUBELET_UINT8) {
+
+      unsigned char *data = (unsigned char*) in.getData();
+
+      for (unsigned y=0; y < cube.height; y++) {
+        for (unsigned x=0; x < cube.width; x++) {
+          printf("%4d", data[y*cube.width + x]);
+        }
+        printf("\n");
+      }
+
     }
+
     printf("\n");
+    */
 
   }
 
@@ -58,8 +76,8 @@ int main(int argc, char **argv) {
   const char *filename = argv[1];
   if (filename && !strcmp(filename, "-")) filename = NULL;
 
-  writeFile(filename);
-  // readFile(filename);
+  // writeFile(filename);
+  readFile(filename);
 
   return 0;
 }

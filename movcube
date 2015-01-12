@@ -1,0 +1,3 @@
+#!/bin/bash
+
+java -cp '.;protobuf-2.6.0/protobuf.jar;c:/Apps/javacv-bin/javacv.jar' MovieToCubelets "$@" 2>/dev/null

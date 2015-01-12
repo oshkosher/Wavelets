@@ -158,10 +158,13 @@ WaveletSampleImage.class: WaveletSampleImage.java
 ImageDiff.class: ImageDiff.java
 	javac $<
 
-cubelet: CubeletFile.class test_cubelet_file
+cubelet: CubeletFile.class test_cubelet_file MovieToCubelets.class
 
 CubeletFile.class: WaveletCompress.java CubeletFile.java
 	$(JAVAC) $^
+
+MovieToCubelets.class: MovieToCubelets.java
+	javac -cp '.;$(PROTOBUF_JAR);c:/Apps/javacv-bin/javacv.jar' $<
 
 test_haar_cpu: test_haar_cpu.cc dwt_cpu.cc data_io.cc
 	$(CC) $^ -o $@ $(LIBS)
@@ -328,6 +331,6 @@ sendscu: .sendscu
 	touch .sendscu
 
 clean:
-	rm -f *.class *.obj *.o *.exp *.lib *.pdb *.so *.gch *~ $(EXECS) \
-	  convert libwaveletcuda.so cudahaar.oct \
+	rm -f *.class *.obj *.o *.exp *.lib *.pdb *.so *.gch *.ilk *~ \
+	  *.stackdump $(EXECS) convert libwaveletcuda.so cudahaar.oct \
 	  wavelet_compress.pb.{h,cc} WaveletCompress.java
