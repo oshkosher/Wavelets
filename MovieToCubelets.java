@@ -13,6 +13,9 @@ import java.io.File;
 
   It produces excessive output on stderr, so you might
   want to add "2>/dev/null" to the command line.
+
+  For FFmpegFrameGrabber, see the source:
+    https://code.google.com/p/javacv/source/browse/src/main/java/com/googlecode/javacv/FFmpegFrameGrabber.java?name=
 */
 
 public class MovieToCubelets {
@@ -20,6 +23,9 @@ public class MovieToCubelets {
   public static final int CUBELET_WIDTH = 512;
   public static final int CUBELET_HEIGHT = 512;
   public static final int CUBELET_DEPTH = 512;
+
+  
+  private static int cubesAcross, cubesDown;
 
   public static void main(String[] args) throws Exception {
     if (args.length < 1 || args.length > 2) printHelp();
@@ -30,14 +36,16 @@ public class MovieToCubelets {
     if (args.length > 1 && !args[1].equals("-"))
       outputCubeletFile = args[1];
 
+    // start up the frame grabber
     FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(inputMovieFile);
-
     grabber.start();
 
+    // get the size of the movie
     int width = grabber.getImageWidth();
     int height = grabber.getImageHeight();
     int frameCount = grabber.getLengthInFrames();
 
+    // if an output file was not specified, just print the movie size
     if (args.length < 2) {
       System.out.printf("%dx%d, %.2f frames/sec, %d frames\n",
                         width, height, grabber.getFrameRate(), frameCount);
@@ -45,14 +53,15 @@ public class MovieToCubelets {
       return;
     }
 
+    // start up the cubelet output file
     CubeletFile.Writer cubeletOut = new CubeletFile.Writer();
+    cubeletOut.width = width;
+    cubeletOut.height = height;
     cubeletOut.open(outputCubeletFile);
-    CubeletFile.Cubelet cube = new CubeletFile.Cubelet();
-    cube.setSize(CUBELET_WIDTH, CUBELET_HEIGHT, CUBELET_DEPTH);
-    cube.datatype = CubeletFile.Cubelet.DataType.UINT8;
-    cube.byteData = new byte[CUBELET_WIDTH * CUBELET_HEIGHT * CUBELET_DEPTH];
+    CubeletFile.Cubelet cubes[] = setupCubelets(width, height);
 
-    for (int frameNo=0; frameNo < CUBELET_DEPTH; frameNo++) {
+    int frameNo, currentDepth = 0, endFrame = CUBELET_DEPTH*3/2;
+    for (frameNo=0; frameNo < endFrame; frameNo++) {
       // get one frame
       BufferedImage image = grabber.grab().getBufferedImage();
 
@@ -64,21 +73,47 @@ public class MovieToCubelets {
       g.dispose();
       image = grayImage;
 
-      // crop one cubelet frame
-      image = image.getSubimage(0, 0, CUBELET_WIDTH, CUBELET_HEIGHT);
+      // extract rectangles
+      int cubeNo = 0;
+      for (int y = 0; y < cubesDown; y++) {
+        for (int x = 0; x < cubesAcross; x++) {
+          CubeletFile.Cubelet cube = cubes[cubeNo++];
+          BufferedImage subImage = image.getSubimage
+            (cube.xOffset, cube.yOffset, cube.width, cube.height);
+          getGrayscaleBytes(subImage, cube.byteData,
+                            cube.width * cube.height * currentDepth);
+          cube.zOffset = frameNo;
+        }
+      }
 
-      // extract the bytes
-      getGrayscaleBytes(image, cube.byteData,
-                        CUBELET_WIDTH * CUBELET_HEIGHT * frameNo);
+      // when the cubelets fill up, write them out and reset
+      currentDepth++;
+      if (currentDepth == CUBELET_DEPTH) {
+        System.out.println();
+        for (CubeletFile.Cubelet cube : cubes) {
+          cube.depth = currentDepth;
+          cubeletOut.addCubelet(cube);
+        }
+        currentDepth = 0;
+      }
 
-      System.out.printf("\rFrame %d of %d", frameNo+1, CUBELET_DEPTH);
+      System.out.printf("\rFrame %d of %d", frameNo+1, endFrame);
       System.out.flush();
     }
     System.out.println();
 
     grabber.stop();
 
-    cubeletOut.addCubelet(cube);
+    cubeletOut.depth = frameNo;
+
+    // write out leftover frames
+    if (currentDepth > 0) {
+      for (CubeletFile.Cubelet cube : cubes) {
+        cube.depth = currentDepth;
+        cubeletOut.addCubelet(cube);
+      }
+    }
+
     cubeletOut.close();
   }
 
@@ -93,7 +128,46 @@ public class MovieToCubelets {
       }
     }
   }
+
+
+  /**
+     Set up multple simultaneous cubelets to which data will be output.
+     For example, if the movie is 150x100 and our cubelets are 64x64x64,
+     then each frame will have 6 rectangles of data:
+        across: 0..63, 64..127, 128..149
+        down:   0..63, 64..99
+  */
+  static CubeletFile.Cubelet[] setupCubelets(int width, int height) {
   
+    cubesAcross = (width + CUBELET_WIDTH - 1) / CUBELET_WIDTH;
+    cubesDown = (height + CUBELET_HEIGHT - 1) / CUBELET_HEIGHT;
+
+    CubeletFile.Cubelet cubes[] = 
+      new CubeletFile.Cubelet[cubesAcross * cubesDown];
+    
+    int cubeNo = 0;
+    for (int y = 0; y < cubesDown; y++) {
+      for (int x = 0; x < cubesAcross; x++) {
+        CubeletFile.Cubelet cube = new CubeletFile.Cubelet();
+        cube.setSize(CUBELET_WIDTH, CUBELET_HEIGHT, CUBELET_DEPTH);
+        cube.setOffset(x * CUBELET_WIDTH, y * CUBELET_HEIGHT, 0);
+        cube.datatype = CubeletFile.Cubelet.DataType.UINT8;
+
+        if (cube.yOffset + CUBELET_HEIGHT > height)
+          cube.height = height - cube.yOffset;
+
+        if (cube.xOffset + CUBELET_WIDTH > width)
+          cube.width = width - cube.xOffset;
+
+        cube.byteData = new byte[cube.width * cube.height * cube.depth];
+
+        cubes[cubeNo++] = cube;
+      }
+    }
+
+    return cubes;
+  }
+
 
   static void printHelp() {
     System.out.println("\n  MovieToCubelets <input_movie>\n" +

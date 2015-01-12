@@ -441,6 +441,8 @@ public class CubeletFile {
     ArrayList<WaveletCompress.CubeletBuffer> index
       = new ArrayList<WaveletCompress.CubeletBuffer>();
 
+    public int width=0, height=0, depth=0;
+
     /** Open the given file for writing.
         If filename is null, use System.out.
         Write the header.
@@ -532,7 +534,7 @@ public class CubeletFile {
       System.out.println("Write cubelet at offset " + cubeletFileOffset);
 
       // write the cubelet data
-      out.write(bytes);
+      out.write(bytes, 0, cubeBuf.getByteCount());
     }
 
 
@@ -595,6 +597,10 @@ public class CubeletFile {
         = WaveletCompress.CubeletIndexBuffer.newBuilder();
       for (int i=0; i < index.size(); i++)
         indexBuilder.addCubelets(index.get(i));
+
+      if (width > 0)  indexBuilder.setWidth(width);
+      if (height > 0) indexBuilder.setHeight(height);
+      if (depth > 0)  indexBuilder.setDepth(depth);
         
       WaveletCompress.CubeletIndexBuffer indexBuf = indexBuilder.build();
         
