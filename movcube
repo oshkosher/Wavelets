@@ -8,5 +8,5 @@ else
   CLASSPATH='.:/usr/share/java/protobuf.jar:/usr/local/javacv/bin/javacv.jar'
 fi
 
-java -cp $CLASSPATH MovieToCubelets "$@" 2>/dev/null
-# java -cp $CLASSPATH MovieToCubelets "$@"
+# java -cp $CLASSPATH MovieToCubelets "$@" 2>/dev/null
+java -cp $CLASSPATH MovieToCubelets "$@"

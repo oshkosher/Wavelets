@@ -28,6 +28,8 @@ test_haar_cpu.exe
 convert
 libwaveletcuda.so
 cudahaar.oct
+cubelet_convert
+cubelet_convert.exe
 test_haar_thresh_quantUnif_cpu
 test_haar_thresh_quantUnif_cpu.exe
 test_compress

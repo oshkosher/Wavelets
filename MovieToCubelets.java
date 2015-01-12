@@ -1,4 +1,5 @@
 import org.bytedeco.javacv.FFmpegFrameGrabber;
+import org.bytedeco.javacpp.avutil;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.awt.Graphics;
@@ -28,15 +29,31 @@ public class MovieToCubelets {
   private static int cubesAcross, cubesDown;
 
   public static void main(String[] args) throws Exception {
-    if (args.length < 1 || args.length > 2) printHelp();
+    if (args.length < 1 || args.length > 3) printHelp();
 
     String inputMovieFile = args[0];
     String outputCubeletFile = null;
+    int endFrame = -1;
 
-    if (args.length > 1 && !args[1].equals("-"))
-      outputCubeletFile = args[1];
+    if (args.length > 1) {
+      if (!args[1].equals("-"))
+        outputCubeletFile = args[1];
+      
+      if (args.length > 2) {
+        try {
+          endFrame = Integer.parseInt(args[2]);
+        } catch (NumberFormatException e) {}
+        if (endFrame <= 0) {
+          System.err.println("Not a valid frame count: " + args[2]);
+          return;
+        }
+      }
+    }
+
+    // boolean noStdout = outputCubeletFile == null;
 
     // start up the frame grabber
+    avutil.av_log_set_level(avutil.AV_LOG_QUIET);
     FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(inputMovieFile);
     grabber.start();
 
@@ -61,10 +78,13 @@ public class MovieToCubelets {
     CubeletFile.Cubelet cubes[] = setupCubelets(width, height);
 
     int frameNo, currentDepth = 0;
-    // int endFrame = CUBELET_DEPTH*3/2;
-    int endFrame = frameCount;
+    if (endFrame < 0) endFrame = frameCount;
 
     for (frameNo=0; frameNo < endFrame; frameNo++) {
+
+      System.err.printf("\rFrame %d of %d", frameNo+1, endFrame);
+      System.err.flush();
+
       // get one frame
       BufferedImage image = grabber.grab().getBufferedImage();
 
@@ -91,7 +111,7 @@ public class MovieToCubelets {
       // when the cubelets fill up, write them out and reset
       currentDepth++;
       if (currentDepth == CUBELET_DEPTH) {
-        System.out.println();
+        System.err.println(" ... flush " + cubes.length + " cubelets");
         for (CubeletFile.Cubelet cube : cubes) {
           cube.depth = currentDepth;
           cubeletOut.addCubelet(cube);
@@ -102,10 +122,8 @@ public class MovieToCubelets {
         currentDepth = 0;
       }
 
-      System.out.printf("\rFrame %d of %d", frameNo+1, endFrame);
-      System.out.flush();
     }
-    System.out.println();
+    System.err.println();
 
     grabber.stop();
 
@@ -176,8 +194,8 @@ public class MovieToCubelets {
 
   static void printHelp() {
     System.out.println("\n  MovieToCubelets <input_movie>\n" +
-                       "    Output basic settings about the given movie.\n" +
-                       "  MovieToCubelets <input_movie> <output_cubelet_file>\n" +
+                       "    Output basic settings about the given movie.\n\n" +
+                       "  MovieToCubelets <input_movie> <output_cubelet_file> [frameCount]\n" +
                        "    Convert sequences of frames into cubelets.\n" +
                        "    Set output_cubelet_file to '-' for stdout.\n");
     System.exit(1);
