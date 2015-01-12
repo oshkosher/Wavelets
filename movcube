@@ -1,3 +1,12 @@
 #!/bin/bash
 
-java -cp '.;protobuf-2.6.0/protobuf.jar;c:/Apps/javacv-bin/javacv.jar' MovieToCubelets "$@" 2>/dev/null
+ostype=`uname | head -c 9`
+
+if [ x"$ostype" = x"CYGWIN_NT" ]; then
+  CLASSPATH='.;protobuf-2.6.0/protobuf.jar;c:/Apps/javacv-bin/javacv.jar'
+else
+  CLASSPATH='.:/usr/share/java/protobuf.jar:/usr/local/javacv/bin/javacv.jar'
+fi
+
+java -cp $CLASSPATH MovieToCubelets "$@" 2>/dev/null
+# java -cp $CLASSPATH MovieToCubelets "$@"

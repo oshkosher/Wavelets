@@ -20,9 +20,9 @@ import java.io.File;
 
 public class MovieToCubelets {
 
-  public static final int CUBELET_WIDTH = 512;
-  public static final int CUBELET_HEIGHT = 512;
-  public static final int CUBELET_DEPTH = 128;
+  public static final int CUBELET_WIDTH = 256;
+  public static final int CUBELET_HEIGHT = 256;
+  public static final int CUBELET_DEPTH = 256;
 
   
   private static int cubesAcross, cubesDown;
@@ -60,7 +60,10 @@ public class MovieToCubelets {
     cubeletOut.open(outputCubeletFile);
     CubeletFile.Cubelet cubes[] = setupCubelets(width, height);
 
-    int frameNo, currentDepth = 0, endFrame = CUBELET_DEPTH*3/2;
+    int frameNo, currentDepth = 0;
+    // int endFrame = CUBELET_DEPTH*3/2;
+    int endFrame = frameCount;
+
     for (frameNo=0; frameNo < endFrame; frameNo++) {
       // get one frame
       BufferedImage image = grabber.grab().getBufferedImage();

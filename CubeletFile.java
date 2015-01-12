@@ -531,7 +531,7 @@ public class CubeletFile {
         .setDataFileOffset(cubeletFileOffset)
         .build();
       index.add(cubeBuf);
-      System.out.println("Write cubelet at offset " + cubeletFileOffset);
+      // System.out.println("Write cubelet at offset " + cubeletFileOffset);
 
       // write the cubelet data
       out.write(bytes, 0, cubeBuf.getByteCount());
