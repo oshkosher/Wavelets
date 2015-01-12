@@ -111,12 +111,13 @@ PROTOBUF_DIR = /usr/local
 PROTOBUF_LIB_NVCC = $(PROTOBUF_DIR_VC)/$(BUILD)/libprotobuf.lib
 PROTOBUF_LIB = -L$(PROTOBUF_DIR)/lib -lprotobuf
 PROTOBUF_JAR = protobuf-2.6.0/protobuf.jar
+JAVACV_JAR = c:/Apps/javacv-bin/javacv.jar
 PROTOC_VC = $(PROTOBUF_DIR_VC)/$(BUILD)/protoc.exe
 PROTOC = protoc
 NVCC_ARCH_SIZE = -m32
 NVCC_OPT = --compiler-options $(CL_OPT_FLAG) -D_SCL_SECURE_NO_WARNINGS  -I$(PROTOBUF_DIR_VC)/include $(NVCC_COMPILER_BINDIR)
 CLASSPATH_DIR="$(shell cygpath --windows `pwd`)"
-JAVAC = javac -cp '.;$(PROTOBUF_JAR)'
+JAVAC = javac -cp '.;$(PROTOBUF_JAR);$(JAVACV_JAR)'
 
 else
 
@@ -126,10 +127,11 @@ PROTOBUF_DIR = /usr/local
 PROTOBUF_LIB = -L$(PROTOBUF_DIR)/lib -lprotobuf
 PROTOBUF_LIB_NVCC = $(PROTOBUF_LIB)
 PROTOBUF_JAR = /usr/share/java/protobuf.jar
+JAVACV_JAR = /home/ed/Build/javacv-bin/javacv.jar
 PROTOC = protoc
 NVCC_SHLIB_OPT=--compiler-options -fPIC
 CLASSPATH_DIR=$(CURDIR)
-JAVAC = javac -cp .:$(PROTOBUF_JAR)
+JAVAC = javac -cp .:$(PROTOBUF_JAR):$(JAVACV_JAR)
 
 endif
 
@@ -165,7 +167,7 @@ CubeletFile.class: WaveletCompress.java CubeletFile.java
 	$(JAVAC) $^
 
 MovieToCubelets.class: MovieToCubelets.java
-	javac -cp '.;$(PROTOBUF_JAR);c:/Apps/javacv-bin/javacv.jar' $<
+	$(JAVAC) $<
 
 test_haar_cpu: test_haar_cpu.cc dwt_cpu.cc data_io.cc
 	$(CC) $^ -o $@ $(LIBS)
