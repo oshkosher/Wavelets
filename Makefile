@@ -11,8 +11,8 @@
 # 
 #   protoc (Google Protocol Buffers)
 #     On Unix or Unix-like (Cygwin) systems, it's pretty easy to either
-#     find it as pre-built package (look for protobuf and libprotobuf-devel)
-#     or to build it from the source and install it:
+#     find it as pre-built package (look for protobuf, libprotobuf-devel,
+#     and libprotobuf-java) or to build it from the source and install it:
 #       https://developers.google.com/protocol-buffers/docs/downloads
 #     On Windows, you'll either need to build it from the source, or download
 #     pre-built binaries from our FTP site where we've got large images
@@ -110,11 +110,13 @@ PROTOBUF_DIR_VC = protobuf-2.6.0/vsprojects
 PROTOBUF_DIR = /usr/local
 PROTOBUF_LIB_NVCC = $(PROTOBUF_DIR_VC)/$(BUILD)/libprotobuf.lib
 PROTOBUF_LIB = -L$(PROTOBUF_DIR)/lib -lprotobuf
+PROTOBUF_JAR = protobuf-2.6.0/protobuf.jar
 PROTOC_VC = $(PROTOBUF_DIR_VC)/$(BUILD)/protoc.exe
 PROTOC = protoc
 NVCC_ARCH_SIZE = -m32
 NVCC_OPT = --compiler-options $(CL_OPT_FLAG) -D_SCL_SECURE_NO_WARNINGS  -I$(PROTOBUF_DIR_VC)/include $(NVCC_COMPILER_BINDIR)
 CLASSPATH_DIR="$(shell cygpath --windows `pwd`)"
+JAVAC = javac -cp '.;$(PROTOBUF_JAR)'
 
 else
 
@@ -123,9 +125,11 @@ LIBS=-lstdc++ -lrt
 PROTOBUF_DIR = /usr/local
 PROTOBUF_LIB = -L$(PROTOBUF_DIR)/lib -lprotobuf
 PROTOBUF_LIB_NVCC = $(PROTOBUF_LIB)
+PROTOBUF_JAR = /usr/share/java/protobuf.jar
 PROTOC = protoc
 NVCC_SHLIB_OPT=--compiler-options -fPIC
 CLASSPATH_DIR=$(CURDIR)
+JAVAC = javac -cp .:$(PROTOBUF_JAR)
 
 endif
 
@@ -153,6 +157,11 @@ WaveletSampleImage.class: WaveletSampleImage.java
 
 ImageDiff.class: ImageDiff.java
 	javac $<
+
+cubelet: CubeletFile.class test_cubelet_file
+
+CubeletFile.class: WaveletCompress.java CubeletFile.java
+	$(JAVAC) $^
 
 test_haar_cpu: test_haar_cpu.cc dwt_cpu.cc data_io.cc
 	$(CC) $^ -o $@ $(LIBS)
@@ -276,8 +285,8 @@ test_compress_gpu: $(TEST_COMPRESS_GPU_OBJS)
 	$(NVCC) $(TEST_COMPRESS_GPU_OBJS) -o $@ $(PROTOBUF_LIB_NVCC)
 
 proto: wavelet_compress.pb.h
-wavelet_compress.pb.h wavelet_compress.pb.cc: wavelet_compress.proto
-	$(PROTOC) $< --cpp_out=.
+wavelet_compress.pb.h wavelet_compress.pb.cc WaveletCompress.java: wavelet_compress.proto
+	$(PROTOC) $< --cpp_out=. --java_out=.
 
 wavelet_compress.pb.$(OBJ_EXT): wavelet_compress.pb.cc wavelet_compress.pb.h
 
@@ -321,4 +330,4 @@ sendscu: .sendscu
 clean:
 	rm -f *.class *.obj *.o *.exp *.lib *.pdb *.so *.gch *~ $(EXECS) \
 	  convert libwaveletcuda.so cudahaar.oct \
-	  wavelet_compress.pb.{h,cc}
+	  wavelet_compress.pb.{h,cc} WaveletCompress.java

@@ -9,7 +9,16 @@
 static const char *CUBELET_HEADER = "SCU cubelets 1.0\n";
 #define HEADER_SIZE 64
 
-static bool writeProtobuf(FILE *outf, google::protobuf::Message *message);
+/**
+   Serialize a protocol buffer message to the given file.
+   If writeLength is true, first write the length of the message as 
+   a 4 byte int.
+   Return the length of the message.
+   On error, write message to stderr and return 0.
+*/
+static int writeProtobuf(FILE *outf, google::protobuf::Message *message,
+                         bool writeLength = true);
+
 static bool readProtobuf(FILE *inf, google::protobuf::Message *message,
                          uint32_t *length = NULL);
 
@@ -37,31 +46,36 @@ struct CubeletHeader {
 };
 
 
-/* Serialize a protocol buffer message to the given file by writing the
-   size of the encoded data (4 byte unsigned integer) followed by the
-   encoded data.
+/**
+   Serialize a protocol buffer message to the given file.
+   If writeLength is true, first write the length of the message as 
+   a 4 byte int.
+   Return the length of the message.
+   On error, write message to stderr and return 0.
 */
-static bool writeProtobuf(FILE *outf, google::protobuf::Message *message) {
+static int writeProtobuf(FILE *outf, google::protobuf::Message *message,
+                         bool writeLength) {
                           
   uint32_t codedLen = message->ByteSize();
-  fwrite(&codedLen, sizeof codedLen, 1, outf);
+  if (writeLength)
+    fwrite(&codedLen, sizeof codedLen, 1, outf);
 
   // encode the metadata
   char *codedBuf = new char[codedLen];
   assert(codedBuf);
   if (!message->SerializeToArray(codedBuf, codedLen)) {
     fprintf(stderr, "Failed to encode metadata\n");
-    return false;
+    return 0;
   }
 
   // write the metadata to the file
   if (fwrite(codedBuf, 1, codedLen, outf) != codedLen) {
     fprintf(stderr, "Failed to write encoded metadata to file\n");
-    return false;
+    return 0;
   }
   delete[] codedBuf;
 
-  return true;
+  return codedLen;
 }  
 
 
@@ -153,9 +167,9 @@ bool CubeletStreamWriter::addCubelet(const Cubelet *cubelet) {
   buffer->set_height(cubelet->height);
   buffer->set_depth(cubelet->depth);
 
-  if (cubelet->x_offset) buffer->set_x_offset(cubelet->x_offset);
-  if (cubelet->y_offset) buffer->set_y_offset(cubelet->y_offset);
-  if (cubelet->z_offset) buffer->set_z_offset(cubelet->z_offset);
+  if (cubelet->xOffset) buffer->set_x_offset(cubelet->xOffset);
+  if (cubelet->yOffset) buffer->set_y_offset(cubelet->yOffset);
+  if (cubelet->zOffset) buffer->set_z_offset(cubelet->zOffset);
 
   assert(cubelet->datatype == Cubelet::CUBELET_UINT8 ||
          cubelet->datatype == Cubelet::CUBELET_FLOAT32);
@@ -189,6 +203,9 @@ bool CubeletStreamWriter::addCubelet(const Cubelet *cubelet) {
 
   // save the position of the data so it can be included in the index
   buffer->set_data_file_offset(ftell(outf));
+
+  printf("Write cubelet at offset %llu\n", (long long unsigned)
+         buffer->data_file_offset());
   
   // write the data
   if (cubelet->data) {
@@ -206,34 +223,20 @@ bool CubeletStreamWriter::close() {
   // If the file isn't open do nothing.
   if (!outf) return true;
 
-  // If we're writing to stdout, we can't seek back to the beginning of the
-  // file to write the index offset, so there's no reason to write the index,
-  // so just close the file.
-  if (outf != stdout) {
+  int32_t eofMarker = -1; // set all bits
+  fwrite(&eofMarker, sizeof eofMarker, 1, outf);
+  
+  // write the cubelet index
+  int32_t indexLen = writeProtobuf(outf, &index, false);
 
-    int32_t eofMarker = -1; // set all bits
-    fwrite(&eofMarker, sizeof eofMarker, 1, outf);
-
-    // get the current file position
-    uint64_t indexOffset = ftell(outf);
-
-    // write the cubelet index
-    writeProtobuf(outf, &index);
-
-    size_t headerOffset = offsetof(CubeletHeader, cubeletIndexOffset);
-
-    if (fseek(outf, headerOffset, SEEK_SET)) {
-      fprintf(stderr, "Failed to seek to file header.\n");
-      return false;
-    }
-
-    if (fwrite(&indexOffset, sizeof indexOffset, 1, outf) != 1) {
-      fprintf(stderr, "Failed to backpatch index offset in the file header.\n");
-      return false;
-    }
-
-    fclose(outf);
+  if (fwrite(&indexLen, sizeof indexLen, 1, outf) != 1) {
+    fprintf(stderr, "Failed to write index size in the file footer.\n");
   }
+
+  // write special tag to show the footer is valid
+  fwrite("cube", 1, 4, outf);
+
+  if (outf != stdout) fclose(outf);
 
   outf = NULL;
 
@@ -277,6 +280,7 @@ bool CubeletStreamReader::open(const char *filename) {
 
   dataSizeBytes = 0;
   dataHasBeenRead = true;
+  eofReached = false;
 
   return true;
 }
@@ -302,13 +306,13 @@ bool CubeletStreamReader::next(Cubelet *cube) {
     return false;
   }
 
-  cube->width = buf.width();
+  cube->width  = buf.width();
   cube->height = buf.height();
-  cube->depth = buf.depth();
+  cube->depth  = buf.depth();
 
-  cube->x_offset = buf.x_offset();
-  cube->y_offset = buf.y_offset();
-  cube->z_offset = buf.z_offset();
+  cube->xOffset = buf.x_offset();
+  cube->yOffset = buf.y_offset();
+  cube->zOffset = buf.z_offset();
 
   switch (buf.data_type()) {
   case CubeletBuffer_DataType_UINT8:
@@ -319,7 +323,7 @@ bool CubeletStreamReader::next(Cubelet *cube) {
     break;
   }
 
-  cube->data_file_offset = 0;
+  cube->dataFileOffset = 0;
   cube->data = NULL;
 
   dataSizeBytes = buf.byte_count();
@@ -358,3 +362,50 @@ void CubeletStreamReader::close() {
   if (inf != stdout) fclose(inf);
   inf = NULL;
 }
+
+
+/*
+  Might want to use this:
+
+
+  Borrowed from https://cxwangyi.wordpress.com/2010/07/20/encoding-and-decoding-of-the-varint32-type-defined-by-google-protocol-buffers/
+  which borrowed from http://protobuf.googlecode.com/svn/trunk/src/google/protobuf/io/coded_stream.cc
+
+#include <google/protobuf/io/coded_stream.h>
+#include "../base/common.hh"
+ 
+using namespace std;
+using namespace google::protobuf::io;
+ 
+inline const uint8* ReadVarint32FromArray(const uint8* buffer, uint32* value) {
+  static const int kMaxVarintBytes = 10;
+  static const int kMaxVarint32Bytes = 5;
+ 
+  // Fast path:  We have enough bytes left in the buffer to guarantee that
+  // this read won't cross the end, so we can skip the checks.
+  const uint8* ptr = buffer;
+  uint32 b;
+  uint32 result;
+ 
+  b = *(ptr++); result  = (b & 0x7F)      ; if (!(b & 0x80)) goto done;
+  b = *(ptr++); result |= (b & 0x7F) <<  7; if (!(b & 0x80)) goto done;
+  b = *(ptr++); result |= (b & 0x7F) << 14; if (!(b & 0x80)) goto done;
+  b = *(ptr++); result |= (b & 0x7F) << 21; if (!(b & 0x80)) goto done;
+  b = *(ptr++); result |=  b         << 28; if (!(b & 0x80)) goto done;
+ 
+  // If the input is larger than 32 bits, we still need to read it all
+  // and discard the high-order bits.
+  for (int i = 0; i < kMaxVarintBytes - kMaxVarint32Bytes; i++) {
+    b = *(ptr++); if (!(b & 0x80)) goto done;
+  }
+ 
+  // We have overrun the maximum size of a varint (10 bytes).  Assume
+  // the data is corrupt.
+  return NULL;
+ 
+ done:
+  *value = result;
+  return ptr;
+}
+*/
+

@@ -13,14 +13,15 @@ void writeFile(const char *filename) {
   out.open(filename);
 
   cube.setSize(4, 5, 6);
+  cube.setOffset(100, 101, 102);
   for (int i=0; i < 4*5*6; i++)
-    data[i] = i * .1;
+    data[i] = i * .25;
   if (!out.addCubelet(&cube)) return;
 
   cube.setSize(7, 8, 9);
-  cube.x_offset = 1;
+  cube.setOffset(200, 201, 202);
   for (int i=0; i < 7*8*9; i++)
-    data[i] = i * .2;
+    data[i] = i * .5;
   if (!out.addCubelet(&cube)) return;
 
   out.close();
@@ -37,7 +38,7 @@ void readFile(const char *filename) {
     if (!in.next(&cube)) break;
     printf("Cubelet %dx%dx%d, offset %d,%d,%d\n",
            cube.width, cube.height, cube.depth,
-           cube.x_offset, cube.y_offset, cube.z_offset);
+           cube.xOffset, cube.yOffset, cube.zOffset);
 
     float *data = (float*) in.getData();
 
@@ -53,11 +54,12 @@ void readFile(const char *filename) {
 
 }
 
-int main() {
-  const char *filename = "test_cubelet_file.out";
-  // const char *filename = NULL;
+int main(int argc, char **argv) {
+  const char *filename = argv[1];
+  if (filename && !strcmp(filename, "-")) filename = NULL;
+
   writeFile(filename);
-  readFile(filename);
+  // readFile(filename);
 
   return 0;
 }

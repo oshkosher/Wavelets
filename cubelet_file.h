@@ -14,12 +14,7 @@
     24 bytes: text description ending with newline (so you can use 'head -1'
               to check it).
 
-    8 bytes: offset (from the beginning of the file) of the index
-             footer, or 0 if the index hasn't been written. To be
-             precise, this points to the data 4 bytes before the
-             CubeletIndexBuffer.
-
-    32 bytes: unused
+    40 bytes: unused
 
   For each cubelet:
     4 bytes: length of encoded CubeletBuffer
@@ -28,15 +23,23 @@
 
   Cubelet index footer:
     4 bytes: all bits set (0xFFFFFFFF)
-    4 bytes: length of encoded CubeletIndexBuffer
     encoded CubeletIndexBuffer
+    4 bytes: length of encoded CubeletIndexBuffer
+    4 bytes: "cube"
 
+  The 4 byte "cube" suffix marks this file as a completed cubelet file.
+  Without that, it is just a truncated cubelet file without an index.
+
+  To quickly read the index, seek to 8 bytes from the end, read the length
+  of the CubeletIndexBuffer and the "cube" suffix. Verify that the last 4
+  bytes are "cube", and seek back to the start of the encoded
+  CubeletIndexBuffer.
 */
 
 
 struct Cubelet {
   unsigned width, height, depth;
-  unsigned x_offset, y_offset, z_offset;
+  unsigned xOffset, yOffset, zOffset;
 
   enum DataType {
     CUBELET_UINT8,
@@ -45,7 +48,7 @@ struct Cubelet {
 
   DataType datatype;
 
-  uint64_t data_file_offset;
+  uint64_t dataFileOffset;
 
   // if data is not null, the destructor will call free() on it
   void *data;
@@ -56,12 +59,18 @@ struct Cubelet {
     depth = d;
   }
 
+  void setOffset(int x=0, int y=0, int z=0) {
+    xOffset = x;
+    yOffset = y;
+    zOffset = z;
+  }
+
   Cubelet() {
     width = height = depth = 1;
-    x_offset = y_offset = z_offset = 0;
+    xOffset = yOffset = zOffset = 0;
     datatype = CUBELET_FLOAT32;
     data = NULL;
-    data_file_offset = 0;
+    dataFileOffset = 0;
   }
 
   ~Cubelet() {
