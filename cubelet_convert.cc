@@ -168,7 +168,7 @@ bool listCubeletFile(const string &filename) {
     if (!in.next(&cube)) break;
 
     printf("Cubelet %d,%d,%d: %dx%dx%d %s\n",
-           cube.x_offset, cube.y_offset, cube.z_offset,
+           cube.xOffset, cube.yOffset, cube.zOffset,
            cube.width, cube.height, cube.depth,
            cube.datatype == Cubelet::CUBELET_UINT8 ? "byte"
            : cube.datatype == Cubelet::CUBELET_FLOAT32 ? "float"

@@ -158,7 +158,8 @@ WaveletSampleImage.class: WaveletSampleImage.java
 ImageDiff.class: ImageDiff.java
 	javac $<
 
-cubelet: CubeletFile.class test_cubelet_file MovieToCubelets.class
+cubelet: CubeletFile.class test_cubelet_file MovieToCubelets.class \
+  cubelet_convert
 
 CubeletFile.class: WaveletCompress.java CubeletFile.java
 	$(JAVAC) $^
