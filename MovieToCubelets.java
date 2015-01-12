@@ -22,7 +22,7 @@ public class MovieToCubelets {
 
   public static final int CUBELET_WIDTH = 512;
   public static final int CUBELET_HEIGHT = 512;
-  public static final int CUBELET_DEPTH = 512;
+  public static final int CUBELET_DEPTH = 128;
 
   
   private static int cubesAcross, cubesDown;
@@ -82,7 +82,6 @@ public class MovieToCubelets {
             (cube.xOffset, cube.yOffset, cube.width, cube.height);
           getGrayscaleBytes(subImage, cube.byteData,
                             cube.width * cube.height * currentDepth);
-          cube.zOffset = frameNo;
         }
       }
 
@@ -93,6 +92,9 @@ public class MovieToCubelets {
         for (CubeletFile.Cubelet cube : cubes) {
           cube.depth = currentDepth;
           cubeletOut.addCubelet(cube);
+
+          // z offset for the next copy of the cubelet starts at the next frame
+          cube.zOffset = frameNo+1;
         }
         currentDepth = 0;
       }
