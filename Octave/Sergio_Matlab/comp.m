@@ -13,6 +13,6 @@ QA=S.Q_A;QS=S.Q_S;
   w = w';
 % Process z-columns
   w = reshape(w,[NZ,NX*NY]);
-  w = fwt_1d(w,QA,QS,LZ);
+  w = fwt_1d(w,QA,QS,LZ);'fwt: all x y z columns processed'
 % Copyright (c) 2014. S.E.Zarantonello
 % Comments ?  e-mail sergio@rithmica.com
