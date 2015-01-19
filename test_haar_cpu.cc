@@ -2,7 +2,9 @@
 #include <cassert>
 #include "dwt_cpu.h"
 #include "data_io.h"
+#include "cubelet_file.h"
 
+using namespace scu_wavelet;
 
 int testPad() {
   /*
@@ -166,6 +168,40 @@ void testMisc() {
   printf("OK.\n");
 }
 
+
+void testInverse() {
+  float data[] = {17, 14,  1, 16, 20,  6,  2, 11};
+  int length = sizeof data / sizeof(float);
+  int stepCount = 3;
+
+  print_matrix(length, 1, data);
+  haar(length, data, false, stepCount);
+  print_matrix(length, 1, data);
+  haar(length, data, true, stepCount);
+  print_matrix(length, 1, data);
+}
+
+
+void makeTinyCubelet() {
+  CubeFloat cube;
+  srand(time(NULL));
+  cube.size = int3(8,8,8);
+  cube.allocate();
+  for (int z=0; z < cube.depth(); z++)
+    for (int y=0; y < cube.height(); y++)
+      for (int x=0; x < cube.width(); x++) 
+        cube.set(x, y, z, (rand() % 100) / 100.0f - 0.5f);
+  
+  cube.print();
+
+  CubeletStreamWriter out;
+  out.open("tiny.cube");
+  out.addCubelet(&cube);
+  out.close();
+  printf("Wrote tiny.cube\n");
+}
+
+
 void testCDF97() {
 
   // float data[] = {0, 0, 0, 0, 0, 5, 9, 2, 3, 0, 0, 0, 0, 0};
@@ -199,8 +235,10 @@ int main(int argc, char **argv) {
   // testMisc();
   // testPad();
   // testCDF97();
+  // testInverse();
+  makeTinyCubelet();
 
-  main_full(argc, argv);
+  // main_full(argc, argv);
 
   return 0;
 }

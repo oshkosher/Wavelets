@@ -21,17 +21,15 @@
 #include "huffman.h"
 
 using namespace std;
+using namespace scu_wavelet;
 
 
 // read&write just the data part of the file to&from f.intData
 // using Huffman encoding
-static void initHuffman(Huffman &huff, const Data2d &data, int quantizeBits,
-                        bool quiet);
-static bool writeQuantDataHuffman(Huffman &huff, FILE *outf,
-                                  const Data2d &data, int quantizeBits,
-                                  bool quiet);
-static bool readQuantDataHuffman(HuffmanDecoder &huff, FILE *inf,
-                                 Data2d &data);
+static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet);
+
+static bool writeQuantDataHuffman(Huffman &huff, vector<uint32_t> *outData,
+                                  const CubeInt *data, bool quiet);
 
 
 void printHelp() {
@@ -42,20 +40,24 @@ void printHelp() {
          "    -steps <n> : # of wavelet transform steps (default = %d)\n"
          "    -thresh <n> : proportion of data to be eliminated in threshold cutoff\n"
          "                  Must be between [0..1]. (default = %.3f)\n"
-         "    -qbits <n> : # of bits into which data is quantized. Must be between \n"
-         "                 1 and 32.  (default=%d)\n"
+         "    -qcount <n> : # of bins into which data is quantized.\n"
+         "                 Must be >= 1 (default=%d)\n"
          "    -qalg <alorithm> : quantization algorithm: uniform, log, count, or lloyd\n"
          "                       (default = %s)\n"
          "    -bq <filename> : before quantizing, save a copy of the data this file\n"
          "    -enc : print the bit encoding of each value\n"
-         "    -std : use standard wavelet transpose order\n"
+         "    -nonstd : use nonstandard wavelet transpose order\n"
          "    -q : be quiet; suppess all output\n"
+         "    -v : be verbose; print the data after each step\n"
          "\n",
          DEFAULT_WAVELET_STEPS,
          DEFAULT_THRESHOLD_FRACTION,
-         DEFAULT_QUANTIZE_BITS,
+         DEFAULT_QUANTIZE_BINS,
          quantAlgId2Name(DEFAULT_QUANTIZE_ALGORITHM)
          );
+
+  // defaults are defined in wavelet.h, just after enum declarations
+
   exit(1);
 }
 
@@ -74,31 +76,32 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
     else if (!strcmp(arg, "-steps")) {
       if (++nextArg >= argc) printHelp();
       arg = argv[nextArg];
-      if (1 != sscanf(arg, "%d", &opt.waveletSteps) ||
-          opt.waveletSteps < 0) {
+      int steps;
+      if (1 != sscanf(arg, "%d", &steps) || steps < 0) {
         fprintf(stderr, "Invalid # of wavelet transform steps: \"%s\"\n", arg);
         return false;
+      } else {
+        opt.param.transformSteps = int3(steps, steps, steps);
       }
     }
 
     else if (!strcmp(arg, "-thresh")) {
       if (++nextArg >= argc) printHelp();
       arg = argv[nextArg];
-      if (1 != sscanf(arg, "%f", &opt.thresholdFraction) ||
-          opt.thresholdFraction < 0 ||
-          opt.thresholdFraction > 1) {
+      if (1 != sscanf(arg, "%f", &opt.param.thresholdFraction) ||
+          opt.param.thresholdFraction < 0 ||
+          opt.param.thresholdFraction > 1) {
         fprintf(stderr, "Invalid threshold proportion: \"%s\"\n", arg);
         return false;
       }
     }
 
-    else if (!strcmp(arg, "-qbits")) {
+    else if (!strcmp(arg, "-qcount")) {
       if (++nextArg >= argc) printHelp();
       arg = argv[nextArg];
-      if (1 != sscanf(arg, "%d", &opt.quantizeBits) ||
-          opt.quantizeBits < 1 ||
-          opt.quantizeBits > 32) {
-        fprintf(stderr, "Invalid # quantize bits: \"%s\"\n", arg);
+      if (1 != sscanf(arg, "%d", &opt.param.binCount) ||
+          opt.param.binCount < 1) {
+        fprintf(stderr, "Invalid # quantize bins: \"%s\"\n", arg);
         return false;
       }
     }
@@ -110,8 +113,8 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
 
     else if (!strcmp(arg, "-qalg")) {
       if (++nextArg >= argc) printHelp();
-      opt.quantizeAlgorithm = quantAlgName2Id(argv[nextArg]);
-      if (opt.quantizeAlgorithm < 0) {
+      opt.param.quantAlg = quantAlgName2Id(argv[nextArg]);
+      if (opt.param.quantAlg == QUANT_ALG_UNKNOWN) {
         fprintf(stderr, "Invalid quantize algorithm: \"%s\"\n", argv[nextArg]);
         return false;
       }
@@ -121,12 +124,16 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
       opt.printHuffmanEncoding = true;
     }
 
-    else if (!strcmp(arg, "-std")) {
-      opt.isWaveletTransposeStandard = true;
+    else if (!strcmp(arg, "-nonstd")) {
+      opt.param.isWaveletTransposeStandard = false;
     }
 
     else if (!strcmp(arg, "-q")) {
       opt.quiet = true;
+    }
+
+    else if (!strcmp(arg, "-v")) {
+      opt.verbose = true;
     }
 
     else if (!strcmp(arg, "-experiment")) {
@@ -152,6 +159,7 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
    variable length: Header, encoded as a Google Protocol Buffer
    variable length: Data. Layout can be determined by reading the header.
 */
+#if 0
 bool writeQuantData(const char *filename, const Data2d &data, Options &opt,
                     int *fileSizeBytes) {
   
@@ -176,7 +184,7 @@ bool writeQuantData(const char *filename, const Data2d &data, Options &opt,
   // copy parameters into protocol buffer
   buf.set_width(data.width);
   buf.set_height(data.height);
-  buf.set_wavelet_transform_step_count(opt.waveletSteps);
+  buf.set_wavelet_transform_step_count(opt.waveletSteps.x);
   buf.set_standard_transpose(opt.isWaveletTransposeStandard);
   buf.set_quantize_bits(opt.quantizeBits);
   buf.set_threshold_value(opt.thresholdValue);
@@ -246,75 +254,91 @@ bool writeQuantData(const char *filename, const Data2d &data, Options &opt,
 
   return success;
 }
+#endif
 
 
-bool readQuantData(const char *filename, Data2d &data, Options &opt) {
-
-  FILE *inf = fopen(filename, "rb");
-  if (!inf) {
-    printf("Cannot read \"%s\"\n", filename);
-    return false;
-  }
-
-  char idString[17] = {0};
-  if (16 != fread(idString, 1, 16, inf)) return false;
-  if (strcmp(idString, FILE_ID_STRING)) {
-    fprintf(stderr, "Invalid file format. Expected protocol buffer header.\n");
-    return false;
-  }
-
-  // read the header data
-  unsigned codedLen;
-  if (1 != fread(&codedLen, sizeof codedLen, 1, inf)) return false;
+/**
+   Write the data as one cubelet to the cubelet stream.
+*/
+bool writeQuantData(CubeletStreamWriter &cubeletStream,
+                    CubeInt *cube, Options &opt,
+                    int *sizeBytes) {
   
-  char *codedBuf = new char[codedLen];
-  assert(codedBuf);
-  if (codedLen != (unsigned)fread(codedBuf, 1, codedLen, inf)) {
-    fprintf(stderr, "Failed to read header.\n");
+  if (sizeBytes) *sizeBytes = 0;
+
+  // initialize the huffman encoding
+  Huffman huff;
+  initHuffman(huff, cube, opt.quiet);
+  if (opt.printHuffmanEncoding) huff.printEncoding();
+
+  vector<uint32_t> encodedData;
+
+  if (!writeQuantDataHuffman(huff, &encodedData, cube, opt.quiet))
     return false;
-  }
 
-  // decode the protobuf
-  WaveletCompressedImage buf;
-  if (!buf.ParseFromArray(codedBuf, codedLen)) {
-    fprintf(stderr, "Failed to decode header data.\n");
-    return false;
-  }
-  delete[] codedBuf;
+  huff.getDecoderTable(cube->param.huffDecode);
+  cube->param.compressedSize = encodedData.size() * sizeof(uint32_t);
+  cube->isWaveletCompressed = true;
 
-  // copy parameters from protocol buffer
-  data.initInts(buf.width(), buf.height());
-  opt.waveletSteps = buf.wavelet_transform_step_count();
-  opt.isWaveletTransposeStandard = buf.standard_transpose();
-  opt.quantizeBits = buf.quantize_bits();
-  opt.thresholdValue = buf.threshold_value();
-  opt.maxAbsVal = buf.quant_max_value();
-  opt.quantizeAlgorithm = quantProtoId2AlgId(buf.quantization_algorithm());
-
-  opt.quantBinBoundaries.resize(buf.quant_bin_boundaries_size());
-  for (int i=0; i < buf.quant_bin_boundaries_size(); i++)
-    opt.quantBinBoundaries[i] = buf.quant_bin_boundaries(i);
-
-  opt.quantBinValues.resize(buf.quant_bin_values_size());
-  for (int i=0; i < buf.quant_bin_values_size(); i++)
-    opt.quantBinValues[i] = buf.quant_bin_values(i);
-
-  // get the Huffman decode table from the protocol buffer
-  vector<int> huffDecodeTable;
-  for (int i=0; i < buf.huffman_encode_table_size(); i++)
-    huffDecodeTable.push_back(buf.huffman_encode_table(i));
-
-  HuffmanDecoder huffDecoder;
-  huffDecoder.init(huffDecodeTable);
-
-  bool success = readQuantDataHuffman(huffDecoder, inf, data);
+  // temporarily swap in the compressed data
+  void *saveData = cube->data_;
+  cube->data_ = encodedData.data();
   
-  fclose(inf);
+  cubeletStream.addCubelet(cube);
 
-  return success;
+  cube->data_ = saveData;
+
+  // return success;
+  return true;
 }
 
 
+bool readQuantData(CubeletStreamReader &cubeletStream, CubeInt *cube) {
+
+  while (true) {
+    if (!cubeletStream.next(cube)) {
+      fprintf(stderr, "No compressed cubelet found\n");
+      return false;
+    }
+
+    // look for a compressed cubelet in the right format
+    if (cube->datatype == WAVELET_DATA_INT32 &&
+        cube->isWaveletCompressed)
+      break;
+  }
+
+  int wordCount = cube->param.compressedSize / sizeof(uint32_t);
+  vector<uint32_t> bitData(wordCount, 0);
+
+  // read the compressed data into an array of uint32_t's
+  if (!cubeletStream.getRawData(bitData.data()))
+    return false;
+
+  // allocate storage for the decoded integer values
+  cube->allocate();
+
+  HuffmanDecoder huffDecoder;
+  huffDecoder.init(cube->param.huffDecode);
+
+  BitStreamMemorySource mem(&bitData);
+  BitStreamReader<BitStreamMemorySource> bitReader(&mem);
+
+  assert(cube->count());
+  assert(cube->data());
+
+  int readCount = huffDecoder.decodeFromStream
+    (cube->data(), cube->count(), &bitReader);
+
+  if (cube->count() != readCount) {
+    printf("ERROR: read only %d of %d values\n", readCount, cube->count());
+    return false;
+  }
+
+  return true;
+}
+
+
+#if 0
 static void initHuffman(Huffman &huff, const Data2d &data, int quantizeBits,
                         bool quiet) {
 
@@ -336,14 +360,43 @@ static void initHuffman(Huffman &huff, const Data2d &data, int quantizeBits,
   if (!quiet)
     printf("Huffman build table %.3f ms\n", elapsed*1000);
 }
+#endif
 
+class TraverseForHuffman {
+public:
+  Huffman &huff;
+  TraverseForHuffman(Huffman &h) : huff(h) {}
+  
+  void visit(int value) {
+    huff.increment(value);
+  }
+};
 
+static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet) {
+
+  double startTime = NixTimer::time();
+
+  // number of possible values
+  huff.init(cube->param.binCount);
+
+  // train the huffman encoder
+  TraverseForHuffman init(huff);
+  cube->visit<TraverseForHuffman>(init);
+
+  huff.computeHuffmanCoding();
+  double elapsed = NixTimer::time() - startTime;
+  if (!quiet)
+    printf("Huffman build table %.3f ms\n", elapsed*1000);
+}
+
+#if 0
 static bool writeQuantDataHuffman(Huffman &huff, FILE *outf,
                                   const Data2d &data, int quantizeBits,
                                   bool quiet) {
 
   // write the data
-  BitStreamWriter bitWriter(outf);
+  BitStreamFileSink fileSink(outf);
+  BitStreamWriter<BitStreamFileSink> bitWriter(&fileSink);
   int count = data.count();
 
   // number of possible values
@@ -368,79 +421,31 @@ static bool writeQuantDataHuffman(Huffman &huff, FILE *outf,
 
   return true;
 }
+#endif
 
+static bool writeQuantDataHuffman(Huffman &huff, vector<uint32_t> *outData,
+                                  const CubeInt *data, bool quiet) {
 
-static bool readQuantDataHuffman(HuffmanDecoder &huff, FILE *inf,
-                                 Data2d &data) {
+  BitStreamMemorySink memorySink(outData);
+  BitStreamWriter<BitStreamMemorySink> bitWriter(&memorySink);
 
-  BitStreamReader bitReader(inf);
+  // this routine does not accept padded data
+  assert(data->inset == int3(0,0,0));
+  huff.encodeToStream(&bitWriter, data->pointer(0,0,0), data->count());
 
-  int count = data.count();
-  assert(data.intData && !data.floatData);
+  // printf("%llu bits written\n", (long long unsigned) bitWriter.size());
+  size_t bitsWritten = bitWriter.size();
+  int bytesWritten = (bitsWritten + 31) / 32 * 4;
 
-  int readCount = huff.decodeFromStream(data.intData, count, &bitReader);
+  long long unsigned totalBits = 0;
+  for (int i=0; i < data->param.binCount; i++)
+    totalBits += huff.encodedLength(i) * huff.getCount(i);
 
-  if (count != readCount) {
-    printf("ERROR: read only %d of %d values\n", count, readCount);
-    return false;
-  }
+  if (!quiet)
+    printf("Huffman encoding: %d bytes, %.2f bits/pixel, "
+           "longest encoding = %d bits\n",
+           bytesWritten, (double)totalBits / data->count(),
+           huff.getLongestEncodingLength());
 
   return true;
 }
-
-
-QuantizeAlgorithm quantAlgName2Id(const char *name) {
-  if (!strcmp(name, "uniform")) return QUANT_ALG_UNIFORM;
-  if (!strcmp(name, "log")) return QUANT_ALG_LOG;
-  if (!strcmp(name, "lloyd")) return QUANT_ALG_LLOYD;
-  if (!strcmp(name, "count")) return QUANT_ALG_COUNT;
-  return QUANT_ALG_UNKNOWN;
-}
-  
-
-const char *quantAlgId2Name(QuantizeAlgorithm id) {
-  switch (id) {
-  case QUANT_ALG_UNIFORM: return "uniform";
-  case QUANT_ALG_LOG: return "log";
-  case QUANT_ALG_COUNT: return "count";
-  case QUANT_ALG_LLOYD: return "lloyd";
-  default: return NULL;
-  }
-}
-  
-
-WaveletCompressedImage_QuantizationAlgorithm quantAlgId2ProtoId
-  (QuantizeAlgorithm id) {
-
-  switch (id) {
-  case QUANT_ALG_UNIFORM:
-    return WaveletCompressedImage_QuantizationAlgorithm_UNIFORM;
-  case QUANT_ALG_LOG: 
-    return WaveletCompressedImage_QuantizationAlgorithm_LOG;
-  case QUANT_ALG_COUNT:
-    return WaveletCompressedImage_QuantizationAlgorithm_COUNT;
-  case QUANT_ALG_LLOYD:
-    return WaveletCompressedImage_QuantizationAlgorithm_LLOYD;
-  default:
-    return WaveletCompressedImage_QuantizationAlgorithm_UNIFORM;
-  }
-}
-  
-
-QuantizeAlgorithm quantProtoId2AlgId
-  (WaveletCompressedImage_QuantizationAlgorithm protoId) {
-
-  switch (protoId) {
-  case WaveletCompressedImage_QuantizationAlgorithm_UNIFORM:
-    return QUANT_ALG_UNIFORM;
-  case WaveletCompressedImage_QuantizationAlgorithm_LOG:
-    return QUANT_ALG_LOG;
-  case WaveletCompressedImage_QuantizationAlgorithm_COUNT:
-    return QUANT_ALG_COUNT;
-  case WaveletCompressedImage_QuantizationAlgorithm_LLOYD:
-    return QUANT_ALG_LLOYD;
-  default:
-    return QUANT_ALG_UNIFORM;
-  }
-}
-

@@ -60,6 +60,12 @@ static bool readBinaryDataFile(const char *filename, float **data,
   if (1 != fread(width, sizeof(int), 1, inf)) return false;
   if (1 != fread(height, sizeof(int), 1, inf)) return false;
 
+  // if only the size was needed, return
+  if (data == NULL) {
+    fclose(inf);
+    return true;
+  }
+
   // check for invalid image sizes
   if (*width < 1 || *height < 1) {
     fprintf(stderr, "Invalid image size: %d x %d\n", *width, *height);
@@ -105,6 +111,12 @@ static bool readTextDataFile(const char *filename, float **data,
             *width, *height);
     fclose(inf);
     return false;
+  }
+
+  // if only the size was needed, return
+  if (data == NULL) {
+    fclose(inf);
+    return true;
   }
 
   int entryCount = (*width) * (*height);

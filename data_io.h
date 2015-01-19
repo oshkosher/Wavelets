@@ -26,6 +26,7 @@
 // Read a 2-d array of float data in either of the formats listed above.
 // On error, complain to stderr and return false. *data is allocated
 // with new[]. The caller is responsible for calling delete[] on it.
+// If 'data' is NULL, just read the width and height of the data and return.
 bool readDataFile(const char *filename, float **data, int *width, int *height);
 
 // Same as the function above, but returns an array of doubles.

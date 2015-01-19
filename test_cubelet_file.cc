@@ -1,27 +1,30 @@
 #include <cstdio>
 #include "cubelet_file.h"
 
+using namespace scu_wavelet;
+
 void writeFile(const char *filename) {
   CubeletStreamWriter out;
-  Cubelet cube;
-  float *data;
+  CubeFloat cube;
+  // float *data;
   
-  cube.datatype = Cubelet::CUBELET_FLOAT32;
+  // cube.datatype = Cubelet::CUBELET_FLOAT32;
   
-  cube.data = data = (float*) malloc(sizeof(float) * 100 * 100 * 100);
+  cube.size = int3(100,100,100);
+  cube.allocate();
 
   out.open(filename);
 
-  cube.setSize(4, 5, 6);
-  cube.setOffset(100, 101, 102);
+  cube.size = int3(4, 5, 6);
+  cube.parentOffset = int3(100, 101, 102);
   for (int i=0; i < 4*5*6; i++)
-    data[i] = i * .25;
+    cube.set(i, 0, 0, i * .25);
   if (!out.addCubelet(&cube)) return;
 
-  cube.setSize(7, 8, 9);
-  cube.setOffset(200, 201, 202);
+  cube.size = int3(7, 8, 9);
+  cube.parentOffset = int3(200, 201, 202);
   for (int i=0; i < 7*8*9; i++)
-    data[i] = i * .5;
+    cube.set(i, 0, 0, i * .5);
   if (!out.addCubelet(&cube)) return;
 
   out.close();
@@ -32,41 +35,28 @@ void readFile(const char *filename) {
 
   if (!in.open(filename)) return;
 
-  Cubelet cube;
+  Cube cube;
 
   while (true) {
     if (!in.next(&cube)) break;
     printf("Cubelet %dx%dx%d, offset %d,%d,%d\n",
-           cube.width, cube.height, cube.depth,
-           cube.xOffset, cube.yOffset, cube.zOffset);
+           cube.width(), cube.height(), cube.depth(),
+           cube.parentOffset.x, cube.parentOffset.y, cube.parentOffset.z);
 
-    /*
-    if (cube.datatype == Cubelet::CUBELET_FLOAT32) {
+    if (cube.isWaveletCompressed) continue;
 
-      float *data = (float*) in.getData();
+    in.getCubeData(&cube);
 
-      for (unsigned y=0; y < cube.height; y++) {
-        for (unsigned x=0; x < cube.width; x++) {
-          printf("%6.2f", data[y*cube.width + x]);
-        }
-        printf("\n");
-      }
-
-    } else if (cube.datatype == Cubelet::CUBELET_UINT8) {
-
-      unsigned char *data = (unsigned char*) in.getData();
-
-      for (unsigned y=0; y < cube.height; y++) {
-        for (unsigned x=0; x < cube.width; x++) {
-          printf("%4d", data[y*cube.width + x]);
-        }
-        printf("\n");
-      }
-
+    if (cube.datatype == WAVELET_DATA_FLOAT32) {
+      CubeFloat *data = (CubeFloat*) &cube;
+      data->print();
+    } else if (cube.datatype == WAVELET_DATA_UINT8) {
+      CubeByte *data = (CubeByte*) &cube;
+      data->print();
+    } else if (cube.datatype == WAVELET_DATA_INT32) {
+      CubeInt *data = (CubeInt*) &cube;
+      data->print();
     }
-
-    printf("\n");
-    */
 
   }
 

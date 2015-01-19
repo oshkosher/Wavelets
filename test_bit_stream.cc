@@ -71,19 +71,21 @@ bool matchesFile(const char *hexString, const char *filename) {
 }
 
 
-BitStreamWriter *createStream(FILE *outf, int bufsize=1024) {
-  return new BitStreamWriter(outf, bufsize);
+BitStreamWriter<BitStreamFileSink> *createStream(FILE *outf) {
+  BitStreamFileSink *sink = new BitStreamFileSink(outf);
+  return new BitStreamWriter<BitStreamFileSink>(sink);
 }
 
-BitStreamReader *createInStream(FILE *inf) {
-  return new BitStreamReader(inf);
+BitStreamReader<BitStreamFileSource> *createInStream(FILE *inf) {
+  BitStreamFileSource *source = new BitStreamFileSource(inf);
+  return new BitStreamReader<BitStreamFileSource>(source);
 }
   
 
 void testBitStream() {
   FILE *outf, *inf;
-  BitStreamWriter *stream;
-  BitStreamReader *in;
+  BitStreamWriter<BitStreamFileSink> *stream;
+  BitStreamReader<BitStreamFileSource> *in;
 
   outf = fopen(FILENAME, "wb");
   stream = createStream(outf);
@@ -132,15 +134,15 @@ void testBitStream() {
 
 void testWriteArray() {
   FILE *outf, *inf;
-  BitStreamWriter *stream;
-  BitStreamReader *in;
+  BitStreamWriter<BitStreamFileSink> *stream;
+  BitStreamReader<BitStreamFileSource> *in;
   unsigned tmp, array[2048];
   srand(42);
   for (int i=0; i < 2048; i++)
     array[i] = rand();
   
   outf = fopen(FILENAME, "wb");
-  stream = createStream(outf, 6);
+  stream = createStream(outf);
 
   // add 5 bits, un-aligning the rest of the data
   tmp = 21;
@@ -180,8 +182,8 @@ void testWriteArray() {
 
 void testBitStreamRandom(bool usePointer = false) {
   FILE *outf, *inf;
-  BitStreamWriter *stream;
-  BitStreamReader *in;
+  BitStreamWriter<BitStreamFileSink> *stream;
+  BitStreamReader<BitStreamFileSource> *in;
   int count = 100000;
 
   srand(42);
@@ -265,8 +267,8 @@ void printBitArray(const unsigned *array_u, int len) {
 
 void testRandomArrays() {
   FILE *outf, *inf;
-  BitStreamWriter *stream;
-  BitStreamReader *in;
+  BitStreamWriter<BitStreamFileSink> *stream;
+  BitStreamReader<BitStreamFileSource> *in;
   int count = 100000;
   unsigned array[100], array2[100];
 
@@ -303,7 +305,8 @@ void testRandomArrays() {
 
 double timeWriter(size_t targetSize) {
   FILE *inf = fopen(FILENAME, "wb");
-  BitStreamWriter stream(inf);
+  BitStreamFileSink sink(inf);
+  BitStreamWriter<BitStreamFileSink> stream(&sink);
   size_t bitsWritten = 0;
   
   double startSec = NixTimer::time();
@@ -324,6 +327,22 @@ double timeWriter(size_t targetSize) {
 }
 
 
+double timeReader(size_t targetSize) {
+  FILE *inf = fopen(FILENAME, "rb");
+  BitStreamFileSource source(inf);
+  BitStreamReader<BitStreamFileSource> stream(&source);
+
+  double startSec = NixTimer::time();
+  unsigned bitSum = 0;
+  for (size_t i = 0; i < targetSize; i++) {
+    bitSum += stream.readBit();
+  }
+
+  fclose(inf);
+  if (bitSum == 0) printf("Odd, bit sum = 0\n");
+  return NixTimer::time() - startSec;
+}
+
 void testSpeed() {
   size_t size = 100000;
   double elapsed = 0;
@@ -335,7 +354,17 @@ void testSpeed() {
     size *= 2;
   }
   double mb = size / 8.0 / 1024 / 1024;
-  printf("%.2f MB in %.3fs: %.2f MB/sec\n", mb, elapsed, mb / elapsed);
+  printf("Write %.2f MB in %.3fs: %.2f MB/sec\n", mb, elapsed, mb / elapsed);
+
+  size_t maxSize = size;
+  size = 100000;
+  while (size < maxSize) {
+    elapsed = timeReader(size);
+    if (elapsed > 5) break;
+    size *= 2;
+  }
+  mb = size / 8.0 / 1024 / 1024;
+  printf("Read %.2f MB in %.3fs: %.2f MB/sec\n", mb, elapsed, mb / elapsed);
 }
 
 

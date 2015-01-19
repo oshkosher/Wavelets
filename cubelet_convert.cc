@@ -5,6 +5,7 @@
 #include "cubelet_file.h"
 
 using namespace std;
+using namespace scu_wavelet;
 
 /*
   Convert between our cubelet format and other formats.
@@ -58,7 +59,7 @@ struct Int3 {
 
 struct Options {
   std::string inputFile;
-  Int3 inputShape;
+  int3 inputShape;
 
   std::string outputFile;
 };
@@ -77,7 +78,7 @@ int main(int argc, const char **argv) {
   if (!parseOptions(opt, argc, argv)) return 1;
 
   if (opt.outputFile.empty()) {
-    listCubeletFile(opt.inputFile.c_str());
+    listCubeletFile(opt.inputFile);
   }
 
   else {
@@ -105,7 +106,7 @@ void printHelp() {
 bool parseOptions(Options &opt, int argc, const char **argv) {
   opt.inputFile = "";
   opt.outputFile = "";
-  opt.inputShape.set(-1,-1,-1);
+  opt.inputShape = int3(-1,-1,-1);
 
   bool inputFileRead = false;
   
@@ -162,17 +163,18 @@ bool listCubeletFile(const string &filename) {
 
   if (!in.open(filename.c_str())) return false;
 
-  Cubelet cube;
+  Cube cube;
   
   while (true) {
     if (!in.next(&cube)) break;
 
-    printf("Cubelet %d,%d,%d: %dx%dx%d %s\n",
-           cube.xOffset, cube.yOffset, cube.zOffset,
-           cube.width, cube.height, cube.depth,
-           cube.datatype == Cubelet::CUBELET_UINT8 ? "byte"
-           : cube.datatype == Cubelet::CUBELET_FLOAT32 ? "float"
-           : "unknown type");
+    const char *compressed = cube.isWaveletCompressed ? " compressed" : "";
+
+    printf("Cubelet %d,%d,%d: %dx%dx%d of %s, %d%s bytes at %" PRIu64 "\n",
+           cube.parentOffset.x, cube.parentOffset.y, cube.parentOffset.z,
+           cube.width(), cube.height(), cube.depth(),
+           waveletDataTypeName(cube.datatype),
+           cube.getSizeInBytes(), compressed, cube.dataFileOffset);
   }
 
   return true;
@@ -181,7 +183,7 @@ bool listCubeletFile(const string &filename) {
 
 bool convertFromRawBytes(Options &opt) {
 
-  if (!opt.inputShape.isValid()) {
+  if (!(opt.inputShape > int3(0,0,0))) {
     fprintf(stderr, "Input shape is unspecified or invalid.\n");
     return false;
   }
@@ -192,14 +194,13 @@ bool convertFromRawBytes(Options &opt) {
     return false;
   }
 
-  Cubelet cube;
-  cube.setSize(opt.inputShape.x, opt.inputShape.y, opt.inputShape.z);
-  cube.datatype = Cubelet::CUBELET_UINT8;
+  CubeByte cube;
+  cube.size = int3(opt.inputShape.x, opt.inputShape.y, opt.inputShape.z);
+  cube.allocate();
   uint64_t dataSize = (uint64_t)opt.inputShape.x * opt.inputShape.y
     * opt.inputShape.z;
   uint64_t bytesRead;
-  cube.data = malloc(dataSize);
-  bytesRead = fread(cube.data, 1, dataSize, inf);
+  bytesRead = fread(cube.data(), 1, dataSize, inf);
   if (bytesRead != dataSize) {
     fprintf(stderr, "Data size mismatch: expected %" PRIu64 " bytes, "
             "got %" PRIu64 "\n", dataSize, bytesRead);

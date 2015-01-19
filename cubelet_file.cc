@@ -27,12 +27,7 @@ static bool readProtobuf(FILE *inf, google::protobuf::Message *message,
 struct CubeletHeader {
   char headerLine[24];
 
-  // Offset into this file for the index containing the metadata
-  // for all the cubelets. This will initially be zero, and will be
-  // backpatched when the file is complete.
-  uint64_t cubeletIndexOffset;
-
-  char unused[32];
+  char unused[40];
 
   CubeletHeader() {
     assert(sizeof(CubeletHeader) == HEADER_SIZE);
@@ -40,8 +35,6 @@ struct CubeletHeader {
     headerLine[23] = 0;  // null-terminate it just in case
 
     memset(unused, 0, sizeof unused);
-
-    cubeletIndexOffset = 0;
   }
 };
 
@@ -127,7 +120,7 @@ bool CubeletStreamWriter::open(const char *filename) {
 
   if (outf) close();
 
-  if (filename) {
+  if (filename && strcmp(filename, "-")) {
     outf = fopen(filename, "wb");
     if (!outf) {
       fprintf(stderr, "Error: cannot open \"%s\" for writing.\n", filename);
@@ -151,7 +144,7 @@ bool CubeletStreamWriter::open(const char *filename) {
 }
 
 
-bool CubeletStreamWriter::addCubelet(const Cubelet *cubelet) {
+bool CubeletStreamWriter::addCubelet(const Cube *cubelet) {
   if (!outf) {
     fprintf(stderr, "Cannot add cubelets. Stream is not open yet.\n");
     return false;
@@ -159,57 +152,33 @@ bool CubeletStreamWriter::addCubelet(const Cubelet *cubelet) {
   
   CubeletBuffer *buffer = index.add_cubelets();
 
-  assert(cubelet->width != 0);
-  assert(cubelet->height != 0);
-  assert(cubelet->depth != 0);
+  assert(cubelet->size > scu_wavelet::int3(0,0,0));
 
-  buffer->set_width(cubelet->width);
-  buffer->set_height(cubelet->height);
-  buffer->set_depth(cubelet->depth);
+  cubelet->copyToCubeletBuffer(buffer);
 
-  if (cubelet->xOffset) buffer->set_x_offset(cubelet->xOffset);
-  if (cubelet->yOffset) buffer->set_y_offset(cubelet->yOffset);
-  if (cubelet->zOffset) buffer->set_z_offset(cubelet->zOffset);
+  unsigned dataByteCount = 0;
 
-  assert(cubelet->datatype == Cubelet::CUBELET_UINT8 ||
-         cubelet->datatype == Cubelet::CUBELET_FLOAT32);
-
-  unsigned pixelSize = 0;
-
-  switch (cubelet->datatype) {
-  case Cubelet::CUBELET_UINT8:
-    buffer->set_data_type(CubeletBuffer_DataType_UINT8);
-    pixelSize = 1;
-    break;
-  case Cubelet::CUBELET_FLOAT32:
-    buffer->set_data_type(CubeletBuffer_DataType_FLOAT32);
-    pixelSize = sizeof(float);
-    break;
+  if (cubelet->data_) {
+    dataByteCount = cubelet->getSizeInBytes();
+    buffer->set_byte_count(dataByteCount);
   }
-
-  unsigned dataByteCount;
-
-  // if the data hasn't been set, don't output any data
-  if (cubelet->data)
-    dataByteCount = cubelet->width * cubelet->height * cubelet->depth
-      * pixelSize;
-  else
-    dataByteCount = 0;
-    
-  // when the data is compressed, byte_count will be harder to compute
-  buffer->set_byte_count(dataByteCount);
 
   writeProtobuf(outf, buffer);
 
   // save the position of the data so it can be included in the index
   buffer->set_data_file_offset(ftell(outf));
 
-  printf("Write cubelet at offset %llu\n", (long long unsigned)
-         buffer->data_file_offset());
+  // XXX should cubelet->dataFileOffset be set? const will have to be
+  // casted off.
+
+  /*
+  printf("Write %d cubelet bytes at offset %llu\n", dataByteCount,
+         (long long unsigned) buffer->data_file_offset());
+  */
   
-  // write the data
-  if (cubelet->data) {
-    if (fwrite(cubelet->data, 1, dataByteCount, outf) != dataByteCount) {
+  // if the data hasn't been set, don't output any data
+  if (cubelet->data_) {
+    if (fwrite(cubelet->data_, 1, dataByteCount, outf) != dataByteCount) {
       fprintf(stderr, "Failed to write cubelet data to file\n");
       return false;
     }
@@ -247,7 +216,7 @@ bool CubeletStreamWriter::close() {
 bool CubeletStreamReader::open(const char *filename) {
   if (inf) close();
 
-  if (filename) {
+  if (filename && strcmp(filename, "-")) {
     inf = fopen(filename, "rb");
     if (!inf) {
       fprintf(stderr, "Cannot open \"%s\" for reading.\n", filename);
@@ -274,10 +243,6 @@ bool CubeletStreamReader::open(const char *filename) {
     return false;
   }
 
-  // Save the offset of the index. this currently unused, but it might
-  // be useful later.
-  indexOffset = header.cubeletIndexOffset;
-
   dataSizeBytes = 0;
   dataHasBeenRead = true;
   eofReached = false;
@@ -286,7 +251,7 @@ bool CubeletStreamReader::open(const char *filename) {
 }
 
 
-bool CubeletStreamReader::next(Cubelet *cube) {
+bool CubeletStreamReader::next(Cube *cube) {
   // if already EOF, don't read more
   if (eofReached) return false;
 
@@ -306,34 +271,20 @@ bool CubeletStreamReader::next(Cubelet *cube) {
     return false;
   }
 
-  cube->width  = buf.width();
-  cube->height = buf.height();
-  cube->depth  = buf.depth();
-
-  cube->xOffset = buf.x_offset();
-  cube->yOffset = buf.y_offset();
-  cube->zOffset = buf.z_offset();
-
-  switch (buf.data_type()) {
-  case CubeletBuffer_DataType_UINT8:
-    cube->datatype = Cubelet::CUBELET_UINT8;
-    break;
-  case CubeletBuffer_DataType_FLOAT32:
-    cube->datatype = Cubelet::CUBELET_FLOAT32;
-    break;
-  }
-
-  cube->dataFileOffset = 0;
-  cube->data = NULL;
+  cube->copyFromCubeletBuffer(&buf);
+  cube->dataFileOffset = ftell(inf);
+  cube->data_ = NULL;
 
   dataSizeBytes = buf.byte_count();
   dataHasBeenRead = false;
+
+  currentCubeSize = cube->size;
 
   return true;
 }
 
 
-void *CubeletStreamReader::getData(void *data) {
+void *CubeletStreamReader::getRawData(void *data) {
 
   if (dataSizeBytes == 0) return NULL;
   
@@ -355,6 +306,65 @@ void *CubeletStreamReader::getData(void *data) {
   dataHasBeenRead = true;
 
   return data;
+}
+
+/**
+   Read the data for the curent cube.
+   If the given cubelet object does not match the cubelet most
+   recently read via the 'next()' function, the behavior is undefined.
+
+   data is compressed:
+     storage is not allocated: allocate and store
+     storage is allocated: assume it's the size of the compressed data?
+   data is not compressed
+     storage is not allocated: allocate and store
+     storage is allocated: 
+
+*/
+bool CubeletStreamReader::getCubeData(Cube *cube) {
+
+  // if the data is compressed, just store it directly
+  if (cube->isWaveletCompressed) {
+    cube->data_ = getRawData(cube->data_);
+  }
+
+  // if it isn't compressed, read it into the cube, resizing if necessary
+  else {
+
+    // if there is no funny business with the size, no change needed
+    if (currentCubeSize == cube->size &&
+        currentCubeSize == cube->totalSize) {
+      cube->data_ = getRawData(cube->data_);
+    }
+
+    // translation might be needed
+    else {
+
+      assert(currentCubeSize <= cube->size);
+
+      void *rawData = getRawData(NULL);
+    
+      switch (cube->datatype) {
+      case WAVELET_DATA_UINT8:
+        copyIntoTypedCube((CubeByte*)cube, rawData, currentCubeSize);
+        break;
+      case WAVELET_DATA_INT32:
+        copyIntoTypedCube((CubeInt*)cube, rawData, currentCubeSize);
+        break;
+      case WAVELET_DATA_FLOAT32:
+        copyIntoTypedCube((CubeFloat*)cube, rawData, currentCubeSize);
+        break;
+      default:
+        fprintf(stderr, "Error reading cubelet data: unrecognized type id %d\n",
+                cube->datatype);
+        return false;
+      }
+
+      free(rawData);
+    }
+  }
+
+  return true;
 }
 
     

@@ -20,7 +20,8 @@ int main(int argc, char **argv) {
   huff.printEncoding();
 
   FILE *f = fopen("test_huffman.out", "wb");
-  BitStreamWriter bitWriter(f);
+  BitStreamFileSink fileSink(f);
+  BitStreamWriter<BitStreamFileSink> bitWriter(&fileSink);
   int values[] = {0, 2, 3, 4, 2, 3, 1, 1, 1};
   int valueCount = sizeof values / sizeof(int);
   huff.encodeToStream(&bitWriter, values, valueCount);
@@ -28,7 +29,8 @@ int main(int argc, char **argv) {
   fclose(f);
 
   f = fopen("test_huffman.out", "rb");
-  BitStreamReader bitReader(f);
+  BitStreamFileSource fileSource(f);
+  BitStreamReader<BitStreamFileSource> bitReader(&fileSource);
   int *values2 = new int[valueCount];
   int readCount = huff.decodeFromStream(values2, valueCount, &bitReader);
   fclose(f);

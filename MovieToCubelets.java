@@ -21,9 +21,9 @@ import java.io.File;
 
 public class MovieToCubelets {
 
-  public static final int CUBELET_WIDTH = 256;
-  public static final int CUBELET_HEIGHT = 256;
-  public static final int CUBELET_DEPTH = 256;
+  public static final int CUBELET_WIDTH = 512;
+  public static final int CUBELET_HEIGHT = 512;
+  public static final int CUBELET_DEPTH = 512;
 
   
   private static int cubesAcross, cubesDown;
@@ -75,7 +75,7 @@ public class MovieToCubelets {
     cubeletOut.width = width;
     cubeletOut.height = height;
     cubeletOut.open(outputCubeletFile);
-    CubeletFile.Cubelet cubes[] = setupCubelets(width, height);
+    Cubelet cubes[] = setupCubelets(width, height);
 
     int frameNo, currentDepth = 0;
     if (endFrame < 0) endFrame = frameCount;
@@ -100,7 +100,7 @@ public class MovieToCubelets {
       int cubeNo = 0;
       for (int y = 0; y < cubesDown; y++) {
         for (int x = 0; x < cubesAcross; x++) {
-          CubeletFile.Cubelet cube = cubes[cubeNo++];
+          Cubelet cube = cubes[cubeNo++];
           BufferedImage subImage = image.getSubimage
             (cube.xOffset, cube.yOffset, cube.width, cube.height);
           getGrayscaleBytes(subImage, cube.byteData,
@@ -112,7 +112,7 @@ public class MovieToCubelets {
       currentDepth++;
       if (currentDepth == CUBELET_DEPTH) {
         System.err.println(" ... flush " + cubes.length + " cubelets");
-        for (CubeletFile.Cubelet cube : cubes) {
+        for (Cubelet cube : cubes) {
           cube.depth = currentDepth;
           cubeletOut.addCubelet(cube);
 
@@ -131,7 +131,7 @@ public class MovieToCubelets {
 
     // write out leftover frames
     if (currentDepth > 0) {
-      for (CubeletFile.Cubelet cube : cubes) {
+      for (Cubelet cube : cubes) {
         cube.depth = currentDepth;
         cubeletOut.addCubelet(cube);
       }
@@ -160,21 +160,21 @@ public class MovieToCubelets {
         across: 0..63, 64..127, 128..149
         down:   0..63, 64..99
   */
-  static CubeletFile.Cubelet[] setupCubelets(int width, int height) {
+  static Cubelet[] setupCubelets(int width, int height) {
   
     cubesAcross = (width + CUBELET_WIDTH - 1) / CUBELET_WIDTH;
     cubesDown = (height + CUBELET_HEIGHT - 1) / CUBELET_HEIGHT;
 
-    CubeletFile.Cubelet cubes[] = 
-      new CubeletFile.Cubelet[cubesAcross * cubesDown];
+    Cubelet cubes[] = 
+      new Cubelet[cubesAcross * cubesDown];
     
     int cubeNo = 0;
     for (int y = 0; y < cubesDown; y++) {
       for (int x = 0; x < cubesAcross; x++) {
-        CubeletFile.Cubelet cube = new CubeletFile.Cubelet();
+        Cubelet cube = new Cubelet();
         cube.setSize(CUBELET_WIDTH, CUBELET_HEIGHT, CUBELET_DEPTH);
         cube.setOffset(x * CUBELET_WIDTH, y * CUBELET_HEIGHT, 0);
-        cube.datatype = CubeletFile.Cubelet.DataType.UINT8;
+        cube.datatype = Cubelet.DataType.UINT8;
 
         if (cube.yOffset + CUBELET_HEIGHT > height)
           cube.height = height - cube.yOffset;
