@@ -81,6 +81,24 @@ WaveletAlgorithm protoIdToWaveletAlg
   }
 }
 
+
+WaveletAlgorithm waveletAlgNameToId(const char *name) {
+  if (!strcmp(name, waveletAlgToName(WAVELET_HAAR))) return WAVELET_HAAR;
+  if (!strcmp(name, waveletAlgToName(WAVELET_CDF97))) return WAVELET_CDF97;
+  if (!strcmp(name, waveletAlgToName(WAVELET_CDF53))) return WAVELET_CDF53;
+  return WAVELET_UNKNOWN;
+}
+
+
+const char *waveletAlgToName(WaveletAlgorithm id) {
+  switch (id) {
+  case WAVELET_HAAR: return "haar";
+  case WAVELET_CDF97: return "cdf97";
+  case WAVELET_CDF53: return "cdf53";
+  default: return "unknown";
+  }
+}
+
 // convert between my wavelet data type enum and the protobuf enum
 CubeletBuffer_DataType datatypeToProtoId(WaveletDataType id) {
   switch (id) {

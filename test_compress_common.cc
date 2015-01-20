@@ -42,6 +42,7 @@ void printHelp() {
          "                  Must be between [0..1]. (default = %.3f)\n"
          "    -qcount <n> : # of bins into which data is quantized.\n"
          "                 Must be >= 1 (default=%d)\n"
+         "    -wave <wavelet> : Wavelet to use: haar or cdf97. (default = %s)\n"
          "    -qalg <alorithm> : quantization algorithm: uniform, log, count, or lloyd\n"
          "                       (default = %s)\n"
          "    -bq <filename> : before quantizing, save a copy of the data this file\n"
@@ -53,6 +54,7 @@ void printHelp() {
          DEFAULT_WAVELET_STEPS,
          DEFAULT_THRESHOLD_FRACTION,
          DEFAULT_QUANTIZE_BINS,
+         waveletAlgToName(DEFAULT_WAVELET),
          quantAlgId2Name(DEFAULT_QUANTIZE_ALGORITHM)
          );
 
@@ -116,6 +118,15 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
       opt.param.quantAlg = quantAlgName2Id(argv[nextArg]);
       if (opt.param.quantAlg == QUANT_ALG_UNKNOWN) {
         fprintf(stderr, "Invalid quantize algorithm: \"%s\"\n", argv[nextArg]);
+        return false;
+      }
+    }
+
+    else if (!strcmp(arg, "-wave")) {
+      if (++nextArg >= argc) printHelp();
+      opt.param.waveletAlg = waveletAlgNameToId(argv[nextArg]);
+      if (opt.param.waveletAlg == WAVELET_UNKNOWN) {
+        fprintf(stderr, "Invalid wavelet: \"%s\"\n", argv[nextArg]);
         return false;
       }
     }

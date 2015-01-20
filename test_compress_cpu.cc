@@ -185,8 +185,21 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
     if (opt.verbose) data.print("Before wavelet transform");
 
-    waveletMs = haar_3d(&data, param.transformSteps, false, 
-                        param.isWaveletTransposeStandard);
+    if (param.waveletAlg == WAVELET_CDF97) {
+      waveletMs = cdf97_3d(&data, param.transformSteps, false, 
+                           param.isWaveletTransposeStandard);
+    }
+
+    else if (param.waveletAlg == WAVELET_HAAR) {
+      waveletMs = haar_3d(&data, param.transformSteps, false, 
+                          param.isWaveletTransposeStandard);
+    }
+
+    else {
+      fprintf(stderr, "Unknown wavelet: %s\n",
+              waveletAlgToName(param.waveletAlg));
+      return false;
+    }
 
     if (opt.verbose) data.print("After wavelet transform");
 
@@ -321,8 +334,22 @@ bool decompressFile(const char *inputFile, const char *outputFile,
   if (opt.verbose) data.print("After dequantize");
 
   // perform inverse wavelet transform
-  elapsed = haar_3d(&data, param.transformSteps, true, 
-                    param.isWaveletTransposeStandard);
+
+  if (param.waveletAlg == WAVELET_CDF97) {
+    elapsed = cdf97_3d(&data, param.transformSteps, true, 
+                       param.isWaveletTransposeStandard);
+  }
+  
+  else if (param.waveletAlg == WAVELET_HAAR) {
+    elapsed = haar_3d(&data, param.transformSteps, true, 
+                      param.isWaveletTransposeStandard);
+  }
+  
+  else {
+    fprintf(stderr, "Unknown wavelet: %s\n",
+            waveletAlgToName(param.waveletAlg));
+    return false;
+  }
 
   if (opt.verbose) data.print("After inverse transform");
 

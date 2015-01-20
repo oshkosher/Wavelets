@@ -64,8 +64,8 @@ movieconvert: MovieToCubelets.class
 oct: cudahaar.mex
 
 # Set this to YES or NO, to select between a Debug or Release build
-IS_DEBUG=YES
-# IS_DEBUG=NO
+# IS_DEBUG=YES
+IS_DEBUG=NO
 
 
 ifeq ($(IS_DEBUG),YES)
@@ -180,7 +180,8 @@ MovieToCubelets.class: MovieToCubelets.java
 CubeletViewer.class: CubeletViewer.java
 	$(JAVAC) $<
 
-test_haar_cpu.o: test_haar_cpu.cc dwt_cpu.h data_io.h cubelet_file.h
+test_haar_cpu.o: test_haar_cpu.cc dwt_cpu.h data_io.h cubelet_file.h \
+	  wavelet_compress.pb.h
 	$(CC) -c $<
 
 test_haar_cpu: test_haar_cpu.o dwt_cpu.o data_io.o wavelet.o \

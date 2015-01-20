@@ -66,6 +66,8 @@ CompressionParametersBuffer_WaveletAlgorithm waveletAlgToProtoId
   (WaveletAlgorithm id);
 WaveletAlgorithm protoIdToWaveletAlg
   (CompressionParametersBuffer_WaveletAlgorithm protoId);
+WaveletAlgorithm waveletAlgNameToId(const char *name);
+const char *waveletAlgToName(WaveletAlgorithm id);
 
 // convert between my wavelet data type enum and the protobuf enum
 CubeletBuffer_DataType datatypeToProtoId(WaveletDataType id);

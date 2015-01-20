@@ -94,9 +94,12 @@ double *dwt_pad_2d(int rows, int cols, int rowPitch, double *input,
 		   int outputRows, int outputCols, int outputPitch,
 		   double *output, DWTPadding pad);
 
-// do a CDF 9.7 wavelet transform
+// 1-d CDF 9.7 wavelet transform
 void cdf97(int length, float *data, int stepCount, float *tempGiven = NULL);
 void cdf97_inverse(int length, float *data, int stepCount, float *tempGiven = NULL);
 
+// 3-d CDF 9.7
+float cdf97_3d(CubeFloat *data, scu_wavelet::int3 stepCount,
+               bool inverse = false, bool standardTranspose = true);
 
 #endif // __DWT_CPU_H__

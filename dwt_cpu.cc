@@ -61,11 +61,6 @@ template<typename T>
 static float haar_inv_2d(int size, T *data, int stepCount, bool standard);
 
 
-// void haar_3d_one_axis(CubeFloat *data, int stepCount);
-// void haar_inv_3d_one_axis(CubeFloat *data, int stepCount);
-
-
-
 // return the number of high-order zero bits in a 32 bit integer
 unsigned countLeadingZeros(unsigned x) {
   unsigned y, n;
@@ -888,4 +883,114 @@ void cdf97_inverse(int length, float *data, int stepCount, float *tempGiven) {
   }
 
   if (!tempGiven) delete[] temp;
+}
+
+template<class NUM>
+class CDF97RowVisitor {
+public:
+  int steps;
+  NUM *temp;
+
+  CDF97RowVisitor(int s, int rowLength) : steps(s) {
+    temp = new NUM[rowLength];
+  }
+
+  ~CDF97RowVisitor() {
+    delete[] temp;
+  }
+
+  void visitRow(NUM *row, int len) {
+    cdf97(len, row, steps, temp);
+  }
+};
+
+
+template<class NUM>
+void cdf97_3d_one_axis(CubeNum<NUM> *data, int stepCount) {
+  if (stepCount > 0) {
+    CDF97RowVisitor<NUM> rowIter(stepCount, data->width());
+    data->template visitRows<CDF97RowVisitor<NUM>>(rowIter);
+  }
+}
+
+
+template<class NUM>
+class CDF97InvRowVisitor {
+public:
+  int steps;
+  NUM *temp;
+
+  CDF97InvRowVisitor(int s, int rowLength) : steps(s) {
+    temp = new NUM[rowLength];
+  }
+
+  ~CDF97InvRowVisitor() {
+    delete[] temp;
+  }
+
+  void visitRow(NUM *row, int len) {
+    cdf97_inverse(len, row, steps, temp);
+  }
+};
+
+
+template<class NUM>
+void cdf97_inv_3d_one_axis(CubeNum<NUM> *data, int stepCount) {
+  if (stepCount > 0) {
+    CDF97InvRowVisitor<NUM> rowIter(stepCount, data->width());
+    data->template visitRows<CDF97InvRowVisitor<NUM>>(rowIter);
+  }
+}
+
+
+
+// 3-d CDF 9.7
+float cdf97_3d(CubeFloat *data, scu_wavelet::int3 stepCount, bool inverse,
+               bool standardTranspose) {
+  double startTime = NixTimer::time();
+
+  if (!inverse) {
+    
+    if (standardTranspose) {
+
+      // forward standard: x steps, transpose, y steps, transpose, z steps
+
+      cdf97_3d_one_axis(data, stepCount.x);
+      data->transpose3dFwd();  // xyz -> yzx
+      cdf97_3d_one_axis(data, stepCount.y);
+      data->transpose3dFwd();
+      cdf97_3d_one_axis(data, stepCount.z);
+
+    } else {
+
+      // forward nonstandard: x step, transpose, y step, transpose, z step,
+      // extract (1/2)^3 partial cube
+      //   x, transpose, y, transpose, z, transpose, paste into full
+      // extract (1/4)^3 partial cube
+      //   ...
+
+      fprintf(stderr, "nonstandard 3d CDF97 transform not implemented yet\n");
+    
+    }
+
+  } else {
+
+    if (standardTranspose) {
+
+      // backwards standard: z inverse steps, reverse transpose,
+      // y inverse steps, reverse transpose, x inverse steps
+      cdf97_inv_3d_one_axis(data, stepCount.z);
+      data->transpose3dBack();
+      cdf97_inv_3d_one_axis(data, stepCount.y);
+      data->transpose3dBack();
+      cdf97_inv_3d_one_axis(data, stepCount.x);
+   
+    } else {
+
+      fprintf(stderr, "nonstandard 3d CDF97 transform not implemented yet\n");
+
+    }
+  }
+
+  return (NixTimer::time() - startTime) * 1000;
 }
