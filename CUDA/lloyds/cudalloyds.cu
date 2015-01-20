@@ -11,6 +11,75 @@
 /*  Doesn't return the partition because it can be easily calculated         */
 /*  as the mid-point between codebooks.                                      */
 /*****************************************************************************/
+__device__ static float atomicMax(float* address, float val)
+{
+    int* address_as_i = (int*) address;
+    int old = *address_as_i, assumed;
+    do {
+        assumed = old;
+        old = ::atomicCAS(address_as_i, assumed,
+            __float_as_int(::fmaxf(val, __int_as_float(assumed))));
+    } while (assumed != old);
+    return __int_as_float(old);
+}
+
+__device__ static float atomicMin(float* address, float val)
+{
+    int* address_as_i = (int*) address;
+    int old = *address_as_i, assumed;
+    do {
+        assumed = old;
+        old = ::atomicCAS(address_as_i, assumed,
+            __float_as_int(::fminf(val, __int_as_float(assumed))));
+    } while (assumed != old);
+    return __int_as_float(old);
+}
+
+__global__ void groupKernelMaxMin(float *points, unsigned int psize, float *codebook, unsigned int csize, unsigned int *groups, unsigned int *counts, float *sum, float *dist, float *max, float *min) {
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (idx < psize) {
+		float p = points[idx];
+		float d = abs(p - codebook[0]);
+		float m = d;
+		unsigned int g = 0;
+		for(int i = 1; i < csize; i++) {
+			d = abs(p - codebook[i]);
+			bool isminus = (d < m);
+			g += isminus * (i - g);
+			m -= isminus * (m - d);
+		}
+		groups[idx] = g;
+		atomicAdd(&(counts[g]),1);
+		atomicAdd(&(sum[g]),p);
+		atomicAdd(dist,codebook[g]-p);
+		atomicMax(max,p);
+		atomicMin(min,p);
+	}
+}
+
+__global__ void groupKernel(float *points, unsigned int psize, float *codebook, unsigned int csize, unsigned int *groups, unsigned int *counts, float *sum, float *dist) {
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (idx < psize) {
+		float p = points[idx];
+		float d = abs(p - codebook[0]);
+		float min = d;
+		unsigned int g = 0;
+		for(int i = 1; i < csize; i++) {
+			d = abs(p - codebook[i]);
+			bool isminus = (d < min);
+			g += isminus * (i - g);
+			min -= isminus * (min - d);
+		}
+		groups[idx] = g;
+		atomicAdd(&(counts[g]),1);
+		atomicAdd(&(sum[g]),p);
+		atomicAdd(dist,fabs(codebook[g]-p));
+	}
+}
+
+
 void cudaLloyd(float *points, unsigned int psize, float *codebook, unsigned int csize, float stop_criteria) {
 	float *d_points;
 	unsigned *d_groups;
