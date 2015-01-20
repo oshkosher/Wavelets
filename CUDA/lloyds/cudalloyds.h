@@ -1,0 +1,1 @@
+void cudaLloyd(float *points, unsigned int psize, float *codebook, unsigned int csize, float stop_criteria = 10e-7);
