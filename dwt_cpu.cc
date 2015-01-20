@@ -30,13 +30,16 @@ static const float CDF97_ANALYSIS_HIGHPASS_FILTER[] = {
 
 // This is different from the externally visible haar() function
 // in that no sanity check is done on the stepCount argument.
+// temp is optional - if the caller wants to speed up the computation,
+// it can supply an array of length 'length' so these won't need to
+// allocate one.
 template<typename T>
 static void haar_internal
-  (int length, T data[], int stepCount);
+  (int length, T data[], int stepCount, T *temp = NULL);
 
 template<typename T>
 static void haar_inv
-  (int length, T data[], int stepCount);
+(int length, T data[], int stepCount, T *temp = NULL);
 
 
 template<typename T>
@@ -113,9 +116,15 @@ void haar(int length, double data[],
 
 
 template<typename T>
-static void haar_internal(int length, T data[], int stepCount) {
-                   
-  T *temp = new T[length];
+static void haar_internal(int length, T data[], int stepCount, T *tempGiven) {
+
+  T *temp;
+  if (tempGiven) {
+    temp = tempGiven;
+  } else {
+    temp = new T[length];
+  }
+
   T *s, *d;
   unsigned sampleCount = (unsigned) length;
 
@@ -136,7 +145,40 @@ static void haar_internal(int length, T data[], int stepCount) {
 
     sampleCount = half;
   }
-  delete[] temp;
+
+  if (!tempGiven) delete[] temp;
+}
+
+
+template<typename T>
+static void haar_inv(int length, T data[], int stepCount, T *tempGiven) {
+  T *temp;
+  if (tempGiven) {
+    temp = tempGiven;
+  } else {
+    temp = new T[length];
+  }
+  T *s, *d;
+
+  int sampleCount = length >> (stepCount - 1);
+
+  s = data;
+
+  while (sampleCount <= length) {
+    int half = sampleCount >> 1;
+
+    d = s + half;
+
+    for (int i=0; i < half; i++) {
+      temp[2*i]   = INV_SQRT2 * (s[i] + d[i]);
+      temp[2*i+1] = INV_SQRT2 * (s[i] - d[i]);
+    }
+    memcpy(data, temp, sizeof(T) * sampleCount);
+    // print_matrix(length, 1, data);
+
+    sampleCount <<= 1;
+  }
+  if (!tempGiven) delete[] temp;
 }
 
 
@@ -341,34 +383,6 @@ double *dwt_pad_2d(int inputRows,  int inputCols,
 }
 
 
-
-template<typename T>
-static void haar_inv(int length, T data[], int stepCount) {
-  T *temp = new T[length];
-  T *s, *d;
-
-  int sampleCount = length >> (stepCount - 1);
-
-  s = data;
-
-  while (sampleCount <= length) {
-    int half = sampleCount >> 1;
-
-    d = s + half;
-
-    for (int i=0; i < half; i++) {
-      temp[2*i]   = INV_SQRT2 * (s[i] + d[i]);
-      temp[2*i+1] = INV_SQRT2 * (s[i] - d[i]);
-    }
-    memcpy(data, temp, sizeof(T) * sampleCount);
-    // print_matrix(length, 1, data);
-
-    sampleCount <<= 1;
-  }
-  delete[] temp;
-}
-
-
 // Transpose a square matrix.
 template<typename T>
 static void transpose_square_tmpl(int size, T data[]) {
@@ -555,11 +569,18 @@ template<class NUM>
 class HaarRowVisitor {
 public:
   int steps;
+  NUM *temp;
 
-  HaarRowVisitor(int s) : steps(s) {}
+  HaarRowVisitor(int s, int rowLength) : steps(s) {
+    temp = new NUM[rowLength];
+  }
+
+  ~HaarRowVisitor() {
+    delete[] temp;
+  }
 
   void visitRow(NUM *row, int len) {
-    haar_internal(len, row, steps);
+    haar_internal(len, row, steps, temp);
   }
 };
 
@@ -567,7 +588,7 @@ public:
 template<class NUM>
 void haar_3d_one_axis(CubeNum<NUM> *data, int stepCount) {
   if (stepCount > 0) {
-    HaarRowVisitor<NUM> rowIter(stepCount);
+    HaarRowVisitor<NUM> rowIter(stepCount, data->width());
     data->template visitRows<HaarRowVisitor<NUM>>(rowIter);
   }
 }
@@ -577,11 +598,18 @@ template<class NUM>
 class HaarInvRowVisitor {
 public:
   int steps;
+  NUM *temp;
 
-  HaarInvRowVisitor(int s) : steps(s) {}
+  HaarInvRowVisitor(int s, int rowLength) : steps(s) {
+    temp = new NUM[rowLength];
+  }
+
+  ~HaarInvRowVisitor() {
+    delete[] temp;
+  }
 
   void visitRow(NUM *row, int len) {
-    haar_inv(len, row, steps);
+    haar_inv(len, row, steps, temp);
   }
 };
 
@@ -589,7 +617,7 @@ public:
 template<class NUM>
 void haar_inv_3d_one_axis(CubeNum<NUM> *data, int stepCount) {
   if (stepCount > 0) {
-    HaarInvRowVisitor<NUM> rowIter(stepCount);
+    HaarInvRowVisitor<NUM> rowIter(stepCount, data->width());
     data->template visitRows<HaarInvRowVisitor<NUM>>(rowIter);
   }
 }
