@@ -80,6 +80,7 @@ class QuantizationLooper {
     quantizer = q;
     maxQuantizedValue = 1u << quantizeBits;
     executeTime = 0;
+    sumErrSquared = 0;
   }
 
   // XXX add peak signal-to-noise ratio

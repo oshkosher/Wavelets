@@ -1,9 +1,9 @@
 function S = s_init(BITS,CUT,NX,NY,NZ,WAVELET)
 
 %    Hardwired parameters       
-       LEV_X =   -1; 
-       LEV_Y =   -1;
-       LEV_Z =   -1;
+       LEV_X =   7;%-1; 
+       LEV_Y =   6;%-1;
+       LEV_Z =   4;%-1;
               
 %    Derived parameters       
         [Q_A,Q_S]  =  qmfilter(WAVELET);             
@@ -23,10 +23,10 @@ function S = s_init(BITS,CUT,NX,NY,NZ,WAVELET)
        if LEV_X == -1                                   
         LEV_X = floor(log2(NX/L_Q))+1;
        end       
-       if LEV_Y == -1                                   
+       if LEV_Y == -1                                  
         LEV_Y = floor(log2(NY/L_Q))+1; 
        end  
-       if LEV_Z == -1                                   
+       if LEV_Z == -1                                  
         LEV_Z = floor(log2(NZ/L_Q))+1; 
        end   
                    

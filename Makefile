@@ -49,12 +49,17 @@ EXECS = test_haar_cpu haar test_compress_cpu \
   list_data image_error test_transform test_lloyd \
   histogram test_cubelet_file cubelet_convert
 
-all: convert $(EXECS) libwaveletcuda.so cudahaar.mex
-
 # build the tools that require CUDA
 cuda: haar test_compress_gpu
 
-java: WaveletSampleImage.class ImageDiff.class
+java: WaveletSampleImage.class ImageDiff.class CubeletFile.class \
+  CubeletViewer.class
+
+all: convert $(EXECS) java libwaveletcuda.so cudahaar.mex
+
+# this is the only part that require JavaCV, so if you don't have
+# JavaCV installed, this is the only part you can't build
+movieconvert: MovieToCubelets.class
 
 oct: cudahaar.mex
 
@@ -145,15 +150,17 @@ NVCC = nvcc $(NVCC_OPT) $(NVCC_ARCH) $(NVCC_ARCH_SIZE) $(NVCC_COMPILER_BINDIR) $
 	$(NVCC) -c $<
 
 CUDA_OBJS=dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) data_io.$(OBJ_EXT) \
-  transpose_gpu.$(OBJ_EXT) nixtimer.$(OBJ_EXT) octave_wrapper.$(OBJ_EXT)
+  transpose_gpu.$(OBJ_EXT) nixtimer.$(OBJ_EXT) octave_wrapper.$(OBJ_EXT) \
+  wavelet.$(OBJ_EXT) wavelet_compress.pb.$(OBJ_EXT)
 
 HAAR_OBJS=haar.$(OBJ_EXT) dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) \
-  data_io.$(OBJ_EXT) transpose_gpu.$(OBJ_EXT) nixtimer.$(OBJ_EXT)
+  data_io.$(OBJ_EXT) transpose_gpu.$(OBJ_EXT) nixtimer.$(OBJ_EXT) \
+  wavelet.$(OBJ_EXT) wavelet_compress.pb.$(OBJ_EXT)
 
 LLOYD_INC=-IOctave/LloydsAlgorithm/src/c++
 
 haar: $(HAAR_OBJS)
-	$(NVCC) $(HAAR_OBJS) -o $@
+	$(NVCC) $(HAAR_OBJS) $(PROTOBUF_LIB_NVCC) -o $@
 
 WaveletSampleImage.class: WaveletSampleImage.java
 	javac $<
@@ -162,7 +169,7 @@ ImageDiff.class: ImageDiff.java
 	javac $<
 
 cubelet: CubeletFile.class test_cubelet_file MovieToCubelets.class \
-  cubelet_convert
+  cubelet_convert CubeletViewer.class
 
 CubeletFile.class: WaveletCompress.java CubeletFile.java
 	$(JAVAC) $^
@@ -170,8 +177,12 @@ CubeletFile.class: WaveletCompress.java CubeletFile.java
 MovieToCubelets.class: MovieToCubelets.java
 	$(JAVAC) $<
 
-test_haar_cpu: test_haar_cpu.cc dwt_cpu.cc data_io.cc
-	$(CC) $^ -o $@ $(LIBS)
+CubeletViewer.class: CubeletViewer.java
+	$(JAVAC) $<
+
+test_haar_cpu: test_haar_cpu.cc dwt_cpu.cc data_io.cc wavelet.cc \
+	  wavelet_compress.pb.cc cubelet_file.cc
+	$(CC) $^ -o $@ $(LIBS) $(PROTOBUF_LIB)
 
 test_lloyd: test_lloyd.cc Octave/LloydsAlgorithm/src/c++/lloyds.cpp \
 	  Octave/LloydsAlgorithm/src/c++/lloyds.h
@@ -184,7 +195,8 @@ test_haar_thresh_quantUnif_cpu: test_haar_thresh_quantUnif_cpu.cc \
   dquant_unif_cpu.cc dquant_unif_cpu.h quant.h quant.cc
 	$(CC) test_haar_thresh_quantUnif_cpu.cc dwt_cpu.cc data_io.cc \
 	  nixtimer.cc thresh_cpu.cc quant_unif_cpu.cc dquant_unif_cpu.cc \
-	  quant.cc $(LIBS) -o $@
+	  quant.cc wavelet.cc wavelet_compress.pb.o \
+	  $(PROTOBUF_LIB) $(LIBS) -o $@
 
 test_haar_thresh_quantLog_cpu: test_haar_thresh_quantLog_cpu.cc \
   dwt_cpu.cc dwt_cpu.h data_io.cc data_io.h nixtimer.cc nixtimer.h \
@@ -192,7 +204,8 @@ test_haar_thresh_quantLog_cpu: test_haar_thresh_quantLog_cpu.cc \
   dquant_log_cpu.cc dquant_log_cpu.h quant.h quant.cc
 	$(CC) test_haar_thresh_quantLog_cpu.cc dwt_cpu.cc data_io.cc \
 	  nixtimer.cc thresh_cpu.cc quant_log_cpu.cc dquant_log_cpu.cc \
-	  quant.cc $(LIBS) -o $@
+	  quant.cc wavelet.cc wavelet_compress.pb.o \
+	  $(PROTOBUF_LIB) $(LIBS) -o $@
 
 normalize: normalize.cc data_io.cc
 	$(CC) $^ -o $@ $(LIBS)
@@ -224,14 +237,19 @@ test_compress: test_compress_cpu test_compress_gpu
 
 test_compress_cpu.o: test_compress_cpu.cc test_compress_common.h \
 	  dwt_cpu.h nixtimer.h thresh_cpu.h quant.h bit_stream.h huffman.h \
-	  Octave/LloydsAlgorithm/src/c++/lloyds.h wavelet_compress.pb.h
+	  Octave/LloydsAlgorithm/src/c++/lloyds.h wavelet_compress.pb.h \
+	  wavelet.h cubelet_file.h
 	$(CC) $(LLOYD_INC) -c $<
 
-test_compress_common.o: test_compress_common.cc test_compress_common.h \
-	  rle.h bit_stream.h nixtimer.h huffman.h dwt_cpu.h
+wavelet.o: wavelet.cc wavelet.h wavelet_compress.pb.h
 	$(CC) -c $<
 
-dwt_cpu.o: dwt_cpu.cc dwt_cpu.h nixtimer.h
+test_compress_common.o: test_compress_common.cc test_compress_common.h \
+	  rle.h bit_stream.h nixtimer.h huffman.h dwt_cpu.h \
+	  wavelet_compress.pb.h
+	$(CC) -c $<
+
+dwt_cpu.o: dwt_cpu.cc dwt_cpu.h nixtimer.h wavelet.h
 	$(CC) -c $<
 
 data_io.o: data_io.cc data_io.h
@@ -262,18 +280,20 @@ lloyds.o: Octave/LloydsAlgorithm/src/c++/lloyds.cpp \
 cubelet_file.o: cubelet_file.cc cubelet_file.h wavelet_compress.pb.h
 	$(CC) -c $<
 
-test_cubelet_file: test_cubelet_file.cc cubelet_file.o wavelet_compress.pb.o
+test_cubelet_file: test_cubelet_file.cc cubelet_file.o wavelet_compress.pb.o \
+	  wavelet.o
 	$(CC) $^ $(PROTOBUF_LIB) -o $@
 
-cubelet_convert: cubelet_convert.cc cubelet_file.o wavelet_compress.pb.o
+cubelet_convert: cubelet_convert.cc cubelet_file.o wavelet_compress.pb.o \
+	  wavelet.o
 	$(CC) $^ $(PROTOBUF_LIB) -o $@
 
 
-TEST_COMPRESS_CPU_OBJS=test_compress_cpu.o \
+TEST_COMPRESS_CPU_OBJS=test_compress_cpu.o wavelet.o \
 	test_compress_common.o dwt_cpu.o data_io.o \
 	nixtimer.o thresh_cpu.o \
 	quant.o wavelet_compress.pb.o \
-	lloyds.o huffman.o
+	lloyds.o huffman.o cubelet_file.o 
 
 test_compress_cpu: $(TEST_COMPRESS_CPU_OBJS)
 	$(CC) $(TEST_COMPRESS_CPU_OBJS) -o $@ $(LIBS) $(PROTOBUF_LIB)
@@ -303,13 +323,18 @@ list_data: list_data.cc data_io.cc data_io.h
 histogram: histogram.cc data_io.cc data_io.h
 	$(CC) histogram.cc data_io.cc -o $@ $(LIBS)
 
+test_array_data: test_array_data.cc array_data.h
+	$(CC) test_array_data.cc -o $@
+
 libwaveletcuda.so: dwt_cpu.h dwt_cpu.cc dwt_gpu.h dwt_gpu.cu data_io.h data_io.cc \
-  transpose_gpu.h transpose_gpu.cu nixtimer.h nixtimer.cc \
-  Octave/LloydsAlgorithm/octave_wrapper.cu
+  transpose_gpu.h transpose_gpu.cu nixtimer.h nixtimer.cc wavelet.cc wavelet.h \
+  Octave/LloydsAlgorithm/octave_wrapper.cu \
+  wavelet_compress.pb.cc wavelet_compress.pb.h
 	rm -f $(CUDA_OBJS)
 	$(NVCC) $(NVCC_SHLIB_OPT) -I. -c dwt_cpu.cc dwt_gpu.cu data_io.cc \
-	  transpose_gpu.cu nixtimer.cc Octave/LloydsAlgorithm/octave_wrapper.cu
-	$(NVCC) -o $@ --shared $(CUDA_OBJS)
+	  transpose_gpu.cu nixtimer.cc wavelet.cc wavelet_compress.pb.cc \
+	  Octave/LloydsAlgorithm/octave_wrapper.cu 
+	$(NVCC) -o $@ --shared $(CUDA_OBJS) $(PROTOBUF_LIB_NVCC)
 	rm -f $(CUDA_OBJS)
 
 cudahaar.mex: Octave/LloydsAlgorithm/cudahaar.cc libwaveletcuda.so

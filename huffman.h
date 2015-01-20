@@ -30,7 +30,27 @@ class HuffmanDecoder {
   }
 
   // Read up to 'count' integers from bitStream. Return the number read.
-  int decodeFromStream(int *values, int count, BitStreamReader *bitStream);
+  template<class WordSource>
+  int decodeFromStream(int *values, int count,
+                       BitStreamReader<WordSource> *bitStream) {
+    // printf("decode ");
+    for (int i=0; i < count; i++) {
+      int pos = 0;
+      if (bitStream->isEmpty()) return i;
+      while (true) {
+        unsigned bit = bitStream->readBit();
+        // putchar(bit ? '1' : '0');
+        pos = table[pos + bit] * 2;
+        if (table[pos] == 0) {
+          values[i] = table[pos+1];
+          // printf("%d %d\n", i, values[i]);
+          break;
+        }
+      }
+    }    
+  
+    return count;
+  }
 
   void getDecoderTable(std::vector<int> &table_) {
     table_ = table;
@@ -95,10 +115,28 @@ class Huffman {
   void decode(unsigned bits[], int &value);
 
   // Write values[0..count-1] encoded to bitStream.
-  void encodeToStream(BitStreamWriter *bitStream, const int *values, int count);
+  template<class Sink>
+  void encodeToStream(BitStreamWriter<Sink> *bitStream,
+                      const int *values, int count) {
+    assert(computed);
+    unsigned *encodedData = encodeTable.data();
+
+    for (int i = 0; i < count; i++) {
+      // printf("%d %d\n", i, values[i]);
+      unsigned value = values[i];
+      unsigned bitCount = encodedData[value*2];
+      unsigned bitDataOffset = encodedData[value*2+1];
+      bitStream->write(encodedData+bitDataOffset, bitCount);
+    }
+    bitStream->flush();
+  }
 
   // Read up to 'count' integers from bitStream. Return the number read.
-  int decodeFromStream(int *values, int count, BitStreamReader *bitStream);
+  template<class WordSource>
+  int decodeFromStream(int *values, int count,
+                       BitStreamReader<WordSource> *bitStream) {
+    return decoder.decodeFromStream(values, count, bitStream);
+  }
 
   // print the frequency and encoding for each value
   void printEncoding();

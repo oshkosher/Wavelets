@@ -1,6 +1,8 @@
 // For documentation on protocol buffers, see:
 //   https://developers.google.com/protocol-buffers/docs/proto
 
+// This is used when writing a sigle compressed image to a file.
+// It is superceded by the cubelet file format.
 message WaveletCompressedImage {
   required int32 width = 1;
   required int32 height = 2;
@@ -52,8 +54,79 @@ message WaveletCompressedImage {
 }
 
 
+message CompressionParametersBuffer {
+
+  // If this data is the result of a wavelet transformation, then it might
+  // have been padded a bit. width/height/depth represent the size of this
+  // data, but when reconstructing the original data, it can be trimmed down
+  // to original_(width/height/depth).
+  optional uint32 original_width = 14;
+  optional uint32 original_height = 15;
+  optional uint32 original_depth = 16;
+
+  optional CubeletBuffer.DataType original_data_type = 17;
+
+  required int32 wavelet_transform_steps_x = 1;
+  required int32 wavelet_transform_steps_y = 2;
+  required int32 wavelet_transform_steps_z = 3;
+
+  enum WaveletAlgorithm {
+    HAAR = 1;
+    CDF97 = 2;
+    CDF53 = 3;
+  }
+  required WaveletAlgorithm wavelet_algorithm = 4 [default = CDF97];
+
+  // standard or nonstandard transform
+  // standard: do all transform steps, then transpose
+  // nonstandard: do one transform step, transpose, repeat
+  optional bool standard_transpose = 5 [default = true];
+
+  // This proportion of the original data that was replaced with zero.
+  // It will be a value between 0 and 1.
+  // (this value is not needed when reconstructing the data)
+  optional float threshold_fraction = 6;
+
+  // All values with an absolute value less than this were replaced with zero.
+  optional float threshold_value = 7;
+
+  // Number of unique values into which the data was quantized.
+  required int32 quant_bin_count = 8;
+
+  enum QuantizationAlgorithm {
+    LOG = 1;
+    UNIFORM = 2;
+    LLOYD = 3;
+  }
+  optional QuantizationAlgorithm quantization_algorithm = 9 [default = LOG];
+
+  // The maximum data value seen when computing quantization
+  optional float quant_max_value = 10;
+
+  // The boundaries of the quantization bins.
+  // For quantization algorithms that use a codebook,
+  // this should contain (quant_bin_count-1) entries.
+  repeated float quant_bin_boundaries = 11 [packed=true];
+
+  // The values that should be used to represent each quantized value.
+  // AKA the codebook.
+  // For quantization algorithms that use a codebook,
+  // this should contain (quant_bin_count) entries.
+  repeated float quant_bin_values = 12 [packed=true];
+
+  // Table used to decode huffman-encoded data.
+  // For an explanation of the table, see the HuffmanDecoder class
+  // declared in huffman.h.
+  repeated int32 huffman_decode_table = 13 [packed=true];
+}
+
+
+// This is the metadata describing one cubelet. An instance of this
+// appear just before each cubelet in a cubelet file, and the
+// CubeletIndexBuffer (below) contains multiple copies of this.
 message CubeletBuffer {
-  // dimensions of this cubelet
+
+  // Dimensions of this cubelet
   required uint32 width = 1;
   required uint32 height = 2;
   required uint32 depth = 3;
@@ -65,7 +138,8 @@ message CubeletBuffer {
 
   enum DataType {
     UINT8 = 1;   // 1-byte unsigned int, or raw bytes
-    FLOAT32 = 2; // 4-byte float
+    INT32 = 2;   // 4-byte int
+    FLOAT32 = 3; // 4-byte float
   }
   required DataType data_type = 7;
 
@@ -76,17 +150,20 @@ message CubeletBuffer {
 
     NONE = 0;   // no compression
 
-    ZLIB = 1;   // like gzip, see https://en.wikipedia.org/wiki/Zlib
+    ZLIB = 1;   // gzip algorithm, see https://en.wikipedia.org/wiki/Zlib
+                // byte_count is the number of bytes as stored in the file,
+                // after compression.
 
-    WAVELET = 2;  // This is our custom wavelet transform->threshold->
-                  // quantize->huffman compression algorithm.
+    WAVELET = 2;  // This is our custom wavelet_transform->threshold->
+                  // quantize->huffman_compression algorithm.
                   // There are a number of parameters needed to decompress
                   // the data, so if this is the algorithm used, then
-                  // those parameters will need to be saved somehow, perhaps
-                  // in a WaveletCompressedImage message.
-                  
+                  // those parameters will need to be included by
+                  // setting the "compression_parameters" member below.
   }
   optional CompressionAlgorithm compression_algorithm = 9 [default = NONE];
+
+  optional CompressionParametersBuffer compression_parameters = 14;
 
   optional uint32 checksum = 10;
 
@@ -98,7 +175,8 @@ message CubeletBuffer {
   // If data_file_name is set, it should be a relative reference
   // (mycubelets.data or data/cubelets.0) not an absolute reference
   // (c:\data\cubelets.data or /home/bob/data/cubes.0) so the index
-  // file and data file can be moved to another location.
+  // file and data file can be moved to another location as long as their
+  // relative positions are not changed.
 
   // If there are many different data files in this set of cubelets, then
   // store the name of each data file with each cubelet in data_file_name.
@@ -109,11 +187,15 @@ message CubeletBuffer {
   optional uint32 data_file_index = 12;
 
   // Offset from the beginning in the data file where the data for this
-  // cubelet can be found.
-  optional uint64 data_file_offset = 13;
+  // cubelet can be found. This is omitted when the data immediately follows
+  // this buffer, but must be included when this buffer is part of
+  // a CubeletIndexBuffer.
+  optional uint64 data_file_offset = 13 [default = 0];
 }
 
 
+// This is used at the end of a cubelet file, and is an index of all the
+// cubelets in it.
 message CubeletIndexBuffer {
   // overall size of the object
   optional uint32 width = 1;

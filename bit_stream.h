@@ -4,7 +4,47 @@
 #include <cstdio>
 #include <cstring>
 #include <cassert>
+#include <vector>
 
+
+class BitStreamFileSink {
+  FILE *outf;
+  std::vector<unsigned> buffer;
+  static const int BUFFER_SIZE = 1024*16;
+
+ public:
+  BitStreamFileSink(FILE *o) : outf(o) {
+    buffer.reserve(BUFFER_SIZE);
+  }
+  
+  void add(unsigned word) {
+    buffer.push_back(word);
+
+    if (buffer.size() == BUFFER_SIZE) flush();
+  }
+
+  void flush() {
+    fwrite(buffer.data(), sizeof(unsigned), buffer.size(), outf);
+    buffer.clear();
+  }
+};
+
+
+class BitStreamMemorySink {
+  std::vector<unsigned> *buffer;
+
+ public:
+  BitStreamMemorySink(std::vector<unsigned> *b) : buffer(b) {}
+
+  std::vector<unsigned> *getBuffer() {return buffer;}
+  
+  void add(unsigned word) {
+    buffer->push_back(word);
+  }
+
+  void flush() {}
+};
+    
 
 /**
   Little-endian bit stream.
@@ -12,17 +52,17 @@
   Each word of data is filled starting with the least significant bits.
   For example, if the string [1, 0, 1, 1] is written, there will be one word
   of data in the output; an integer with a value of 13.
+
+  WordSink is a class that defines:
+    void add(unsigned word);
+    void flush()
 */
+template<class WordSink>
 class BitStreamWriter {
-  FILE *outf;
-  unsigned *buffer;
+  WordSink *wordSink;
 
-  /** Size of the buffer */
-  int capacity;
-
-  /** Number of full words used in the buffer (the next bit to be added will
-      go into buffer[used]. */
-  int wordsBuffered;
+  // 1-word buffer
+  unsigned buffer;
 
   /** Number of bits full in the current word. */
   int bitsBuffered;
@@ -32,18 +72,13 @@ class BitStreamWriter {
 
  public:
   /** capacity_ is the size of the buffer in words (not bytes) */
-  BitStreamWriter(FILE *outf_, int capacity_=1024)
-    : outf(outf_), capacity(capacity_), wordsBuffered(0), bitsBuffered(0),
-      bitsWritten(0) {
-
-    buffer = new unsigned[capacity];
-    clearBuffer();
-
+  BitStreamWriter(WordSink *ws)
+    : wordSink(ws), bitsBuffered(0), bitsWritten(0) {
+    buffer = 0;
   }
 
   ~BitStreamWriter() {
-    flush();
-    delete[] buffer;
+    wordSink->flush();
   }
 
   /** Add 32 or less bits to the stream. The bits are contains in 'bits',
@@ -54,6 +89,11 @@ class BitStreamWriter {
 
     bitsWritten += count;
 
+    writeInternal(bits, count);
+  }      
+
+ private:
+  void writeInternal(unsigned bits, int count) {
     // too much to fit in the current word
     if (bitsBuffered + count > 32) {
       // add the bits that will fit
@@ -65,90 +105,31 @@ class BitStreamWriter {
     
     addBits(bits, count);
   }      
-  
-  /** Add any number of bits to the stream. */
-  void write(unsigned *bitArray, int count) {
 
+ public:
+  /** Add any number of bits to the stream.
+      XXX - this could be optimized a bit. */
+  void write(unsigned *bitArray, int count) {
     if (count <= 0) return;
 
     bitsWritten += count;
 
-    // shortcut the quick case--just adding a few bits
-    if (bitsBuffered + count <= 32) {
-      addBits(bitArray[0], count);
-      return;
-    }
-    
-    // no offset; can copy whole words
-    if (bitsBuffered == 0) {
-      int wordCount = count / 32;  // # of whole words
-
-      // if the incoming bits will fill the buffer, send it directly to outf
-      if (wordCount + wordsBuffered >= capacity) {
-	// flush the buffer
-	flushWords();
-
-	// write directory from the input data
-	fwrite(bitArray, sizeof(unsigned), wordCount, outf);
-      }
-
-      // the incoming bits will not fill the buffer, so just add to it
-      else {
-	memcpy(&buffer[wordsBuffered], bitArray, sizeof(unsigned) * wordCount);
-	wordsBuffered += wordCount;
-      }
-      count -= 32*wordCount;
-
-      // add the last word
-      write(bitArray[wordCount], count);
-      return;
-    }
-
-    int inputBitOffset = 0;
-    
-    // fill the current word in the buffer
-    if (bitsBuffered + count >= 32) {
-      // add the bits that will fit
-      int bitsAdded = 32 - bitsBuffered;
-      addBits(bitArray[0], bitsAdded);
-      count -= bitsAdded;
-      inputBitOffset = bitsAdded;
-    }
-
-    // the current word should have been filled, leaving bitsBuffered==0.
-    // if it wasn't, then all remaining bits must have been used up
-    assert(bitsBuffered == 0 || count == 0);
-
-    // keep adding words
+    int i=0;
     while (count >= 32) {
-      buffer[wordsBuffered++] = 
-	(bitArray[0] >> inputBitOffset) |
-	(bitArray[1] << (32-inputBitOffset));
-
+      writeInternal(bitArray[i++], 32);
       count -= 32;
-      bitArray++;
-
-      if (wordsBuffered == capacity) flushWords();
     }
-
-    // there are less than 32 bits remaining, and they may spread across
-    // bitArray[0] and bitArray[1]
-    bitsBuffered = 0;
-    int bitsInWord0 = 32 - inputBitOffset;
-    if (count <= bitsInWord0) {
-      addBits(bitArray[0] >> inputBitOffset, count);
-    } else {
-      addBits(bitArray[0] >> inputBitOffset, bitsInWord0);
-      count -= bitsInWord0;
-      addBits(bitArray[1], count);
-    }
-  }      
+    writeInternal(bitArray[i], count);
+  }
 
   void flush() {
     // if the final word is incomplete, fill it
-    if (bitsBuffered > 0)
-      addBits(0, 32 - bitsBuffered);
-    flushWords();
+    if (bitsBuffered > 0) {
+      wordSink->add(buffer);
+      bitsBuffered = 0;
+      buffer = 0;
+    }
+    wordSink->flush();
   }
 
   /** Returns the number of bits written to the stream. */
@@ -165,217 +146,110 @@ class BitStreamWriter {
 
  private:
 
-  void clearBuffer() {
-    memset(buffer, 0, sizeof(unsigned) * capacity);
-  }
-
   /** Assumes count + bitsBuffered <= 32. If not, bits will be lost. */
   void addBits(unsigned bits, int count) {
     bits &= getMask(count);
-    buffer[wordsBuffered] |= bits << bitsBuffered;
+    buffer |= bits << bitsBuffered;
     bitsBuffered += count;
     if (bitsBuffered >= 32) {
-      wordsBuffered++;
+      assert(bitsBuffered == 32);
+      wordSink->add(buffer);
+      buffer = 0;
       bitsBuffered = 0;
-      if (wordsBuffered == capacity) flushWords();
     }
-  }
-
-  /** Write all the full words of data in the buffer to the output stream */
-  void flushWords() {
-    if (wordsBuffered == 0) return;
-
-    fwrite(buffer, sizeof(unsigned), wordsBuffered, outf);
-
-    // if the buffer wasn't full, the last word might have some
-    // data in it, so copy it to the top
-    unsigned leftoverBits = 0;
-    if (wordsBuffered < capacity)
-      leftoverBits = buffer[wordsBuffered];
-
-    clearBuffer();
-    buffer[0] = leftoverBits;
-    wordsBuffered = 0;
   }
       
 };
 
 
-/**
-   This is included as a simple unoptimized test case against which
-   the fancier and buggier code can be tested.
-   On my test machine, this runs at 8.4 MB/s, and BitStreamWriter
-   runs at 128 MB/sec.
-*/
-class BitStreamWriterSimple {
-  FILE *outf;
-  unsigned buffer;
-  int bitsBuffered;
-
- public:
-  BitStreamWriterSimple(FILE *outf_, int unused=0)
-    : outf(outf_), buffer(0), bitsBuffered(0) {
-  }
-
-  ~BitStreamWriterSimple() {
-    flush();
-  }
-    
-
-  /** Add 32 or less bits to the stream. The bits are contains in 'bits',
-      and 'count' is the number of bits being written. Least significant
-      bits go first. */
-  void write(unsigned bits, int count) {
-    for (int i=0; i < count; i++) {
-      addBit(bits);
-      bits >>= 1;
-    }
-  }      
-
-
-  /** Add any number of bits to the stream. */
-  void write(unsigned *bitArray, int count) {
-    while (count > 32) {
-      write(*bitArray++, 32);
-      count -= 32;
-    }
-    write(*bitArray, count);
-  }
-
-  void flush() {
-    if (bitsBuffered) {
-      fwrite(&buffer, sizeof(unsigned), 1, outf);
-      bitsBuffered = 0;
-      buffer = 0;
-    }
-  }
-
-  void addBit(unsigned bit) {
-    bit &= 1;
-    if (bitsBuffered == 0) {
-      buffer = bit;
-      bitsBuffered++;
-    } else {
-      buffer |= bit << bitsBuffered;
-      bitsBuffered++;
-      if (bitsBuffered == 32) flush();
-    }
-  }
-};    
-  
-  
-
-/**
-   Ditto BitStreamWriterSimple. This is the simple version.
-*/
-class BitStreamReaderSimple {
+class BitStreamFileSource {
   FILE *inf;
-  unsigned buffer;
-  int bitsBuffered;
-  bool eof;
+  size_t pos;
+  std::vector<unsigned> buffer;
 
  public:
-  BitStreamReaderSimple(FILE *inf_) : inf(inf_), buffer(0), bitsBuffered(0),
-    eof(false) {
-
-    refill();
-
+  BitStreamFileSource(FILE *i) : buffer(1024*16,0) {
+    inf = i;
+    pos = 0;
+    fillBuffer();
   }
-
-  // return the next 32 bits in the data
-  // unsigned peek();
-  // void peek(unsigned *bitArray, int count);
-
-  // skip ahead this number of bits
-  // void skip(int count);
-
-  // return the number of bits consumed
-  // size_t bitsConsumed();
-
-  unsigned readBit() {
-    if (bitsBuffered == 0) refill();
-    unsigned result = buffer & 1;
-    buffer >>= 1;
-    bitsBuffered--;
-    return result;
-  } 
-
-  unsigned read(int bitCount) {
-    unsigned result = 0;
-    if (bitCount > 32) bitCount = 32;
-    for (int i=0; i < bitCount; i++) {
-      result |= readBit() << i;
+  
+  bool get(unsigned &value) {
+    if (pos == buffer.size()) {
+      fillBuffer();
     }
-    return result;
-  }
-
-  void read(unsigned *dest, int bitCount) {
-    while (bitCount >= 32) {
-      *dest++ = read(32);
-      bitCount -= 32;
-    }
-    *dest++ = read(bitCount);
-  }
-
-  bool isEof() {
-    return eof;
+    if (pos >= buffer.size()) return false;
+    value = buffer[pos++];
+    return true;
   }
 
  private:
-  bool refill() {
-    if (eof) return false;
-
-    if (fread(&buffer, sizeof(unsigned), 1, inf) != 1) {
-      eof = true;
-      buffer = 0;
-      bitsBuffered = 0;
-      return false;
-    } else {
-      bitsBuffered = 32;
-      return true;
-    }
+  void fillBuffer() {
+    size_t numRead = fread(buffer.data(), sizeof(unsigned), buffer.capacity(),
+                           inf);
+    if (numRead < buffer.capacity()) buffer.resize(numRead);
+    pos = 0;
   }
 };
 
 
-class BitStreamReader {
-  FILE *inf;
-  unsigned *buffer;
+class BitStreamMemorySource {
+  const std::vector<unsigned> *buffer;
+  size_t pos = 0;
 
-  /** Size of the 'buffer' array */
-  int capacity;
+ public:
+  BitStreamMemorySource(const std::vector<unsigned> *b) : buffer(b) {}
+
+  bool get(unsigned &word) {
+    if (pos < buffer->size()) {
+      word = (*buffer)[pos++];
+      return true;
+    } else {
+      word = 0;
+      return false;
+    }
+  }
+
+};
   
-  /** Number of words in 'buffer' that contain data. For example,
-      if the capacity is 1000 words but the input file contains only
-      320 bytes, after filling the buffer this will be 80. */
-  int wordsBuffered;
 
-  /** Number of words and bits of the buffer that have been returned already
+template<class WordSource>
+class BitStreamReader {
+  WordSource *wordSource;
+
+  // 1-word buffer
+  unsigned buffer;
+
+  /** Number of bits of the buffer that have been returned already
       by one of the 'read' methods. */
-  int bitsUsed, wordsUsed;
+  int bitsUsed;
 
   /** true iff EOF has been reached on 'inf' */
   bool eof;
 
  public:
   /** capacity_ is the size of the buffer in words (not bytes) */
-  BitStreamReader(FILE *inf_, int capacity_=1024)
-    : inf(inf_), capacity(capacity_), wordsBuffered(0),
-      bitsUsed(0), wordsUsed(0), eof(false) {
-
-    buffer = new unsigned[capacity];
+ BitStreamReader(WordSource *ws) :
+  wordSource(ws), buffer(0), bitsUsed(0), eof(false) {
     fillBuffer();
   }
 
-  ~BitStreamReader() {
-    delete[] buffer;
+  /** Read one bit. If empty, return 0. */
+  unsigned readBit() {
+
+    unsigned bit = (buffer >> bitsUsed) & 1;
+
+    bitsUsed++;
+    if (bitsUsed == 32) fillBuffer();
+
+    return bit;
   }
 
   /** Read 32 or less bits. If there are not that many bits remaining
       in the data file, the missing bits will be 0, and eof will be set. */
   unsigned read(int bitsWanted) {
-    if (bitsWanted <= 0 || isEmpty()) return 0;
-    if (bitsWanted > 32) bitsWanted = 32;
+    assert(bitsWanted >= 0 && bitsWanted <= 32);
+    if (eof || bitsWanted==0) return 0;
 
     // the current word has enough bits
     if (bitsWanted <= 32-bitsUsed) {
@@ -390,61 +264,48 @@ class BitStreamReader {
       return result;
     }
   }
-
-  /** Read one bit. If empty, return 0. */
-  unsigned readBit() {
-    if (isEmpty()) return 0;
-
-    unsigned bit = (buffer[wordsUsed] >> bitsUsed) & 1;
-
-    bitsUsed++;
-    if (bitsUsed == 32) {
-      bitsUsed = 0;
-      wordsUsed++;
-      if (wordsUsed == wordsBuffered) fillBuffer();
-    }
-
-    return bit;
-  }
   
 
   /** Read 'bitsWanted' bits into 'array' */
-  void read(unsigned *array, int bitsWanted) {
+  bool read(unsigned *array, int bitsWanted) {
+    if (eof) return false;
+
     while (bitsWanted >= 32) {
       *array++ = read(32);
       bitsWanted -= 32;
     }
     *array = read(bitsWanted);
-  }
-
-  bool isEmpty() {
-    return wordsUsed == wordsBuffered;
+    return true;
   }
 
   static unsigned getMask(int bits) {
-    return BitStreamWriter::getMask(bits);
+    return BitStreamWriter<void>::getMask(bits);
   }
+
+  bool isEmpty() {return eof;}
 
  private:
   /** The caller must insure that count is less than the number of
       bits remaining in the current word: 32-bitsUsed. */
   unsigned getBits(int count) {
-    unsigned result = (buffer[wordsUsed] >> bitsUsed) & getMask(count);
+    assert(count <= 32-bitsUsed);
+    unsigned result = (buffer >> bitsUsed) & getMask(count);
     bitsUsed += count;
-    if (bitsUsed == 32) {
-      bitsUsed = 0;
-      wordsUsed++;
-      if (wordsUsed == wordsBuffered) fillBuffer();
-    }
+    if (bitsUsed == 32) fillBuffer();
     return result;
   }
 
 
   bool fillBuffer() {
-    wordsBuffered = fread(buffer, sizeof(unsigned), capacity, inf);
-    if (wordsBuffered < capacity) eof = true;
-    bitsUsed = wordsUsed = 0;
-    return wordsBuffered != 0;
+    if (wordSource->get(buffer)) {
+      bitsUsed = 0;
+      return true;
+    } else {
+      buffer = 0;
+      bitsUsed = 0;
+      eof = true;
+      return false;
+    }
   }
     
 };

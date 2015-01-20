@@ -5,6 +5,8 @@
 #include "nixtimer.h"
 #include "dwt_cpu.h"
 
+using namespace scu_wavelet;
+
 #define SQRT2     1.4142135623730950488f
 #define INV_SQRT2 0.70710678118654752440f
 
@@ -39,6 +41,11 @@ static void haar_inv
 
 template<typename T>
 static float haar_inv_2d(int size, T *data, int stepCount, bool standard);
+
+
+// void haar_3d_one_axis(CubeFloat *data, int stepCount);
+// void haar_inv_3d_one_axis(CubeFloat *data, int stepCount);
+
 
 
 // return the number of high-order zero bits in a 32 bit integer
@@ -340,7 +347,7 @@ static void haar_inv(int length, T data[], int stepCount) {
   T *temp = new T[length];
   T *s, *d;
 
-  int sampleCount = length << (stepCount - 1);
+  int sampleCount = length >> (stepCount - 1);
 
   s = data;
 
@@ -542,6 +549,104 @@ static float haar_inv_2d(int size, T *data,
 
   return (float) (1000 * (NixTimer::time() - startSec));
 }
+
+
+template<class NUM>
+class HaarRowVisitor {
+public:
+  int steps;
+
+  HaarRowVisitor(int s) : steps(s) {}
+
+  void visitRow(NUM *row, int len) {
+    haar_internal(len, row, steps);
+  }
+};
+
+
+template<class NUM>
+void haar_3d_one_axis(CubeNum<NUM> *data, int stepCount) {
+  if (stepCount > 0) {
+    HaarRowVisitor<NUM> rowIter(stepCount);
+    data->template visitRows<HaarRowVisitor<NUM>>(rowIter);
+  }
+}
+
+
+template<class NUM>
+class HaarInvRowVisitor {
+public:
+  int steps;
+
+  HaarInvRowVisitor(int s) : steps(s) {}
+
+  void visitRow(NUM *row, int len) {
+    haar_inv(len, row, steps);
+  }
+};
+
+
+template<class NUM>
+void haar_inv_3d_one_axis(CubeNum<NUM> *data, int stepCount) {
+  if (stepCount > 0) {
+    HaarInvRowVisitor<NUM> rowIter(stepCount);
+    data->template visitRows<HaarInvRowVisitor<NUM>>(rowIter);
+  }
+}
+
+
+
+float haar_3d(CubeFloat *data, int3 stepCount, bool inverse,
+              bool standardTranspose) {
+  double startTime = NixTimer::time();
+
+  if (!inverse) {
+    
+    if (standardTranspose) {
+
+      // forward standard: x steps, transpose, y steps, transpose, z steps
+
+      haar_3d_one_axis(data, stepCount.x);
+      data->transpose3dFwd();  // xyz -> yzx
+      haar_3d_one_axis(data, stepCount.y);
+      data->transpose3dFwd();
+      haar_3d_one_axis(data, stepCount.z);
+
+    } else {
+
+      // forward nonstandard: x step, transpose, y step, transpose, z step,
+      // extract (1/2)^3 partial cube
+      //   x, transpose, y, transpose, z, transpose, paste into full
+      // extract (1/4)^3 partial cube
+      //   ...
+
+      fprintf(stderr, "nonstandard 3d Haar transform not implemented yet\n");
+    
+    }
+
+  } else {
+
+    if (standardTranspose) {
+
+      // backwards standard: z inverse steps, reverse transpose,
+      // y inverse steps, reverse transpose, x inverse steps
+      haar_inv_3d_one_axis(data, stepCount.z);
+      data->transpose3dBack();
+      haar_inv_3d_one_axis(data, stepCount.y);
+      data->transpose3dBack();
+      haar_inv_3d_one_axis(data, stepCount.x);
+   
+    } else {
+
+      fprintf(stderr, "nonstandard 3d Haar transform not implemented yet\n");
+
+    }
+  }
+
+  return (NixTimer::time() - startTime) * 1000;
+}
+
+
 
 
 /*

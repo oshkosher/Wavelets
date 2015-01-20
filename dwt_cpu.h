@@ -1,6 +1,8 @@
 #ifndef __DWT_CPU_H__
 #define __DWT_CPU_H__
 
+#include "wavelet.h"
+
 /*
   Simple implementation of a discrete wavelet transform using the CPU.
 */
@@ -51,6 +53,10 @@ float haar_2d(int size, float *data,
 float haar_2d(int size, double *data,
               bool inverse = false, int stepCount = -1,
               bool standardTranspose = false);
+
+// 3-d Haar
+float haar_3d(CubeFloat *data, scu_wavelet::int3 stepCount,
+              bool inverse = false, bool standardTranspose = false);
 
 typedef enum {
   ZERO_FILL,  // fill pad elements with zero

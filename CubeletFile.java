@@ -26,42 +26,6 @@ public class CubeletFile {
   }
 
 
-  /** Encapsulate one cubelet.
-   */
-  public static class Cubelet {
-    public int width, height, depth;
-    public int xOffset, yOffset, zOffset;
-
-    public enum DataType {UINT8, FLOAT32};
-    public DataType datatype;
-
-    public long dataFileOffset;
-
-    // These correspond to the setting of 'datatype'.
-    // For example, if datatype==UINT8, the data is assumed
-    // to be in 'byteData', and 'floatData' is ignored.
-    public byte[] byteData;
-    public float[] floatData;
-
-    public void setSize(int w, int h, int d) {
-      width = w;
-      height = h;
-      depth = d;
-    }
-    
-    public void setOffset(int x, int y, int z) {
-      xOffset = x;
-      yOffset = y;
-      zOffset = z;
-    }
-
-    public String toString() {
-      return "Cubelet " + width + "x" + height + "x" + depth +
-        ", offset " + xOffset + "," + yOffset + "," + zOffset;
-    }
-  }
-
-
   // test function - list the cubelets in a file
   public static void main2(String args[]) throws Exception {
     if (args.length != 1) printHelp();
@@ -112,9 +76,9 @@ public class CubeletFile {
     } catch (FileNotFoundException e) {
       System.out.println("\"" + filename + "\" not found.");
       return;
-    } catch (IOException e) {
-      System.out.println("Couldn't open cubelet file \"" + filename + 
-                         "\":" + e);
+    } catch (IOException e3) {
+      System.out.println("Could not open cubelet file \"" + filename + 
+                         "\":" + e3);
       return;
     }
 
@@ -164,7 +128,7 @@ public class CubeletFile {
   }
     
   /** Read a little endian int from a byte array. */
-  public static int intFromByteArray(byte[] array, int offset) {
+  public static int intFromByteArray(final byte[] array, int offset) {
     int value = 0;
     for (int i=3; i >= 0; i--) {
       value = (value << 8) | (array[offset+i] & 0xff);
@@ -218,7 +182,7 @@ public class CubeletFile {
         Throws FileNotFoundException if the file is not found.
      */
     public void open(String filename)
-      throws IOException, CubeletFormatException {
+      throws IOException, FileNotFoundException, CubeletFormatException {
 
       if (in != null) in.close();
       
@@ -261,7 +225,13 @@ public class CubeletFile {
       // if the data for this chunk hasn't been read, skip over it before
       // trying to read the next chunk.
       if (!dataHasBeenRead) {
-        in.skip(dataSizeBytes);
+        // skip() doesn't always skip the requested number of bytes,
+        // so it must be called in a loop
+        long bytesToSkip = dataSizeBytes;
+        while (bytesToSkip > 0) {
+          long bytesSkipped = in.skip(bytesToSkip);
+          bytesToSkip -= bytesSkipped;
+        }
       }
 
       WaveletCompress.CubeletBuffer cubeBuf = readCubeletBuffer();
@@ -277,6 +247,12 @@ public class CubeletFile {
       switch (cubeBuf.getDataType()) {
       case UINT8: cube.datatype = Cubelet.DataType.UINT8; break;
       case FLOAT32: cube.datatype = Cubelet.DataType.FLOAT32; break;
+      }
+
+      switch (cubeBuf.getCompressionAlgorithm()) {
+      case NONE: cube.compressionAlg = Cubelet.CompressionAlg.NONE; break;
+      case ZLIB: cube.compressionAlg = Cubelet.CompressionAlg.ZLIB; break;
+      case WAVELET: cube.compressionAlg = Cubelet.CompressionAlg.WAVELET; break;
       }
 
       cube.dataFileOffset = 0;
@@ -364,6 +340,12 @@ public class CubeletFile {
 
       // decode the length
       int encodedLength = intFromByteArray(readBuffer, 0);
+      /*
+      System.out.printf("encodedLength %02x %02x %02x %02x = %d\n",
+                        readBuffer[0]&0xff, readBuffer[1]&0xff,
+                        readBuffer[2]&0xff, readBuffer[3]&0xff,
+                        encodedLength);
+      */
 
       // length of 0xFFFFFFFF marks EOF 
       if (encodedLength == -1) return null;

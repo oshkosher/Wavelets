@@ -8,29 +8,53 @@
 #include "lloyds.h"
 #include "bit_stream.h"
 #include "huffman.h"
+#include "wavelet.h"
+#include "cubelet_file.h"
 
+using namespace scu_wavelet;
+
+// returns true iff 'suffix' is a suffix of 's'
+bool endsWith(const char *s, const char *suffix);
 bool compressFile(const char *inputFile, const char *outputFile, Options &opt);
 bool decompressFile(const char *inputFile, const char *outputFile,
 		    Options &opt);
+
+// make the cubelet data into floats, if it isn't already
+void translateCubeDataToFloat(Cube *src, CubeFloat *dest);
+
+// turn the data back into the original datatype, if it wasn't floats
+void translateCubeFloatToData(CubeFloat *src, Cube *dest, bool verbose = false);
+
+
 void computeLloydQuantization(const float *inputData, int count, int bits,
 			      std::vector<float> &quantBinBoundaries,
 			      std::vector<float> &quantBinValues);
 void testHuffman(const int data[], int count, int bitCount);
 
-// pad the data to make it a square power of two, if it isn't already
-void padData(Data2d &data, DWTPadding padMethod = REFLECT, bool quiet = false);
+// On error, output an error message and return false
+bool readData(const char *filename, CubeFloat &data);
+
+// pad the data so each transform step has an even number of elements
+void padDataSize(Cube &data, int3 steps);
+
+// pad the actual data, repeating the last value in each axis as needed
+void padData(CubeFloat &data, int3 originalSize, bool quiet);
+
+void setWaveletSteps(int3 &steps, const int3 &size);
+
 
 // quantize the data
-bool quantize(const Data2d &data, Data2d &quantizedData, float maxAbsVal,
-              Options &opt, const float *nonzeroData, int nonzeroCount,
-              float *quantErrorOut = NULL);
+bool quantize(const CubeFloat &data, CubeInt &quantizedData,
+              float maxAbsVal, WaveletCompressionParam &param,
+              const float *nonzeroData, int nonzeroCount,
+              bool quiet, float *quantErrorOut = NULL);
 
-bool dequantize(const Data2d &quantizedData, Data2d &data, Options &opt);
+bool dequantize(const CubeInt &quantizedData, CubeFloat &data,
+                WaveletCompressionParam &param, bool quiet);
 
-void quantizationExperiments(const Data2d &data, Options &opt,
+void quantizationExperiments(CubeFloat &data, Options &opt,
                              const float *sortedAbsData,
                              float maxAbsVal);
-                
 
 int main(int argc, char **argv) {
 
@@ -60,66 +84,153 @@ int main(int argc, char **argv) {
 }
 
 
+// returns true iff 'suffix' is a suffix of 's'
+bool endsWith(const char *s, const char *suffix) {
+  int len = strlen(s), suffixLen = strlen(suffix);
+  if (suffixLen > len) return false;
+  return 0 == strcmp(s + len - suffixLen, suffix);
+}
+
+
 bool compressFile(const char *inputFile, const char *outputFile,
                   Options &opt) {
 
-  Data2d data, quantizedData;
+  WaveletCompressionParam param = opt.param;
+  Cube inputData;
+  CubeFloat data;
+  CubeInt quantizedData;
+  // Data2d data, quantizedData;
+  // Data3d data3d;
+  // Data3dInt quantizedData3d;
   double firstStartTime, startTime, elapsed;
   const bool quiet = opt.quiet;
+  bool isCubeletFile = endsWith(inputFile, ".cube");
+  CubeletStreamReader *cubeletStream = NULL;
 
-  firstStartTime = startTime = NixTimer::time();
+  // get the size of the data without reading the data
+  if (!isCubeletFile) {
+    if (!readDataFile(inputFile, (float**)NULL,
+                      &inputData.size.x, &inputData.size.y))
+      return false;
+    inputData.size.z = 1;
+    inputData.datatype = WAVELET_DATA_FLOAT32;
+  } else {
+    cubeletStream = new CubeletStreamReader();
+    if (!cubeletStream->open(inputFile)) return false;
 
-  // read the data file
-  if (!readDataFile(inputFile, &data.floatData, &data.width, &data.height))
-    return 1;
-  elapsed = NixTimer::time() - startTime;
-  if (!quiet)
-    printf("Read %dx%d data file: %.2f ms\n", data.width, data.height,
-           elapsed * 1000);
+    do {
+      if (!cubeletStream->next(&inputData)) {
+        fprintf(stderr, "No uncompressed cubelets in the input data.\n");
+        return false;
+      }
 
-  // pad the data to make it a square power of two, if necessary
-  padData(data, DEFAULT_PADDING_METHOD, quiet);
+    } while (data.isWaveletCompressed);
 
-  const int width = data.width;
-  const int height = data.height;
-  assert(width == height);
-  const int size = width, count = size*size;
+    // note: inputData.datatype might not be FLOAT32
+  }    
+
+  // save the original size and datatype
+  param.originalSize = inputData.size;
+  param.originalDatatype = inputData.datatype;
 
   // adjust the number of wavelet steps in case the user requested too many
-  int maxWaveletSteps = dwtMaximumSteps(size);
-  if (opt.waveletSteps > maxWaveletSteps || opt.waveletSteps < 0)
-    opt.waveletSteps = maxWaveletSteps;
+  setWaveletSteps(param.transformSteps, inputData.size);
+
+  // Pad the size of the data (without touching the data itself, because
+  // it hasn't been loaded yet) to align with the number of transformation
+  // steps we'll be doing.
+  padDataSize(inputData, param.transformSteps);
+
+  // allocate data storage
+  inputData.allocate();
+
+  // read the data file
+  firstStartTime = startTime = NixTimer::time();
+  if (!isCubeletFile) {
+    assert(inputData.datatype == WAVELET_DATA_FLOAT32);
+    *(Cube*)&data = inputData;
+    inputData.data_ = NULL;
+
+    float *array;
+    int width, height;
+    if (!readDataFile(inputFile, &array, &width, &height)) return false;
+    data.copyFrom(array, int3(width, height, 1));
+  } else { // read cubelet entry
+    if (!cubeletStream->getCubeData(&inputData)) return false;
+
+    // translate the cube data if necessary
+    translateCubeDataToFloat(&inputData, &data);
+
+    // XXX if reading multiple cubelets, don't close
+    cubeletStream->close();
+    delete cubeletStream;
+    cubeletStream = NULL;
+  }
+
+  elapsed = NixTimer::time() - startTime;
+  if (!quiet)
+    printf("Read %dx%dx%d data file: %.2f ms\n",
+           data.size.x, data.size.y, data.size.z,
+           elapsed * 1000);
+
+  // pad the data by replicating the values at the end of each axis
+  padData(data, param.originalSize, opt.quiet);
 
   // perform the wavelet transform
-  if (opt.waveletSteps > 0) {
-    float waveletMs = haar_2d(size, data.floatData, false, opt.waveletSteps,
-                              opt.isWaveletTransposeStandard);
+  if (!(param.transformSteps == int3(0,0,0))) {
+    float waveletMs = 0;
+
+    assert(data.width() == data.height());
+    // assert(data.depth() == 1);
+
+    if (opt.verbose) data.print("Before wavelet transform");
+
+    waveletMs = haar_3d(&data, param.transformSteps, false, 
+                        param.isWaveletTransposeStandard);
+
+    if (opt.verbose) data.print("After wavelet transform");
+
     if (!quiet)
       printf("Wavelet transform (%d steps): %.2f ms\n", 
-             opt.waveletSteps, waveletMs);
+             param.transformSteps.x, waveletMs);
   }
 
   // save the intermediate data to a file before quantizing
   if (opt.saveBeforeQuantizingFilename != "") {
     const char *filename = opt.saveBeforeQuantizingFilename.c_str();
-    if (!writeDataFile(filename, data.floatData, width, height)) {
+    CubeletStreamWriter writer;
+    data.param = param;
+    bool isTransposed = false;
+    if (data.width() == 1) {
+      data.transpose3dFwd();
+      isTransposed = true;
+    }
+    if (!writer.open(filename) ||
+        !writer.addCubelet(&data) ||
+        !writer.close()) {
       printf("Failed to write intermediate data file \"%s\".\n", filename);
     } else {
       if (!quiet)
         printf("Write intermediate data file \"%s\"\n", filename);
     }
+    if (isTransposed)
+      data.transpose3dBack();
   }
 
+
   // find the threshold value by sorting
-  // XXX try using quickselect to speed up
+  // XXX quickselect will speed up this selection, but then we'll lose the
+  // benefits of having the sorted data
+  const int count = data.count();
   float maxVal, minVal, maxAbsVal, *sortedAbsData = NULL;
   int nonzeroCount;
 
   startTime = NixTimer::time();
-  opt.thresholdValue = thresh_cpu(count, data.floatData, opt.thresholdFraction,
-                                  &nonzeroCount, &maxVal, &minVal,
-                                  &sortedAbsData);
-			       
+
+  param.thresholdValue
+    = thresh_cpu(&data, param.thresholdFraction, &nonzeroCount, &maxVal,
+                 &minVal, &sortedAbsData);
+
   maxAbsVal = sortedAbsData[count-1];
 
   // nonzeroCount is the number of nonzero entries (those whose absolute
@@ -132,29 +243,39 @@ bool compressFile(const char *inputFile, const char *outputFile,
   elapsed = NixTimer::time() - startTime;
   if (!quiet)
     printf("Compute threshold = %g, min = %g, max = %g: %.2f ms\n",
-           opt.thresholdValue, minVal, maxVal, elapsed*1000);
+           param.thresholdValue, minVal, maxVal, elapsed*1000);
 
   // don't write a data file; just run some experiments testing different
   // quantization settings
+  /*
   if (opt.runQuantizationExperiments) {
     quantizationExperiments(data, opt, sortedAbsData, maxAbsVal);
     return true;
   }
+  */
 
-  if (!quantize(data, quantizedData, maxAbsVal, opt, nonzeroData,
-                nonzeroCount)) return false;
+  if (!quantize(data, quantizedData, maxAbsVal, param, nonzeroData,
+                nonzeroCount, opt.quiet)) return false;
 
+  if (opt.verbose) quantizedData.print("After quantization");
+  
   // deallocate sortedAbsData
   delete[] sortedAbsData;
   nonzeroData = NULL;
   sortedAbsData = NULL;
 
+  // testHuffman(quantizedData.intData, quantizedData.count(), opt.quantizeBits);
+
   // write the quantized data to a file
-
+  // for now, make a new file just for this cubelet
   startTime = NixTimer::time();
-
-  if (!writeQuantData(outputFile, quantizedData, opt))
+  quantizedData.param = param;
+  CubeletStreamWriter cubeletWriter;
+  if (!cubeletWriter.open(outputFile)) return false;
+  if (!writeQuantData(cubeletWriter, &quantizedData, opt))
     return false;
+  cubeletWriter.close();
+
     
   if (!quiet) {
     printf("Write data file: %.2f ms\n", (NixTimer::time() - startTime)*1000);
@@ -164,41 +285,61 @@ bool compressFile(const char *inputFile, const char *outputFile,
   return true;
 }
 
+
 bool decompressFile(const char *inputFile, const char *outputFile,
 		    Options &opt) {
 
-  Data2d quantizedData, data;
+  CubeInt quantizedData;
+  CubeFloat data;
+  Cube outputData;
   double firstStartTime, startTime, elapsed;
 
   firstStartTime = startTime = NixTimer::time();
 
   // read the compressed file
-  if (!readQuantData(inputFile, quantizedData, opt)) return false;
+  CubeletStreamReader cubeletStream;
+  if (!cubeletStream.open(inputFile)) return false;
+  if (!readQuantData(cubeletStream, &quantizedData)) return false;
 
-  const int width = quantizedData.width;
-  const int height = quantizedData.height;
+  WaveletCompressionParam &param = quantizedData.param;
 
   elapsed = NixTimer::time() - startTime;
   if (!opt.quiet)
-    printf("Read %dx%d data file: %.2f ms\n", width, height,
+    printf("Read %dx%dx%d data file: %.2f ms\n",
+           quantizedData.size.x, quantizedData.size.y, quantizedData.size.z,
            (NixTimer::time() - startTime) * 1000);
 
-  assert(quantizedData.intData != NULL && width > 0 && height > 0);
-  assert(width == height);
-  int size = width;
+  data.size = quantizedData.size;
+  data.param = param;
+  data.allocate();
 
+  if (opt.verbose) quantizedData.print("Before dequantize");
+  
   // de-quantize the data
-  dequantize(quantizedData, data, opt);
+  dequantize(quantizedData, data, param, opt.quiet);
+
+  if (opt.verbose) data.print("After dequantize");
 
   // perform inverse wavelet transform
-  elapsed = haar_2d(size, data.floatData, true, opt.waveletSteps,
-                    opt.isWaveletTransposeStandard);
+  elapsed = haar_3d(&data, param.transformSteps, true, 
+                    param.isWaveletTransposeStandard);
+
+  if (opt.verbose) data.print("After inverse transform");
+
   if (!opt.quiet)
     printf("Wavelet inverse transform: %.2f ms\n", elapsed);
 
+  // change the data back to the original datatype, if necessary
+  outputData.size = param.originalSize;
+  outputData.datatype = param.originalDatatype;
+  translateCubeFloatToData(&data, &outputData, opt.verbose);
+
   // write the reconstructed data
   startTime = NixTimer::time();
-  if (!writeDataFile(outputFile, data.floatData, data.width, data.height))
+  CubeletStreamWriter outStream;
+  if (!outStream.open(outputFile) ||
+      !outStream.addCubelet(&outputData) ||
+      !outStream.close())
     return false;
 
   if (!opt.quiet) {
@@ -210,6 +351,168 @@ bool decompressFile(const char *inputFile, const char *outputFile,
 }
 
 
+// make the cubelet data into floats, if it isn't already
+void translateCubeDataToFloat(Cube *src, CubeFloat *dest) {
+
+  // check that there are no insets
+  assert(src->size == src->totalSize);
+
+  // copy source size
+  dest->size = dest->totalSize = src->size;
+  dest->parentOffset = src->parentOffset;
+
+  if (src->datatype == WAVELET_DATA_FLOAT32) {
+    dest->data_ = src->data_;
+    src->data_ = NULL;
+    dest->ownsData = src->ownsData;
+    return;
+  }
+
+  dest->allocate();
+
+  int count = src->count();
+  float *writep = dest->pointer(0,0,0);
+  
+  // map 0..255 to -.5 .. .5
+  if (src->datatype == WAVELET_DATA_UINT8) {
+    CubeByte *s = (CubeByte*) src;
+    unsigned char *readp = s->pointer(0,0,0), *endp = readp + count;
+
+    while (readp < endp) {
+      *writep++ = *readp++ * (1.0f / 255) - 0.5f;
+
+    }
+  }
+
+  // without any other range information, just translate directly to floats
+  else if (src->datatype == WAVELET_DATA_INT32) {
+    CubeInt *s = (CubeInt*) src;
+    int *readp = s->pointer(0,0,0), *endp = readp + count;
+
+    // map 0..255 to -.5 .. .5
+    while (readp < endp) {
+      *writep++ = *readp++;
+    }
+  }
+
+  src->deallocate();
+}
+
+
+// turn the data back into the original datatype, if it wasn't floats
+// dest->size has been set, and it may be smaller than src
+void translateCubeFloatToData(CubeFloat *src, Cube *dest, bool verbose) {
+
+  // check that there are no insets
+  assert(src->size == src->totalSize);
+
+  // copy source size
+  dest->totalSize = src->totalSize;
+  dest->parentOffset = src->parentOffset;
+
+  if (dest->datatype == src->datatype) {
+    dest->data_ = src->data_;
+    src->data_ = NULL;
+    dest->ownsData = src->ownsData;
+    return;
+  }
+
+  dest->allocate();
+
+  int count = src->count();
+  float *readp = src->pointer(0,0,0), *endp = readp + count;
+  
+  // map -.5 .. .5 to 0..255
+  if (dest->datatype == WAVELET_DATA_UINT8) {
+    CubeByte *d = (CubeByte*) dest;
+    unsigned char *writep = d->pointer(0,0,0);
+
+    while (readp < endp) {
+      int x = (*readp++ + 0.5f) * 255;
+      if (x < 0) {
+        x = 0;
+      } else if (x > 255) {
+        x = 255;
+      }
+      *writep++ = x;
+    }
+    if (verbose) d->print("After restoring data type");
+  }
+
+  // without any other range information, just translate directly to ints
+  else if (dest->datatype == WAVELET_DATA_INT32) {
+    CubeInt *d = (CubeInt*) dest;
+    int *writep = d->pointer(0,0,0);
+
+    // map 0..255 to -.5 .. .5
+    while (readp < endp) {
+      *writep++ = *readp++;
+    }
+
+    if (verbose) d->print("After restoring data type");
+  }
+
+  src->deallocate();
+
+}
+
+
+// On error, output an error message and return false
+bool readData(const char *filename, CubeFloat &data) {
+
+  // read a 2d data file
+  if (endsWith(filename, ".data")) {
+    float *array;
+    int width, height;
+    if (!readDataFile(filename, &array, &width, &height)) return false;
+
+    data.size = int3(width, height, 1);
+    data.allocate();
+    data.copyFrom(array, int3(width, height, 1));
+
+    return true;
+  }
+
+  // read a 3d cubelet
+  else if (endsWith(filename, ".cube") || !strcmp(filename, "-")) {
+    if (!strcmp(filename, "-")) filename = NULL;
+    CubeletStreamReader reader;
+    if (!reader.open(filename)) return false;
+
+    if (!reader.next(&data)) {
+      fprintf(stderr, "No cubelets found in %s.\n",
+              filename ? filename : "stdin");
+      return false;
+    }
+
+    data.allocate();
+
+    if (!reader.getCubeData(&data)) return false;
+
+    // XXX if reading multiple cubelets, don't close
+    reader.close();
+
+    return true;
+  }
+
+  else {
+    fprintf(stderr, "Input file type '%s' not recognized. "
+            "Expected '.data' or '.cube'.\n", filename);
+    return false;
+  }
+
+}
+
+
+// pad the data so each transform step has an even number of elements
+void padDataSize(Cube &data, int3 steps) {
+  data.size.x = dwt_padded_length(data.size.x, steps.x, false);
+  data.size.y = dwt_padded_length(data.size.y, steps.y, false);
+  data.size.z = dwt_padded_length(data.size.z, steps.z, false);
+}
+
+
+/*
 void padData(Data2d &data, DWTPadding padMethod, bool quiet) {
   int longSide = data.width > data.height ? data.width : data.height;
   int size = dwt_padded_length(longSide, 0, true);
@@ -228,143 +531,195 @@ void padData(Data2d &data, DWTPadding padMethod, bool quiet) {
     data.width = data.height = size;
   }
 }
+*/
 
 
-bool quantize(const Data2d &data, Data2d &quantizedData, float maxAbsVal,
-              Options &opt, const float *nonzeroData, int nonzeroCount,
+// REPEAT-pad data
+void padData(CubeFloat &data, int3 originalSize, bool quiet) {
+  
+  if (data.size == originalSize) return;
+  assert(data.size >= originalSize);
+
+  double startTime = NixTimer::time();
+
+  // for each existing layer of data, pad the end of each row and column
+  for (int z = 0; z < originalSize.z; z++) {
+
+    // pad each row by replicating the last value in each row
+    for (int y = 0; y < originalSize.y; y++) {
+      float value = data.get(originalSize.x-1, y, z);
+      float *p = data.pointer(originalSize.x, y, z);
+      float *e = p + data.width() - originalSize.x;
+      while (p < e) *p++ = value;
+    }
+
+    // pad each column by replicating the last row
+    float *rowp = data.pointer(0, originalSize.y-1, z);
+    for (int y = originalSize.y; y < data.height(); y++)
+      memcpy(data.pointer(0, y, z), rowp, data.width() * sizeof(float));
+  }
+
+  // for the new layers of data, copy the last layer of data
+  float *layerp = data.pointer(0, 0, originalSize.z-1);
+  int layerSize = data.width() * data.height() * sizeof(float);
+  for (int z=originalSize.z; z < data.depth(); z++)
+    memcpy(data.pointer(0, 0, z), layerp, layerSize);
+
+  double elapsed = NixTimer::time() - startTime;
+  if (!quiet)
+    printf("Pad data from %dx%dx%d to %dx%dx%d: %.2f ms\n",
+           originalSize.x, originalSize.y, originalSize.z, 
+           data.width(), data.height(), data.depth(),
+           elapsed*1000);
+
+}
+
+
+void setWaveletSteps(int3 &steps, const int3 &size) {
+  int maxSteps = dwtMaximumSteps(size.x);
+  if (steps.x < 0 || steps.x > maxSteps)
+    steps.x = maxSteps;
+
+  maxSteps = dwtMaximumSteps(size.y);
+  if (steps.y < 0 || steps.y > maxSteps)
+    steps.y = maxSteps;
+
+  maxSteps = dwtMaximumSteps(size.z);
+  if (steps.z < 0 || steps.z > maxSteps)
+    steps.z = maxSteps;
+}
+
+
+bool quantize(const CubeFloat &data, CubeInt &quantizedData,
+              float maxAbsVal, WaveletCompressionParam &param,
+              const float *nonzeroData, int nonzeroCount, bool quiet,
               float *quantErrorOut) {
 
   float quantErr = -1;
 
-  // allocate memory for the quantized data if it isn't already
-  if (quantizedData.intData) {
-    assert(quantizedData.width == data.width &&
-           quantizedData.height == data.height);
-  } else {
-    quantizedData.initInts(data.width, data.height);
-  }
+  // for now, to make the processing easier, don't accept padded data
+  assert(data.size == data.totalSize);
+  
+  // XXX remove this when all the quantization algorithms switch from
+  // quantizeBits to binCount
+  int quantizeBits = ceilLog2(param.binCount);
 
-  const int count = data.width * data.height;
+  // allocate memory for the quantized data if it isn't already
+  quantizedData.size = quantizedData.totalSize = data.size;
+  quantizedData.inset = int3(0,0,0);
+  quantizedData.allocate();
+
+  const int count = data.count();
+  const float *inputData = data.pointer(0,0,0);
+  int *outputData = quantizedData.pointer(0,0,0);
 
   double startTime = NixTimer::time();
 
-  switch (opt.quantizeAlgorithm) {
+  switch (param.quantAlg) {
     
   case QUANT_ALG_UNIFORM:
     {  // use a new code block so we can allocate new variables
-      QuantUniform qunif(opt.quantizeBits, opt.thresholdValue, maxAbsVal);
-      QuantizationLooper<QuantUniform> qloop(&qunif, opt.quantizeBits);
-      qloop.quantize(count, data.floatData, quantizedData.intData, true);
+      QuantUniform qunif(quantizeBits, param.thresholdValue, maxAbsVal);
+      QuantizationLooper<QuantUniform> qloop(&qunif, quantizeBits);
+      qloop.quantize(count, inputData, outputData, true);
       quantErr = qloop.getError();
-      opt.maxAbsVal = maxAbsVal;
+      param.maxValue = maxAbsVal;
     }
     break;
 
   case QUANT_ALG_LOG:
     {
-      QuantLog qlog(opt.quantizeBits, opt.thresholdValue, maxAbsVal);
-      QuantizationLooper<QuantLog> qloop(&qlog, opt.quantizeBits);
-      qloop.quantize(count, data.floatData, quantizedData.intData, true);
+      QuantLog qlog(quantizeBits, param.thresholdValue, maxAbsVal);
+      QuantizationLooper<QuantLog> qloop(&qlog, quantizeBits);
+      qloop.quantize(count, inputData, outputData, true);
       quantErr = qloop.getError();
-      opt.maxAbsVal = maxAbsVal;
-    }
-    break;
-
-  case QUANT_ALG_COUNT:
-    {
-      QuantCodebook qcb;
-      qcb.initCountBins(count, data.floatData, opt.quantizeBits,
-                        opt.thresholdValue);
-      // qcb.printCodebook();
-      opt.quantBinBoundaries = qcb.boundaries;
-      opt.quantBinValues = qcb.codebook;
-      QuantizationLooper<QuantCodebook> qloop(&qcb, opt.quantizeBits);
-      qloop.quantize(count, data.floatData, quantizedData.intData, true);
-      quantErr = qloop.getError();
+      param.maxValue = maxAbsVal;
     }
     break;
 
   case QUANT_ALG_LLOYD: 
     {
-      computeLloydQuantization(nonzeroData, nonzeroCount,
-			       opt.quantizeBits,
-			       opt.quantBinBoundaries, opt.quantBinValues);
+      computeLloydQuantization(nonzeroData, nonzeroCount, quantizeBits,
+			       param.binBoundaries, param.binValues);
       double elapsed = NixTimer::time() - startTime;
-      if (!opt.quiet)
+      if (!quiet)
         printf("Lloyd quantization %.2f ms\n", elapsed*1000);
       startTime = NixTimer::time();
-      QuantCodebook qcb(opt.quantBinBoundaries, opt.quantBinValues);
+      QuantCodebook qcb(param.binBoundaries, param.binValues);
       // qcb.printCodebook();
-      QuantizationLooper<QuantCodebook> qloop(&qcb, opt.quantizeBits);
-      qloop.quantize(count, data.floatData, quantizedData.intData, true);
+      QuantizationLooper<QuantCodebook> qloop(&qcb, quantizeBits);
+      qloop.quantize(count, inputData, outputData, true);
       quantErr = qloop.getError();
     }
     break;
 
   default:
     fprintf(stderr, "Quantization algorithm %d not found.\n",
-            (int)opt.quantizeAlgorithm);
+            (int)param.quantAlg);
     return false;
   }
 
   if (quantErr >= 0) {
-    if (!opt.quiet)
+    if (!quiet)
       printf("Quantization error: %g\n", quantErr);
     if (quantErrorOut) *quantErrorOut = quantErr;
   }
 
   double elapsed = NixTimer::time() - startTime;
-  if (!opt.quiet)
+  if (!quiet)
     printf("Quantize: %.2f ms\n", elapsed*1000);
 
   return true;
 }
 
 
-bool dequantize(const Data2d &quantizedData, Data2d &data, Options &opt) {
+bool dequantize(const CubeInt &quantizedData, CubeFloat &data,
+                WaveletCompressionParam &param, bool quiet) {
 
   double startTime = NixTimer::time();
+  
+  const int count = quantizedData.count();
+  const int *inputData = quantizedData.pointer(0,0,0);
+  float *outputData = data.pointer(0,0,0);
 
-  // allocate memory for the dequantized data
-  data.initFloats(quantizedData.width, quantizedData.height);
+  // XXX remove this when all the quantization algorithms switch from
+  // quantizeBits to binCount
+  int quantizeBits = ceilLog2(param.binCount);
 
-  const int count = data.width * data.height;
-
-  switch (opt.quantizeAlgorithm) {
+  switch (param.quantAlg) {
   case QUANT_ALG_UNIFORM:
     {
-      QuantUniform qunif(opt.quantizeBits, opt.thresholdValue, opt.maxAbsVal);
-      QuantizationLooper<QuantUniform> qloop(&qunif, opt.quantizeBits);
-      qloop.dequantize(count, quantizedData.intData, data.floatData);
+      QuantUniform qunif(quantizeBits, param.thresholdValue, param.maxValue);
+      QuantizationLooper<QuantUniform> qloop(&qunif, quantizeBits);
+      qloop.dequantize(count, inputData, outputData);
     }
     break;
 
   case QUANT_ALG_LOG:
     {
-      QuantLog qunif(opt.quantizeBits, opt.thresholdValue, opt.maxAbsVal);
-      QuantizationLooper<QuantLog> qloop(&qunif, opt.quantizeBits);
-      qloop.dequantize(count, quantizedData.intData, data.floatData);
+      QuantLog qunif(quantizeBits, param.thresholdValue, param.maxValue);
+      QuantizationLooper<QuantLog> qloop(&qunif, quantizeBits);
+      qloop.dequantize(count, inputData, outputData);
     }
     break;
 
-  case QUANT_ALG_COUNT:
   case QUANT_ALG_LLOYD:
     {
       QuantCodebook qcb;
-      qcb.init(opt.quantBinBoundaries, opt.quantBinValues);
-      QuantizationLooper<QuantCodebook> qloop(&qcb, opt.quantizeBits);
-      qloop.dequantize(count, quantizedData.intData, data.floatData);
+      qcb.init(param.binBoundaries, param.binValues);
+      QuantizationLooper<QuantCodebook> qloop(&qcb, quantizeBits);
+      qloop.dequantize(count, inputData, outputData);
     }
-    
     break;
 
   default:
     fprintf(stderr, "Quantization algorithm %d not found.\n",
-            (int)opt.quantizeAlgorithm);
+            (int)param.quantAlg);
     return false;
   }
 
-  printf("Dequantize: %.2f ms\n", (NixTimer::time() - startTime) * 1000);
+  if (!quiet)
+    printf("Dequantize: %.2f ms\n", (NixTimer::time() - startTime) * 1000);
 
   return true;
 }
@@ -514,71 +869,15 @@ void computeLloydQuantization
   delete[] binValues;
 }
 
-  
-void testHuffman(const int data[], int count, int bitCount) {
-  double startTime = NixTimer::time();
-  int valueCount = 1 << bitCount;
-  Huffman huff(valueCount);
-  
-  for (int i=0; i < count; i++) {
-    huff.increment(data[i]);
-  }
 
-  huff.computeHuffmanCoding();
-  double elapsed = NixTimer::time() - startTime;
-  printf("Huffman build table %.3f ms\n", elapsed*1000);
-
-  // huff.printEncoding();
-  
-  startTime = NixTimer::time();
-  FILE *f = fopen("huff.out", "wb");
-  BitStreamWriter bitWriter(f);
-  huff.encodeToStream(&bitWriter, data, count);
-  bitWriter.flush();
-  fclose(f);
-  // printf("%llu bits written\n", (long long unsigned) bitWriter.size());
-  size_t bitsWritten = bitWriter.size();
-  int bytesWritten = (bitsWritten + 31) / 32 * 4;
-
-  long long unsigned totalBits = 0;
-  for (int i=0; i < valueCount; i++) {
-    totalBits += huff.encodedLength(i) * huff.getCount(i);
-  }
-
-  printf("Huffman encoding: %d bytes, %.2f bits/pixel, "
-	 "longest encoding = %d bits\n",
-	 bytesWritten, (double)totalBits / count,
-	 huff.getLongestEncodingLength());
-  elapsed = NixTimer::time() - startTime;
-  printf("Huffman write file %.3f ms\n", elapsed*1000);
-
-  startTime = NixTimer::time();
-  f = fopen("huff.out", "rb");
-  BitStreamReader bitReader(f);
-  int *values2 = new int[count];
-  int readCount = huff.decodeFromStream(values2, count, &bitReader);
-  fclose(f);
-  elapsed = NixTimer::time() - startTime;
-  printf("Huffman read file %.3f ms\n", elapsed*1000);
-
-  if (count != readCount)
-    printf("ERROR wrote %d encoded values, read %d\n", count, readCount);
-
-  for (int i=0; i < count; i++) {
-    if (values2[i] != data[i]) {
-      printf("Error at %d: got %d, should be %d\n", i, values2[i], data[i]);
-      break;
-    }
-  }
-  delete[] values2;
-}
-
-
+/*
 void quantizationExperiments(const Data2d &data, Options &opt,
                              const float *sortedAbsData,
                              float maxAbsVal) {
   
   Data2d quantizedData;
+  Data3d data3d;
+  Data3dInt quantizedData3d;
 
   // allocate memory once for the quantized data
   quantizedData.initInts(data.width, data.height);
@@ -604,7 +903,8 @@ void quantizationExperiments(const Data2d &data, Options &opt,
       const float *nonzeroData = sortedAbsData + count - nonzeroCount;
 
       // quantize, saving the error rate
-      if (!quantize(data, quantizedData, maxAbsVal, opt,
+      if (!quantize(data, quantizedData, data3d, quantizedData3d,
+                    maxAbsVal, opt,
                     nonzeroData, nonzeroCount, &quantErr)) break;
 
       // write to a dummy file, saving the file size
@@ -626,7 +926,5 @@ void quantizationExperiments(const Data2d &data, Options &opt,
       fflush(stdout);
     }
   }
-      
-      
-
 }
+*/

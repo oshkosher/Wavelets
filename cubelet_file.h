@@ -6,6 +6,9 @@
 #include <fstream>
 #include "wavelet_compress.pb.h"
 
+
+#include "wavelet.h"  // "Cube" class is defined here
+
 /*
 
   File format:
@@ -37,56 +40,14 @@
 */
 
 
-struct Cubelet {
-  unsigned width, height, depth;
-  unsigned xOffset, yOffset, zOffset;
-
-  enum DataType {
-    CUBELET_UINT8,
-    CUBELET_FLOAT32
-  };
-
-  DataType datatype;
-
-  uint64_t dataFileOffset;
-
-  // if data is not null, the destructor will call free() on it
-  void *data;
-
-  void setSize(int w=1, int h=1, int d=1) {
-    width = w;
-    height = h;
-    depth = d;
-  }
-
-  void setOffset(int x=0, int y=0, int z=0) {
-    xOffset = x;
-    yOffset = y;
-    zOffset = z;
-  }
-
-  Cubelet() {
-    width = height = depth = 1;
-    xOffset = yOffset = zOffset = 0;
-    datatype = CUBELET_FLOAT32;
-    data = NULL;
-    dataFileOffset = 0;
-  }
-
-  ~Cubelet() {
-    if (data) free(data);
-  }
-
-};  
-
-
 class CubeletStreamWriter {
+
  public:
 
-  // or NULL to write to stdout
+  // or NULL or "-" to write to stdout
   bool open(const char *filename);
 
-  bool addCubelet(const Cubelet *cubelet);
+  bool addCubelet(const Cube *cubelet);
 
   bool close();
 
@@ -107,17 +68,17 @@ class CubeletStreamWriter {
 
 
 class CubeletStreamReader {
-
  public:
+  typedef scu_wavelet::int3 int3;
 
-  // or NULL to read from stdin
+  // or NULL or "-" to read from stdin
   bool open(const char *filename);
 
   // Read the next cubelet in the stream and fill 'cube' with all
   // the metadata for it. Do not read the content data for the cubelet.
   // If we reach the end of the file (or empty cubelet that marks the end
   // of the file) return false, otherwise true;
-  bool next(Cubelet *cube);
+  bool next(Cube *cube);
 
   // Return the content data for the current cubelet.
   // If data is NULL, memory for the data will be allocated with malloc().
@@ -127,14 +88,17 @@ class CubeletStreamReader {
   // backwards, which isn't possible with stdin, or buffer the data, which
   // would be a waste most of the time).
   // Return the address of where the data was written, or NULL on error.
-  void *getData(void *data = NULL);
+  void *getRawData(void *data = NULL);
+
+  // read the data directly into a cubelet, which may have padding between
+  // data rows
+  bool getCubeData(Cube *cube);
 
   void close();
 
   CubeletStreamReader() {
     inf = NULL;
     eofReached = false;
-    indexOffset = 0;
     dataSizeBytes = 0;
     dataHasBeenRead = false;
   }
@@ -148,10 +112,6 @@ class CubeletStreamReader {
 
   bool eofReached;
 
-  // Read from the header of the file, this is the index of the
-  // CubeletIndexBuffer at the end of the file. If zero, then it is not present.
-  uint64_t indexOffset;
-
   // size of the data for the curent cubelet, so we know how far ahead
   // to seek to read the next
   uint32_t dataSizeBytes;
@@ -160,6 +120,14 @@ class CubeletStreamReader {
   // the file pointer is at the beginning or end of the data.
   bool dataHasBeenRead;
 
+  int3 currentCubeSize;
+
+  template<class NUM>
+    void copyIntoTypedCube(CubeNum<NUM> *cube, void *rawData,
+                         int3 inputDataSize) {
+    if (cube->data() == NULL) cube->allocate();
+    cube->copyFrom((NUM*)rawData, inputDataSize);
+  }
 };
 
 

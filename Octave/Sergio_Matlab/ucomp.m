@@ -10,7 +10,7 @@ QA=S.Q_A;QS=S.Q_S;
   w = iwt_1d(w,QA,QS,LY);
   w = reshape(w,[NY*NZ,NX]);
   w = w';
-% Unrocess x-columns
+% Unprocess x-columns
   w = iwt_1d(w,QA,QS,LX);
-  w = reshape(w,[NX,NY,NZ]);
+  w = reshape(w,[NX,NY,NZ]);'iwt: all x y z columns processed'
 % Copyright (c) 2014. S.E.Zarantonello
