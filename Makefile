@@ -129,6 +129,7 @@ PROTOBUF_LIB_NVCC = $(PROTOBUF_LIB)
 PROTOBUF_JAR = /usr/share/java/protobuf.jar
 JAVACV_JAR = /usr/local/javacv/bin/javacv.jar
 PROTOC = protoc
+NVCC_OPT = -std=c++11
 NVCC_SHLIB_OPT=--compiler-options -fPIC
 CLASSPATH_DIR=$(CURDIR)
 JAVAC = javac -cp .:$(PROTOBUF_JAR):$(JAVACV_JAR)
