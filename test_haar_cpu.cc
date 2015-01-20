@@ -202,6 +202,23 @@ void makeTinyCubelet() {
 }
 
 
+// Write input for SEZ_C_CODE/main_ucomp.c
+void writeSEZcomp() {
+  FILE *outf = fopen("cmp.dat", "wb");
+  // width, height, # of steps, bin count, number of cubes, compressed size
+  int param[6] = {16, 16, 1, 0, 1, 16*16};
+  fwrite(param, sizeof(int), 6, outf);
+
+  float data[] = {7, 2, 3, 4, 5, 3, 1, 5, 7, 1, 9, 2, 4, 8, 2, 6};
+  for (int i=0; i < 16; i++)
+    fwrite(data, sizeof(float), 16, outf);
+  fclose(outf);
+
+  printf("cmp.dat written\n");
+}
+
+
+
 void testCDF97() {
 
   // float data[] = {0, 0, 0, 0, 0, 5, 9, 2, 3, 0, 0, 0, 0, 0};
@@ -221,12 +238,14 @@ void testCDF97() {
   printf("Wrote sez.in\n");
   */
 
-  int resultLength = 0;
-  float *resultData = NULL;
-  cdf97(length, data, 4, &resultLength, &resultData);
+  cdf97(length, data, 3);
+  for (int i=0; i < length; i++)
+    printf("%f, ", data[i]);
+  putchar('\n');
 
-  for (int i=0; i < resultLength; i++)
-    printf("%f, ", resultData[i]);
+  cdf97_inverse(length, data, 3);
+  for (int i=0; i < length; i++)
+    printf("%f, ", data[i]);
   putchar('\n');
 
 }
@@ -234,9 +253,11 @@ void testCDF97() {
 int main(int argc, char **argv) {
   // testMisc();
   // testPad();
-  // testCDF97();
+  testCDF97();
   // testInverse();
-  makeTinyCubelet();
+  // makeTinyCubelet();
+
+  // writeSEZcomp();
 
   // main_full(argc, argv);
 

@@ -180,8 +180,11 @@ MovieToCubelets.class: MovieToCubelets.java
 CubeletViewer.class: CubeletViewer.java
 	$(JAVAC) $<
 
-test_haar_cpu: test_haar_cpu.cc dwt_cpu.cc data_io.cc wavelet.cc \
-	  wavelet_compress.pb.cc cubelet_file.cc
+test_haar_cpu.o: test_haar_cpu.cc dwt_cpu.h data_io.h cubelet_file.h
+	$(CC) -c $<
+
+test_haar_cpu: test_haar_cpu.o dwt_cpu.o data_io.o wavelet.o \
+	  wavelet_compress.pb.o cubelet_file.o
 	$(CC) $^ -o $@ $(LIBS) $(PROTOBUF_LIB)
 
 test_lloyd: test_lloyd.cc Octave/LloydsAlgorithm/src/c++/lloyds.cpp \

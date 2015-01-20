@@ -27,6 +27,21 @@ static const float CDF97_ANALYSIS_HIGHPASS_FILTER[] = {
   -.064538882628938
 };
 
+static const float CDF97_SYNTHESIS_LOWPASS_FILTER[] = {
+  .788485616405660,
+  .377402855612650,
+ -.040689417609558,
+ -.02384946501938
+};
+
+static const float CDF97_SYNTHESIS_HIGHPASS_FILTER[] = {
+ -.85269867900940,
+  .418092273222210,
+  .110624404418420,
+ -.064538882628938,
+ -.037828455506995
+};  
+
 
 // This is different from the externally visible haar() function
 // in that no sanity check is done on the stepCount argument.
@@ -687,12 +702,12 @@ float haar_3d(CubeFloat *data, int3 stepCount, bool inverse,
   array[7] returns array[5], array[8] return array[4], etc.
 */
 class MirroredArray {
-  float *array;
   int length;  // length of the actual data
+  const float *array;
 
 public:
-  MirroredArray(float *array_, int length_)
-    : array(array_), length(length_) {}
+  MirroredArray(int length_, const float *array_)
+    : length(length_), array(array_) {}
 
   float operator[] (int offset) const {
 
@@ -700,6 +715,7 @@ public:
     if (offset < 0) offset = -offset;
 
     // past the end: fold it back, repeat if necessary
+    // try using modulo, see if it speeds this up
     while (offset >= length) {
       offset = length*2 - offset - 2;
 
@@ -733,37 +749,51 @@ public:
 };
         
 
-void cdf97(int inputLength, const float inputData[], int stepCount,
-           int *resultLength, float **resultData) {
+/**
+   To compare with Matlab implementation in:
+     Wavelets/Octave/Sergio_Matlab/fwt_1d.m
 
-  int len = dwt_padded_length(inputLength, stepCount, false);
-  float *outputData, *tmpData = new float[len];
+   v=[7 2 3 4 5 3 1 5 7 1 9 2 4 8 2 6]';
+   udat = [v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v];
+   [qa,qs] = qmfilter(' VS_7.9');
+   w=fwt_1d(udat,qa,qs,1)';
+   w(1,1:16)
 
-  if (*resultData) {
-    outputData = *resultData;
+   With a 9-element filter (4 before + center + 4 after)
+     [0]: f0*x0 + 2*f1*x1 + 2*f2*x2 + 2*f3*x3 + 2*f4*x4
+     [1]: f0*x1 + f1*(x0+x2) + f2*(x1+x3) + f3*(x2+x4) + f4*(x3+x5)
+     [2]: f0*x2 + f1*(x1+x3) + f2*(x0+x4) + f3*(x1+x5) + f4*(x2+x6)
+     [3]: f0*x3 + f1*(x2+x4) + f2*(x1+x5) + f3*(x0+x6) + f4*(x1+x7)
+     [4]: f0*x4 + f1*(x3+x5) + f2*(x2+x6) + f3*(x1+x7) + f4*(x0+x8)
+
+     [5..len-6]: normal
+
+     [len-5]: similar
+     [len-4]: 
+     [len-3]: 
+     [len-2]: 
+     [len-1]: f0*x[n-1] + 2*f1*x[n-2] + 2*f2*x[n-3] + 2*f3*x[n-4]
+                        + 2*f2*x[n-5]
+
+
+    After one transform: 7.00224, 3.52709, 6.82547, 2.87912, 7.34827, 7.39307, 6.14146, 6.57857, 2.33178, -0.122068, -0.136087, -1.33848, 5.86312, 3.64358, -4.18374, -2.92383
+ */
+void cdf97(int length, float *data, int stepCount, float *tempGiven) {
+
+  // check that the given array is sufficiently padded
+  assert(length == dwt_padded_length(length, stepCount, false));
+
+  float *temp;
+  if (tempGiven) {
+    temp = tempGiven;
   } else {
-    *resultData = outputData = new float[len];
+    temp = new float[length];
   }
 
-  // how many cells are inserted before the original data
-  int inputDataOffset = (len - inputLength) / 2;
-
-  // copy input data into place
-  memcpy(outputData+inputDataOffset, inputData, sizeof(float) * len);
-
-  // replicate the first element
-  for (int i=0; i < inputDataOffset; i++)
-    outputData[i] = inputData[0];
-
-  // replicate the last element
-  for (int i=inputLength+inputDataOffset; i < len; i++)
-    outputData[i] = inputData[inputLength-1];
-
   // encapsulate the array, automatically mirror indices past the ends
-  MirroredArray array(outputData, len);
-  // ZeroExtendedArray array(outputData, len);
+  MirroredArray array(length, data);
 
-  int stepLength = len;
+  int stepLength = length;
   for (int stepNo=0; stepNo < stepCount; stepNo++, stepLength /= 2) {
 
     array.setLength(stepLength);
@@ -778,7 +808,7 @@ void cdf97(int inputLength, const float inputData[], int stepCount,
         sum += CDF97_ANALYSIS_LOWPASS_FILTER[filterIdx]
           * (array[arrayIdx + filterIdx] + array[arrayIdx - filterIdx]);
       }
-      tmpData[lowIdx++] = sum;
+      temp[lowIdx++] = sum;
 
       arrayIdx++;
 
@@ -787,23 +817,75 @@ void cdf97(int inputLength, const float inputData[], int stepCount,
         sum += CDF97_ANALYSIS_HIGHPASS_FILTER[filterIdx]
           * (array[arrayIdx + filterIdx] + array[arrayIdx - filterIdx]);
       }
-      tmpData[hiIdx++] = sum;
+      temp[hiIdx++] = sum;
 
       arrayIdx++;
     }
 
     // overwrite outputData with the results
-    memcpy(outputData, tmpData, sizeof(float) * stepLength);
+    memcpy(data, temp, sizeof(float) * stepLength);
 
-    printf("After step %d\n", stepNo);
-    for (int i=0; i < len; i++)
-      printf("%f, ", outputData[i]);
+    /*
+    printf("After step %d\n", (stepNo+1));
+    for (int i=0; i < length; i++)
+      printf("%f, ", (double) data[i]);
     putchar('\n');
+    */
   }
 
-  delete[] tmpData;
-
-  *resultLength = len;
-  *resultData = outputData;
+  if (!tempGiven) delete[] temp;
 }
 
+/*
+  Start with 7.00224, 3.52709, 6.82547, 2.87912, 7.34827, 7.39307, 6.14146, 6.57857,     2.33178, -0.122068, -0.136087, -1.33848, 5.86312, 3.64358, -4.18374, -2.92383
+
+  Interleave: 7.00266457, 2.33238411, 3.52769017, -0.121900544, 6.82611752, -0.135406822, 2.87938881, -1.33843088, 7.34900379, 5.8633132, 7.3933816, 3.64345884, 6.14212084, -4.18343306, 6.57914591, -2.92348981
+  e=[d[0], d[8], d[1], d[9], d[2], d[10], d[3], d[11], d[4], d[12], d[5], d[13], d[6], d[14], d[7], d[15]]
+
+  evens = x[i]*.788 + (x[i-1] + x[i+1]) * .377 + (x[i-2] + x[i+2]) * -0.040 + (x[i-3] + x[i+3]) * -0.023
+
+  odds = same, but -0.852, 0.418, 0.110, -0.0645, -0.0378
+*/
+void cdf97_inverse(int length, float *data, int stepCount, float *tempGiven) {
+  assert(length == dwt_padded_length(length, stepCount, false));
+
+  float *temp;
+  if (tempGiven) {
+    temp = tempGiven;
+  } else {
+    temp = new float[length];
+  }
+
+  // encapsulate the array, automatically mirror indices past the ends
+  MirroredArray array(length, temp);
+  
+  int stepLength = length >> (stepCount-1);
+  for (int stepNo=0; stepNo < stepCount; stepNo++, stepLength *= 2) {
+    
+    int half = stepLength >> 1;
+    array.setLength(stepLength);
+
+    // interleave: 01234567 -> 04152636
+    for (int i=0; i < half; i++) {
+      temp[i*2] = data[i];
+      temp[i*2+1] = data[half+i];
+    }
+
+    int i=0;
+    while (i < stepLength) {
+      // evens
+      data[i] = array[i] * CDF97_SYNTHESIS_LOWPASS_FILTER[0];
+      for (int j=1; j <= 3; j++)
+        data[i] += (array[i+j] + array[i-j]) * CDF97_SYNTHESIS_LOWPASS_FILTER[j];
+      i++;
+
+      // odds
+      data[i] = array[i] * CDF97_SYNTHESIS_HIGHPASS_FILTER[0];
+      for (int j=1; j <= 4; j++)
+        data[i] += (array[i+j] + array[i-j]) * CDF97_SYNTHESIS_HIGHPASS_FILTER[j];
+      i++;
+    }
+  }
+
+  if (!tempGiven) delete[] temp;
+}
