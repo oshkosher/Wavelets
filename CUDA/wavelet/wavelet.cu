@@ -162,7 +162,7 @@ void fwt_1D(float *data, const unsigned level, const unsigned nx, const unsigned
     
 	//cudaMemcpy(output, data, d_w * d_h * sizeof(float), cudaMemcpyDeviceToHost);
 
-	//printf("Rows: %s\n",cudaGetErrorString(cudaGetLastError()));
+	printf("Rows: %s\n",cudaGetErrorString(cudaGetLastError()));
 }
 
 void iwt_1D(float *data, const unsigned level, const unsigned nx, const unsigned ny) {
@@ -181,87 +181,62 @@ void iwt_1D(float *data, const unsigned level, const unsigned nx, const unsigned
 	}
     
 	//cudaMemcpy(output, data, d_w * d_h * sizeof(float), cudaMemcpyDeviceToHost);
-
-	//printf("Rows: %s\n",cudaGetErrorString(cudaGetLastError()));
+	cudaDeviceSynchronize();
+	printf("Rows: %s\n",cudaGetErrorString(cudaGetLastError()));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Transpose
 ////////////////////////////////////////////////////////////////////////////////
 
-// Copyright 2012 NVIDIA Corporation
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 const int TILE_DIM = 32;
 const int BLOCK_ROWS = 8;
 
-// Convenience function for checking CUDA runtime API results
-// can be wrapped around any runtime API call. No-op in release builds.
-inline cudaError_t checkCuda(cudaError_t result) {
-#if defined(DEBUG) || defined(_DEBUG)
-	if (result != cudaSuccess) {
-		fprintf(stderr, "CUDA Runtime Error: %s\n", cudaGetErrorString(result));
-		assert(result == cudaSuccess);
-	}
-#endif
-	return result;
-}
-
-// No bank-conflict transpose
-// Same as transposeCoalesced except the first tile dimension is padded
-// to avoid shared memory bank conflicts.
-__global__ void transposeNoBankConflicts(float *odata, const float *idata) {
+__global__ void transposeDiagonal(float *odata, const float *idata, int width, int height) {
 	__shared__ float tile[TILE_DIM][TILE_DIM+1];
-	
-	int x = blockIdx.x * TILE_DIM + threadIdx.x;
-	int y = blockIdx.y * TILE_DIM + threadIdx.y;
-	int width = gridDim.x * TILE_DIM;
 
-	for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS)
-		tile[threadIdx.y+j][threadIdx.x] = idata[(y+j)*width + x];
+	int blockIdx_x, blockIdx_y;
+
+	// diagonal reordering
+	if (width == height) {
+		blockIdx_y = blockIdx.x;
+		blockIdx_x = (blockIdx.x+blockIdx.y)%gridDim.x;
+	} else {
+		int bid = blockIdx.x + gridDim.x*blockIdx.y;
+		blockIdx_y = bid%gridDim.y;
+		blockIdx_x = ((bid/gridDim.y)+blockIdx_y)%gridDim.x;
+	}
+
+	int xIndex = blockIdx_x*TILE_DIM + threadIdx.x;
+	int yIndex = blockIdx_y*TILE_DIM + threadIdx.y;
+	int index_in = xIndex + (yIndex)*width;
+
+	xIndex = blockIdx_y*TILE_DIM + threadIdx.x;
+	yIndex = blockIdx_x*TILE_DIM + threadIdx.y;
+	int index_out = xIndex + (yIndex)*height;
+
+	for (int i=0; i<TILE_DIM; i+=BLOCK_ROWS) {
+		tile[threadIdx.y+i][threadIdx.x] = idata[index_in+i*width];
+	}
 
 	__syncthreads();
 
-	x = blockIdx.y * TILE_DIM + threadIdx.x; // transpose block offset
-	y = blockIdx.x * TILE_DIM + threadIdx.y;
-
-	for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS)
-		odata[(y+j)*width + x] = tile[threadIdx.x][threadIdx.y + j];
-}
-
-
+	for (int i=0; i<TILE_DIM; i+=BLOCK_ROWS) {
+		odata[index_out+i*height] = tile[threadIdx.x][threadIdx.y+i];
+	}
+} 
 void transpose(float *tdata, const float *idata, const unsigned nx, const unsigned ny) {
-	//const int mem_size = nx*ny*sizeof(float);
 
-	//float *d_idata, *d_tdata;
-	//checkCuda( cudaMalloc(&d_idata, mem_size) );
-	//checkCuda( cudaMalloc(&d_tdata, mem_size) );
-
-	//checkCuda( cudaMemcpy(d_idata, idata, mem_size, cudaMemcpyHostToDevice) );
-
-	dim3 dimGrid(nx/TILE_DIM, ny/TILE_DIM, 1);
-	dim3 dimBlock(TILE_DIM, BLOCK_ROWS, 1);
-
-	transposeNoBankConflicts<<<dimGrid, dimBlock>>>(tdata, idata);
-	//checkCuda( cudaMemcpy(tdata, d_tdata, mem_size, cudaMemcpyDeviceToHost) );
+	dim3 grid(nx/TILE_DIM, ny/TILE_DIM);
+	dim3 threads(TILE_DIM,BLOCK_ROWS); 
+	transposeDiagonal<<<grid, threads>>>(tdata, idata, nx, ny);
 }
 
 extern "C" void setUpFilter(const float *filter){
 
     cudaMemcpyToSymbol(c_Kernel, filter, KERNEL_LENGTH*2 * sizeof(float));
 
-	//printf("Setup: %s\n",cudaGetErrorString(cudaGetLastError()));
+	printf("Setup: %s\n",cudaGetErrorString(cudaGetLastError()));
 }
 
 
@@ -269,10 +244,10 @@ extern "C" void comp(float *data, const unsigned nx, const unsigned ny, const un
 	const int mem_size = nx*ny*nz*sizeof(float);
 
 	float *d_idata, *d_tdata;
-	checkCuda( cudaMalloc(&d_idata, mem_size) );
-	checkCuda( cudaMalloc(&d_tdata, mem_size) );
+	cudaMalloc(&d_idata, mem_size);
+	cudaMalloc(&d_tdata, mem_size);
 
-	checkCuda( cudaMemcpy(d_idata, data, mem_size, cudaMemcpyHostToDevice) );
+	cudaMemcpy(d_idata, data, mem_size, cudaMemcpyHostToDevice);
 
 	fwt_1D(d_idata, lvlx, nx, ny*nz);
 
@@ -284,33 +259,40 @@ extern "C" void comp(float *data, const unsigned nx, const unsigned ny, const un
 
 	fwt_1D(d_idata, lvlz, nz, nx*ny);
 
-	checkCuda( cudaMemcpy(data, d_idata, mem_size, cudaMemcpyDeviceToHost) );
+	cudaMemcpy(data, d_idata, mem_size, cudaMemcpyDeviceToHost);
 
-	checkCuda( cudaFree(d_idata) );
-	checkCuda( cudaFree(d_tdata) );
+	//cudaDeviceSynchronize();
+	//printf("comp: %s\n",cudaGetErrorString(cudaGetLastError()));
+
+	cudaFree(d_idata);
+	cudaFree(d_tdata);
 }
 
-extern "C" void invComp(float *data, const unsigned nx, const unsigned ny, const unsigned nz, const unsigned lvlx, const unsigned lvly, const unsigned lvlz) {
+extern "C" void ucomp(float *data, const unsigned nx, const unsigned ny, const unsigned nz, const unsigned lvlx, const unsigned lvly, const unsigned lvlz) {
 	const int mem_size = nx*ny*nz*sizeof(float);
 
 	float *d_idata, *d_tdata;
-	checkCuda( cudaMalloc(&d_idata, mem_size) );
-	checkCuda( cudaMalloc(&d_tdata, mem_size) );
+	cudaMalloc(&d_idata, mem_size);
+	cudaMalloc(&d_tdata, mem_size);
 
-	checkCuda( cudaMemcpy(d_idata, data, mem_size, cudaMemcpyHostToDevice) );
-	//falta copiar los filtros
-	iwt_1D(d_idata, lvlx, nz, nx*ny);
+	cudaMemcpy(d_idata, data, mem_size, cudaMemcpyHostToDevice);
+
+	iwt_1D(d_idata, lvlz, nz, nx*ny);
 
 	transpose(d_tdata, d_idata, nz*nx, ny);
 
-	fwt_1D(d_tdata, lvly, ny, nz*nx);
+	iwt_1D(d_tdata, lvly, ny, nz*nx);
 
 	transpose(d_idata, d_tdata, ny*nz, nx);
 
-	fwt_1D(d_idata, lvlz, nx, ny*nz);
+	iwt_1D(d_idata, lvlx, nx, ny*nz);
 
-	checkCuda( cudaMemcpy(data, d_idata, mem_size, cudaMemcpyDeviceToHost) );
 
-	checkCuda( cudaFree(d_idata) );
-	checkCuda( cudaFree(d_tdata) );
+	cudaMemcpy(data, d_idata, mem_size, cudaMemcpyDeviceToHost);
+
+	//cudaDeviceSynchronize();
+	//printf("ucomp: %s\n",cudaGetErrorString(cudaGetLastError()));
+
+	cudaFree(d_idata);
+	cudaFree(d_tdata);
 }
