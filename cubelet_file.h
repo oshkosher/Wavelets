@@ -74,6 +74,8 @@ class CubeletStreamReader {
   // or NULL or "-" to read from stdin
   bool open(const char *filename);
 
+  bool isOpen() {return inf != NULL;}
+
   // Read the next cubelet in the stream and fill 'cube' with all
   // the metadata for it. Do not read the content data for the cubelet.
   // If we reach the end of the file (or empty cubelet that marks the end

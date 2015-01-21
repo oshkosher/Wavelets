@@ -40,7 +40,7 @@
 
 # build all the tools that don't require CUDA
 default: convert test_haar_cpu test_compress_cpu \
-	image_error list_data histogram
+	image_error list_data histogram cubelet_convert
 
 
 EXECS = test_haar_cpu haar test_compress_cpu \
@@ -64,8 +64,8 @@ movieconvert: MovieToCubelets.class
 oct: cudahaar.mex
 
 # Set this to YES or NO, to select between a Debug or Release build
-# IS_DEBUG=YES
-IS_DEBUG=NO
+IS_DEBUG=YES
+# IS_DEBUG=NO
 
 
 ifeq ($(IS_DEBUG),YES)
@@ -353,13 +353,13 @@ convert: Makefile WaveletSampleImage.class
 
 send: .senddevel
 
-.senddevel: *.cu *.cc *.h *.java Makefile
+.senddevel: *.cu *.cc *.h *.java *.proto Makefile
 	scp $? devel:tmp/Wavelets
 	touch .senddevel
 
 sendscu: .sendscu
 
-.sendscu: *.cu *.cc *.h *.java Makefile
+.sendscu: *.cu *.cc *.h *.java *.proto Makefile
 	scp $? scu:Wavelets
 	touch .sendscu
 

@@ -589,7 +589,7 @@ public:
     delete[] temp;
   }
 
-  void visitRow(NUM *row, int len) {
+  void visitRow(NUM *row, int len, int y, int z) {
     haar_internal(len, row, steps, temp);
   }
 };
@@ -599,7 +599,8 @@ template<class NUM>
 void haar_3d_one_axis(CubeNum<NUM> *data, int stepCount) {
   if (stepCount > 0) {
     HaarRowVisitor<NUM> rowIter(stepCount, data->width());
-    data->template visitRows<HaarRowVisitor<NUM>>(rowIter);
+    // data->template visitRows<HaarRowVisitor<NUM>>(rowIter);
+    data->visitRows(rowIter);
   }
 }
 
@@ -618,7 +619,7 @@ public:
     delete[] temp;
   }
 
-  void visitRow(NUM *row, int len) {
+  void visitRow(NUM *row, int len, int y, int z) {
     haar_inv(len, row, steps, temp);
   }
 };
@@ -628,15 +629,15 @@ template<class NUM>
 void haar_inv_3d_one_axis(CubeNum<NUM> *data, int stepCount) {
   if (stepCount > 0) {
     HaarInvRowVisitor<NUM> rowIter(stepCount, data->width());
-    data->template visitRows<HaarInvRowVisitor<NUM>>(rowIter);
+    // data->template visitRows<HaarInvRowVisitor<NUM>>(rowIter);
+    data->visitRows(rowIter);
   }
 }
 
 
 
-float haar_3d(CubeFloat *data, int3 stepCount, bool inverse,
-              bool standardTranspose) {
-  double startTime = NixTimer::time();
+void haar_3d(CubeFloat *data, int3 stepCount, bool inverse,
+             bool standardTranspose) {
 
   if (!inverse) {
     
@@ -681,7 +682,6 @@ float haar_3d(CubeFloat *data, int3 stepCount, bool inverse,
     }
   }
 
-  return (NixTimer::time() - startTime) * 1000;
 }
 
 
@@ -885,6 +885,9 @@ void cdf97_inverse(int length, float *data, int stepCount, float *tempGiven) {
   if (!tempGiven) delete[] temp;
 }
 
+
+// This will be called once for each row in the dataset by
+// Cube<NUM>::visitRows. It will perform run cdf97() on the row.
 template<class NUM>
 class CDF97RowVisitor {
 public:
@@ -899,12 +902,13 @@ public:
     delete[] temp;
   }
 
-  void visitRow(NUM *row, int len) {
+  void visitRow(NUM *row, int len, int y, int z) {
     cdf97(len, row, steps, temp);
   }
 };
 
 
+// Use Cube<NUM>::visitRows to run cdf97() on every row
 template<class NUM>
 void cdf97_3d_one_axis(CubeNum<NUM> *data, int stepCount) {
   if (stepCount > 0) {
@@ -914,6 +918,8 @@ void cdf97_3d_one_axis(CubeNum<NUM> *data, int stepCount) {
 }
 
 
+// This will be called once for each row in the dataset by
+// Cube<NUM>::visitRows. It will perform run cdf97_inverse() on the row.
 template<class NUM>
 class CDF97InvRowVisitor {
 public:
@@ -928,12 +934,13 @@ public:
     delete[] temp;
   }
 
-  void visitRow(NUM *row, int len) {
+  void visitRow(NUM *row, int len, int y, int z) {
     cdf97_inverse(len, row, steps, temp);
   }
 };
 
 
+// Use Cube<NUM>::visitRows to run cdf97_inverse() on every row
 template<class NUM>
 void cdf97_inv_3d_one_axis(CubeNum<NUM> *data, int stepCount) {
   if (stepCount > 0) {
@@ -943,11 +950,11 @@ void cdf97_inv_3d_one_axis(CubeNum<NUM> *data, int stepCount) {
 }
 
 
-
 // 3-d CDF 9.7
-float cdf97_3d(CubeFloat *data, scu_wavelet::int3 stepCount, bool inverse,
-               bool standardTranspose) {
-  double startTime = NixTimer::time();
+void cdf97_3d(CubeFloat *data, scu_wavelet::int3 stepCount, bool inverse,
+              bool standardTranspose, bool quiet) {
+
+  double xform1=0, xform2=0;
 
   if (!inverse) {
     
@@ -956,9 +963,17 @@ float cdf97_3d(CubeFloat *data, scu_wavelet::int3 stepCount, bool inverse,
       // forward standard: x steps, transpose, y steps, transpose, z steps
 
       cdf97_3d_one_axis(data, stepCount.x);
+
+      double startXform = NixTimer::time();
       data->transpose3dFwd();  // xyz -> yzx
+      xform1 = NixTimer::time() - startXform;
+
       cdf97_3d_one_axis(data, stepCount.y);
-      data->transpose3dFwd();
+
+      startXform = NixTimer::time();
+      data->transpose3dFwd();  // yzx -> zxy
+      xform2 = NixTimer::time() - startXform;
+
       cdf97_3d_one_axis(data, stepCount.z);
 
     } else {
@@ -980,9 +995,17 @@ float cdf97_3d(CubeFloat *data, scu_wavelet::int3 stepCount, bool inverse,
       // backwards standard: z inverse steps, reverse transpose,
       // y inverse steps, reverse transpose, x inverse steps
       cdf97_inv_3d_one_axis(data, stepCount.z);
-      data->transpose3dBack();
+
+      double startXform = NixTimer::time();
+      data->transpose3dBack();  // zxy -> yzx
+      xform1 = NixTimer::time() - startXform;
+
       cdf97_inv_3d_one_axis(data, stepCount.y);
-      data->transpose3dBack();
+
+      startXform = NixTimer::time();
+      data->transpose3dBack();  // yzx -> xyz
+      xform2 = NixTimer::time() - startXform;
+
       cdf97_inv_3d_one_axis(data, stepCount.x);
    
     } else {
@@ -992,5 +1015,8 @@ float cdf97_3d(CubeFloat *data, scu_wavelet::int3 stepCount, bool inverse,
     }
   }
 
-  return (NixTimer::time() - startTime) * 1000;
+  if (!quiet) {
+    printf("Transpose %.3f ms + %.3f ms = %.3f ms\n", 
+           xform1*1000, xform2*1000, (xform1+xform2)*1000);
+  }
 }

@@ -13,6 +13,9 @@
 
 using namespace scu_wavelet;
 
+// global variable that disables status output
+bool QUIET = false;
+
 // returns true iff 'suffix' is a suffix of 's'
 bool endsWith(const char *s, const char *suffix);
 bool compressFile(const char *inputFile, const char *outputFile, Options &opt);
@@ -31,26 +34,34 @@ void computeLloydQuantization(const float *inputData, int count, int bits,
 			      std::vector<float> &quantBinValues);
 void testHuffman(const int data[], int count, int bitCount);
 
-// On error, output an error message and return false
-bool readData(const char *filename, CubeFloat &data);
+// Read one cubelet from the input file into 'inputData' (the original data)
+// and a copy in 'data' (padded and translated to floats).
+bool readData(const char *filename,
+              Cube *inputData,  // the original data, may not be floats
+              CubeFloat *data,  // input data transformed into floats
+              CubeletStreamReader *cubeletStream,
+              WaveletCompressionParam *param);
 
 // pad the data so each transform step has an even number of elements
-void padDataSize(Cube &data, int3 steps);
+void padDataSize(int3 &size, int3 steps);
 
 // pad the actual data, repeating the last value in each axis as needed
-void padData(CubeFloat &data, int3 originalSize, bool quiet);
+void padData(CubeFloat &data, int3 originalSize);
 
 void setWaveletSteps(int3 &steps, const int3 &size);
 
+// Peform the wavelet transform
+bool waveletTransform(CubeFloat &data, const WaveletCompressionParam &param,
+                      bool isInverse, const Options &opt);
 
 // quantize the data
 bool quantize(const CubeFloat &data, CubeInt &quantizedData,
               float maxAbsVal, WaveletCompressionParam &param,
               const float *nonzeroData, int nonzeroCount,
-              bool quiet, float *quantErrorOut = NULL);
+              float *quantErrorOut = NULL);
 
 bool dequantize(const CubeInt &quantizedData, CubeFloat &data,
-                WaveletCompressionParam &param, bool quiet);
+                WaveletCompressionParam &param);
 
 void quantizationExperiments(CubeFloat &data, Options &opt,
                              const float *sortedAbsData,
@@ -62,6 +73,9 @@ int main(int argc, char **argv) {
   int nextArg;
 
   if (!parseOptions(argc, argv, opt, nextArg)) return 1;
+  
+  // set global variable to enable/disable status output
+  QUIET = opt.quiet;
 
   if (argc - nextArg != 2) printHelp();
 
@@ -99,120 +113,25 @@ bool compressFile(const char *inputFile, const char *outputFile,
   Cube inputData;
   CubeFloat data;
   CubeInt quantizedData;
-  // Data2d data, quantizedData;
-  // Data3d data3d;
-  // Data3dInt quantizedData3d;
   double firstStartTime, startTime, elapsed;
-  const bool quiet = opt.quiet;
-  bool isCubeletFile = endsWith(inputFile, ".cube");
-  CubeletStreamReader *cubeletStream = NULL;
+  CubeletStreamReader cubeletStream;
 
-  // get the size of the data without reading the data
-  if (!isCubeletFile) {
-    if (!readDataFile(inputFile, (float**)NULL,
-                      &inputData.size.x, &inputData.size.y))
-      return false;
-    inputData.size.z = 1;
-    inputData.datatype = WAVELET_DATA_FLOAT32;
-  } else {
-    cubeletStream = new CubeletStreamReader();
-    if (!cubeletStream->open(inputFile)) return false;
+  firstStartTime = NixTimer::time();
 
-    do {
-      if (!cubeletStream->next(&inputData)) {
-        fprintf(stderr, "No uncompressed cubelets in the input data.\n");
-        return false;
-      }
+  // read and pad the data
+  if (!readData(inputFile, &inputData, &data, &cubeletStream, &param))
+    return false;
 
-    } while (data.isWaveletCompressed);
-
-    // note: inputData.datatype might not be FLOAT32
-  }    
-
-  // save the original size and datatype
-  param.originalSize = inputData.size;
-  param.originalDatatype = inputData.datatype;
-
-  // adjust the number of wavelet steps in case the user requested too many
-  setWaveletSteps(param.transformSteps, inputData.size);
-
-  // Pad the size of the data (without touching the data itself, because
-  // it hasn't been loaded yet) to align with the number of transformation
-  // steps we'll be doing.
-  padDataSize(inputData, param.transformSteps);
-
-  // allocate data storage
-  inputData.allocate();
-
-  // read the data file
-  firstStartTime = startTime = NixTimer::time();
-  if (!isCubeletFile) {
-    assert(inputData.datatype == WAVELET_DATA_FLOAT32);
-    *(Cube*)&data = inputData;
-    inputData.data_ = NULL;
-
-    float *array;
-    int width, height;
-    if (!readDataFile(inputFile, &array, &width, &height)) return false;
-    data.copyFrom(array, int3(width, height, 1));
-  } else { // read cubelet entry
-    if (!cubeletStream->getCubeData(&inputData)) return false;
-
-    // translate the cube data if necessary
-    translateCubeDataToFloat(&inputData, &data);
-
-    // XXX if reading multiple cubelets, don't close
-    cubeletStream->close();
-    delete cubeletStream;
-    cubeletStream = NULL;
-  }
-
-  elapsed = NixTimer::time() - startTime;
-  if (!quiet)
-    printf("Read %dx%dx%d data file: %.2f ms\n",
-           data.size.x, data.size.y, data.size.z,
-           elapsed * 1000);
-
-  // pad the data by replicating the values at the end of each axis
-  padData(data, param.originalSize, opt.quiet);
-
-  // perform the wavelet transform
-  if (!(param.transformSteps == int3(0,0,0))) {
-    float waveletMs = 0;
-
-    assert(data.width() == data.height());
-    // assert(data.depth() == 1);
-
-    if (opt.verbose) data.print("Before wavelet transform");
-
-    if (param.waveletAlg == WAVELET_CDF97) {
-      waveletMs = cdf97_3d(&data, param.transformSteps, false, 
-                           param.isWaveletTransposeStandard);
-    }
-
-    else if (param.waveletAlg == WAVELET_HAAR) {
-      waveletMs = haar_3d(&data, param.transformSteps, false, 
-                          param.isWaveletTransposeStandard);
-    }
-
-    else {
-      fprintf(stderr, "Unknown wavelet: %s\n",
-              waveletAlgToName(param.waveletAlg));
-      return false;
-    }
-
-    if (opt.verbose) data.print("After wavelet transform");
-
-    if (!quiet)
-      printf("Wavelet transform (%d steps): %.2f ms\n", 
-             param.transformSteps.x, waveletMs);
-  }
+  // perform the wavelet transformation
+  if (!waveletTransform(data, param, false, opt)) return false;
 
   // save the intermediate data to a file before quantizing
   if (opt.saveBeforeQuantizingFilename != "") {
     const char *filename = opt.saveBeforeQuantizingFilename.c_str();
     CubeletStreamWriter writer;
     data.param = param;
+
+    // if the data is 1xHxD, transpose it to HxDx1
     bool isTransposed = false;
     if (data.width() == 1) {
       data.transpose3dFwd();
@@ -221,9 +140,10 @@ bool compressFile(const char *inputFile, const char *outputFile,
     if (!writer.open(filename) ||
         !writer.addCubelet(&data) ||
         !writer.close()) {
-      printf("Failed to write intermediate data file \"%s\".\n", filename);
+      fprintf(stderr, "Failed to write intermediate data file \"%s\".\n",
+              filename);
     } else {
-      if (!quiet)
+      if (!QUIET)
         printf("Write intermediate data file \"%s\"\n", filename);
     }
     if (isTransposed)
@@ -254,7 +174,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   float *nonzeroData = sortedAbsData + count - nonzeroCount;
 
   elapsed = NixTimer::time() - startTime;
-  if (!quiet)
+  if (!QUIET)
     printf("Compute threshold = %g, min = %g, max = %g: %.2f ms\n",
            param.thresholdValue, minVal, maxVal, elapsed*1000);
 
@@ -268,7 +188,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   */
 
   if (!quantize(data, quantizedData, maxAbsVal, param, nonzeroData,
-                nonzeroCount, opt.quiet)) return false;
+                nonzeroCount)) return false;
 
   if (opt.verbose) quantizedData.print("After quantization");
   
@@ -290,7 +210,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   cubeletWriter.close();
 
     
-  if (!quiet) {
+  if (!QUIET) {
     printf("Write data file: %.2f ms\n", (NixTimer::time() - startTime)*1000);
     printf("Total: %.2f ms\n", (NixTimer::time() - firstStartTime)*1000);
   }
@@ -317,10 +237,10 @@ bool decompressFile(const char *inputFile, const char *outputFile,
   WaveletCompressionParam &param = quantizedData.param;
 
   elapsed = NixTimer::time() - startTime;
-  if (!opt.quiet)
+  if (!QUIET)
     printf("Read %dx%dx%d data file: %.2f ms\n",
            quantizedData.size.x, quantizedData.size.y, quantizedData.size.z,
-           (NixTimer::time() - startTime) * 1000);
+           elapsed * 1000);
 
   data.size = quantizedData.size;
   data.param = param;
@@ -329,32 +249,10 @@ bool decompressFile(const char *inputFile, const char *outputFile,
   if (opt.verbose) quantizedData.print("Before dequantize");
   
   // de-quantize the data
-  dequantize(quantizedData, data, param, opt.quiet);
-
-  if (opt.verbose) data.print("After dequantize");
+  dequantize(quantizedData, data, param);
 
   // perform inverse wavelet transform
-
-  if (param.waveletAlg == WAVELET_CDF97) {
-    elapsed = cdf97_3d(&data, param.transformSteps, true, 
-                       param.isWaveletTransposeStandard);
-  }
-  
-  else if (param.waveletAlg == WAVELET_HAAR) {
-    elapsed = haar_3d(&data, param.transformSteps, true, 
-                      param.isWaveletTransposeStandard);
-  }
-  
-  else {
-    fprintf(stderr, "Unknown wavelet: %s\n",
-            waveletAlgToName(param.waveletAlg));
-    return false;
-  }
-
-  if (opt.verbose) data.print("After inverse transform");
-
-  if (!opt.quiet)
-    printf("Wavelet inverse transform: %.2f ms\n", elapsed);
+  if (!waveletTransform(data, param, true, opt)) return false;
 
   // change the data back to the original datatype, if necessary
   outputData.size = param.originalSize;
@@ -369,7 +267,7 @@ bool decompressFile(const char *inputFile, const char *outputFile,
       !outStream.close())
     return false;
 
-  if (!opt.quiet) {
+  if (!QUIET) {
     printf("Write file: %.2f ms\n", (NixTimer::time() - startTime) * 1000);
     printf("Total: %.2f ms\n", (NixTimer::time() - firstStartTime) * 1000);
   }
@@ -378,51 +276,177 @@ bool decompressFile(const char *inputFile, const char *outputFile,
 }
 
 
+/**
+   Read a cubelet from the input file.
+     inputData will contain the original data
+     data will contain a copy of the data, padded appropriately for the
+       the number of transform steps in param->transformSteps
+       (for n steps, pad up to a multiple of 2^n)
+     How param is used:
+       transformSteps is read to do the padding
+       originalSize is set
+       originalDatatype is set
+
+   If the filename ends with ".cube":
+     It is assumed to be a cubelet file, and is read with
+     cubeletStream. cubeletStream will be opened if it isn't
+     already. It will not be closed, so that more cubelets can be read.
+
+   If the filename doesn't end with ".cube":
+     It will be read with "readDataFile" from data_io.h.
+
+   On error, output an error message and return false
+*/
+bool readData(const char *filename,
+              Cube *inputData,  // the original data, may not be floats
+              CubeFloat *data,  // input data transformed into floats
+              CubeletStreamReader *cubeletStream,
+              WaveletCompressionParam *param) {
+
+  double startTime = NixTimer::time();
+
+  bool isCubeletFile = endsWith(filename, ".cube");
+
+  // get the size of the data without reading the data
+  if (!isCubeletFile) {
+
+    if (!readDataFile(filename, (float**)NULL,
+                      &inputData->size.x, &inputData->size.y))
+      return false;
+    inputData->size.z = 1;
+    inputData->datatype = WAVELET_DATA_FLOAT32;
+
+  } else {
+
+    // open the stream if it isn't already
+    if (!cubeletStream->isOpen()) {
+      if (!cubeletStream->open(filename)) return false;
+    }
+
+    // find the next uncompressed cubelet
+    do {
+      if (!cubeletStream->next(inputData)) {
+        fprintf(stderr, "No uncompressed cubelets in the input data.\n");
+        return false;
+      }
+
+    } while (inputData->isWaveletCompressed);
+
+    // note: inputData.datatype might not be FLOAT32
+  }
+
+  inputData->allocate();
+  
+  // save the original size of the input data
+  param->originalSize = inputData->size;
+  param->originalDatatype = inputData->datatype;
+
+  // adjust the number of wavelet steps in case the user requested too many
+  setWaveletSteps(param->transformSteps, inputData->size);
+
+  // Pad the size of the data (without touching the data itself, because
+  // it hasn't been loaded yet) to align with the number of transformation
+  // steps we'll be doing.
+  int3 paddedSize = inputData->size;
+  padDataSize(paddedSize, param->transformSteps);
+  data->size = paddedSize;
+  data->allocate();
+
+  // read the actual data
+  if (!isCubeletFile) {
+    assert(inputData->datatype == WAVELET_DATA_FLOAT32);
+
+    float *array;
+    int width, height;
+    if (!readDataFile(filename, &array, &width, &height)) return false;
+
+    assert(inputData->size == int3(width, height, 1));
+    memcpy(inputData->data_, array, sizeof(float)*width*height);
+    data->copyFrom(array, inputData->size);
+    delete[] array;
+
+  } else { // read cubelet entry
+
+    if (!cubeletStream->getCubeData(inputData)) return false;
+
+    // translate the cube data if necessary
+    translateCubeDataToFloat(inputData, data);
+
+  }
+
+  double elapsed = NixTimer::time() - startTime;
+  if (!QUIET)
+    printf("Read %dx%dx%d data file: %.2f ms\n",
+           inputData->size.x, inputData->size.y, inputData->size.z,
+           elapsed * 1000);
+
+  padData(*data, inputData->size);
+
+  return true;
+}
+
+
+class RowByteToFloat {
+  CubeFloat *dest;
+public:
+  RowByteToFloat(CubeFloat *d) : dest(d) {}
+
+  void visitRow(const unsigned char *readp, int length, int y, int z) {
+    const unsigned char *end = readp + length;
+    float *writep = dest->pointer(0, y, z);
+    while (readp < end) {
+      *writep++ = *readp++ * (1.0f / 255) - 0.5f;
+    }
+  }
+};
+
+class RowIntToFloat {
+  CubeFloat *dest;
+public:
+  RowIntToFloat(CubeFloat *d) : dest(d) {}
+
+  void visitRow(const int *readp, int length, int y, int z) {
+    const int *end = readp + length;
+    float *writep = dest->pointer(0, y, z);
+    while (readp < end) {
+      *writep++ = *readp++;
+    }
+  }
+};
+
 // make the cubelet data into floats, if it isn't already
 void translateCubeDataToFloat(Cube *src, CubeFloat *dest) {
 
   // check that there are no insets
   assert(src->size == src->totalSize);
 
-  // copy source size
-  dest->size = dest->totalSize = src->size;
+  // copy source cubelet id
   dest->parentOffset = src->parentOffset;
 
   if (src->datatype == WAVELET_DATA_FLOAT32) {
-    dest->data_ = src->data_;
-    src->data_ = NULL;
-    dest->ownsData = src->ownsData;
+    dest->copyFrom(*(const CubeFloat*)src);
     return;
   }
 
-  dest->allocate();
+  // check that dest's memory is already allocated
+  assert(dest->data_);
 
-  int count = src->count();
-  float *writep = dest->pointer(0,0,0);
+  // int count = src->count();
+  // float *writep = dest->pointer(0,0,0);
   
   // map 0..255 to -.5 .. .5
   if (src->datatype == WAVELET_DATA_UINT8) {
     CubeByte *s = (CubeByte*) src;
-    unsigned char *readp = s->pointer(0,0,0), *endp = readp + count;
-
-    while (readp < endp) {
-      *writep++ = *readp++ * (1.0f / 255) - 0.5f;
-
-    }
+    RowByteToFloat rowVisitor(dest);
+    s->visitRows(rowVisitor);
   }
 
   // without any other range information, just translate directly to floats
   else if (src->datatype == WAVELET_DATA_INT32) {
     CubeInt *s = (CubeInt*) src;
-    int *readp = s->pointer(0,0,0), *endp = readp + count;
-
-    // map 0..255 to -.5 .. .5
-    while (readp < endp) {
-      *writep++ = *readp++;
-    }
+    RowIntToFloat rowVisitor(dest);
+    s->visitRows(rowVisitor);
   }
-
-  src->deallocate();
 }
 
 
@@ -484,85 +508,16 @@ void translateCubeFloatToData(CubeFloat *src, Cube *dest, bool verbose) {
 }
 
 
-// On error, output an error message and return false
-bool readData(const char *filename, CubeFloat &data) {
-
-  // read a 2d data file
-  if (endsWith(filename, ".data")) {
-    float *array;
-    int width, height;
-    if (!readDataFile(filename, &array, &width, &height)) return false;
-
-    data.size = int3(width, height, 1);
-    data.allocate();
-    data.copyFrom(array, int3(width, height, 1));
-
-    return true;
-  }
-
-  // read a 3d cubelet
-  else if (endsWith(filename, ".cube") || !strcmp(filename, "-")) {
-    if (!strcmp(filename, "-")) filename = NULL;
-    CubeletStreamReader reader;
-    if (!reader.open(filename)) return false;
-
-    if (!reader.next(&data)) {
-      fprintf(stderr, "No cubelets found in %s.\n",
-              filename ? filename : "stdin");
-      return false;
-    }
-
-    data.allocate();
-
-    if (!reader.getCubeData(&data)) return false;
-
-    // XXX if reading multiple cubelets, don't close
-    reader.close();
-
-    return true;
-  }
-
-  else {
-    fprintf(stderr, "Input file type '%s' not recognized. "
-            "Expected '.data' or '.cube'.\n", filename);
-    return false;
-  }
-
-}
-
-
 // pad the data so each transform step has an even number of elements
-void padDataSize(Cube &data, int3 steps) {
-  data.size.x = dwt_padded_length(data.size.x, steps.x, false);
-  data.size.y = dwt_padded_length(data.size.y, steps.y, false);
-  data.size.z = dwt_padded_length(data.size.z, steps.z, false);
+void padDataSize(int3 &size, int3 steps) {
+  size.x = dwt_padded_length(size.x, steps.x, false);
+  size.y = dwt_padded_length(size.y, steps.y, false);
+  size.z = dwt_padded_length(size.z, steps.z, false);
 }
-
-
-/*
-void padData(Data2d &data, DWTPadding padMethod, bool quiet) {
-  int longSide = data.width > data.height ? data.width : data.height;
-  int size = dwt_padded_length(longSide, 0, true);
-  if (data.width != size || data.height != size) {
-    double startTime = NixTimer::time();
-    float *paddedData = dwt_pad_2d(data.height, data.width, data.width,
-                                   data.floatData, size, size, size,
-                                   NULL, padMethod);
-    double elapsed = NixTimer::time() - startTime;
-    if (!quiet)
-      printf("Pad data from %dx%d to %dx%d: %.2f ms\n",
-             data.width, data.height, size, size,
-             elapsed*1000);
-    delete[] data.floatData;
-    data.floatData = paddedData;
-    data.width = data.height = size;
-  }
-}
-*/
 
 
 // REPEAT-pad data
-void padData(CubeFloat &data, int3 originalSize, bool quiet) {
+void padData(CubeFloat &data, int3 originalSize) {
   
   if (data.size == originalSize) return;
   assert(data.size >= originalSize);
@@ -593,7 +548,7 @@ void padData(CubeFloat &data, int3 originalSize, bool quiet) {
     memcpy(data.pointer(0, 0, z), layerp, layerSize);
 
   double elapsed = NixTimer::time() - startTime;
-  if (!quiet)
+  if (!QUIET)
     printf("Pad data from %dx%dx%d to %dx%dx%d: %.2f ms\n",
            originalSize.x, originalSize.y, originalSize.z, 
            data.width(), data.height(), data.depth(),
@@ -617,9 +572,51 @@ void setWaveletSteps(int3 &steps, const int3 &size) {
 }
 
 
+// Peform the wavelet transform
+bool waveletTransform(CubeFloat &data, const WaveletCompressionParam &param,
+                      bool isInverse, const Options &opt) {
+
+  // do nothing if 0 steps in each direction
+  if (param.transformSteps == int3(0,0,0)) return true;
+  
+  double startTime = NixTimer::time();
+
+  if (opt.verbose) data.print("Before wavelet transform");
+
+  if (param.waveletAlg == WAVELET_CDF97) {
+    cdf97_3d(&data, param.transformSteps, isInverse, 
+             param.isWaveletTransposeStandard);
+  }
+
+  else if (param.waveletAlg == WAVELET_HAAR) {
+    haar_3d(&data, param.transformSteps, isInverse, 
+            param.isWaveletTransposeStandard);
+  }
+
+  else {
+    fprintf(stderr, "Unknown wavelet: %s\n",
+            waveletAlgToName(param.waveletAlg));
+    return false;
+  }
+
+  if (opt.verbose) data.print("After wavelet transform");
+
+  double elapsedMs = (NixTimer::time() - startTime) * 1000;
+
+  if (!QUIET)
+    printf("%s%s wavelet transform (%d,%d,%d steps): %.2f ms\n", 
+           waveletAlgToName(param.waveletAlg),
+           isInverse ? " inverse" : "",
+           param.transformSteps.x, param.transformSteps.y,
+           param.transformSteps.z, elapsedMs);
+
+  return true;
+}
+
+
 bool quantize(const CubeFloat &data, CubeInt &quantizedData,
               float maxAbsVal, WaveletCompressionParam &param,
-              const float *nonzeroData, int nonzeroCount, bool quiet,
+              const float *nonzeroData, int nonzeroCount,
               float *quantErrorOut) {
 
   float quantErr = -1;
@@ -669,7 +666,7 @@ bool quantize(const CubeFloat &data, CubeInt &quantizedData,
       computeLloydQuantization(nonzeroData, nonzeroCount, quantizeBits,
 			       param.binBoundaries, param.binValues);
       double elapsed = NixTimer::time() - startTime;
-      if (!quiet)
+      if (!QUIET)
         printf("Lloyd quantization %.2f ms\n", elapsed*1000);
       startTime = NixTimer::time();
       QuantCodebook qcb(param.binBoundaries, param.binValues);
@@ -687,21 +684,22 @@ bool quantize(const CubeFloat &data, CubeInt &quantizedData,
   }
 
   if (quantErr >= 0) {
-    if (!quiet)
+    if (!QUIET)
       printf("Quantization error: %g\n", quantErr);
     if (quantErrorOut) *quantErrorOut = quantErr;
   }
 
   double elapsed = NixTimer::time() - startTime;
-  if (!quiet)
-    printf("Quantize: %.2f ms\n", elapsed*1000);
+  if (!QUIET)
+    printf("Quantize %s: %.2f ms\n", quantAlgId2Name(param.quantAlg),
+           elapsed*1000);
 
   return true;
 }
 
 
 bool dequantize(const CubeInt &quantizedData, CubeFloat &data,
-                WaveletCompressionParam &param, bool quiet) {
+                WaveletCompressionParam &param) {
 
   double startTime = NixTimer::time();
   
@@ -745,8 +743,9 @@ bool dequantize(const CubeInt &quantizedData, CubeFloat &data,
     return false;
   }
 
-  if (!quiet)
-    printf("Dequantize: %.2f ms\n", (NixTimer::time() - startTime) * 1000);
+  if (!QUIET)
+    printf("Dequantize %s: %.2f ms\n", quantAlgId2Name(param.quantAlg),
+           (NixTimer::time() - startTime) * 1000);
 
   return true;
 }

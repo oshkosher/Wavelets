@@ -477,14 +477,15 @@ class CubeNum : public Cube {
   }
 
 
-  /* Visit every row of data, calling sink.visitRow(NUM *data, int length)
+  /* Visit every row of data, calling
+       sink.visitRow(NUM *data, int length, int y, int z)
      on each one.
   */
   template <class Sink>
   void visitRows(Sink &sink) {
     for (int z = 0; z < depth(); z++) {
       for (int y = 0; y < height(); y++) {
-        sink.visitRow(pointer(0, y, z), width());
+        sink.visitRow(pointer(0, y, z), width(), y, z);
       }
     }
   }    

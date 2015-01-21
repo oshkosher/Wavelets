@@ -55,8 +55,8 @@ float haar_2d(int size, double *data,
               bool standardTranspose = false);
 
 // 3-d Haar
-float haar_3d(CubeFloat *data, scu_wavelet::int3 stepCount,
-              bool inverse = false, bool standardTranspose = false);
+void haar_3d(CubeFloat *data, scu_wavelet::int3 stepCount,
+             bool inverse = false, bool standardTranspose = false);
 
 typedef enum {
   ZERO_FILL,  // fill pad elements with zero
@@ -99,7 +99,8 @@ void cdf97(int length, float *data, int stepCount, float *tempGiven = NULL);
 void cdf97_inverse(int length, float *data, int stepCount, float *tempGiven = NULL);
 
 // 3-d CDF 9.7
-float cdf97_3d(CubeFloat *data, scu_wavelet::int3 stepCount,
-               bool inverse = false, bool standardTranspose = true);
+void cdf97_3d(CubeFloat *data, scu_wavelet::int3 stepCount,
+              bool inverse = false, bool standardTranspose = true,
+              bool quiet = false);
 
 #endif // __DWT_CPU_H__
