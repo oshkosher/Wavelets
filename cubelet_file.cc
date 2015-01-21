@@ -369,7 +369,7 @@ bool CubeletStreamReader::getCubeData(Cube *cube) {
 
     
 void CubeletStreamReader::close() {
-  if (inf != stdout) fclose(inf);
+  if (inf && inf != stdout) fclose(inf);
   inf = NULL;
 }
 
