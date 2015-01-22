@@ -139,6 +139,10 @@ class ErrorAccumulator {
     if (count == 0) return 0;
     return sumDiff / count;
   }
+
+  float getL1Error() {return sumDiff;}
+  
+  float getL2Error() {return sqrt(sumDiffSquared);}
   
   float getMeanSquaredError() {
     if (count == 0) return 0;

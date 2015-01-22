@@ -73,20 +73,6 @@ void quantizationExperiments(CubeFloat &data, Options &opt,
                              const float *sortedAbsData,
                              float maxAbsVal);
 
-/*
-//  test ErrorAccumulator
-int main() {
-  ErrorAccumulator err;
-  err.add(10, 12);
-  err.add(20, 17);
-  err.add(30, 35);
-  err.add(40, 50);
-  err.setMaxPossible(255);
-  printf("L1 %f, L2 %f, PSNR %f\n", err.getAverageError(),
-         err.getMeanSquaredError(), err.getPeakSignalToNoiseRatio());
-  return 0;
-}
-*/
   
 
 int main(int argc, char **argv) {
@@ -1041,4 +1027,22 @@ void quantizationExperiments(const Data2d &data, Options &opt,
     }
   }
 }
+*/
+
+
+/*
+
+//  test ErrorAccumulator
+int main() {
+  ErrorAccumulator err;
+  err.add(10, 12);
+  err.add(20, 17);
+  err.add(30, 35);
+  err.add(40, 50);
+  err.setMaxPossible(255);
+  printf("L1 %f, L2 %f, MSE %f, PSNR %f\n", err.getL1Error(), err.getL2Error(),
+         err.getMeanSquaredError(), err.getPeakSignalToNoiseRatio());
+  return 0;
+}
+
 */
