@@ -39,11 +39,9 @@
 # 
 
 # build all the tools that don't require CUDA
-default: convert test_haar_cpu test_compress_cpu \
-	image_error list_data histogram cubelet_convert
+default: test_compress_cpu java convert histogram cubelet_convert
 
-
-EXECS = test_haar_cpu haar test_compress_cpu \
+EXECS = test_compress_cpu test_haar_cpu haar \
   test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu \
   normalize test_rle test_huffman test_bit_stream test_quant_count \
   list_data image_error test_transform test_lloyd \
@@ -52,8 +50,13 @@ EXECS = test_haar_cpu haar test_compress_cpu \
 # build the tools that require CUDA
 cuda: haar test_compress_gpu
 
-java: WaveletSampleImage.class ImageDiff.class CubeletFile.class \
-  CubeletViewer.class
+java: makeall.class
+
+makeall.class Cubelet.class CubeletFile.class CubeletViewer.class \
+  ImageDiff.class WaveletCompress.class WaveletSampleImage.class \
+  : makeall.java Cubelet.java CubeletFile.java CubeletViewer.java \
+    ImageDiff.java WaveletCompress.java WaveletSampleImage.java
+	$(JAVAC) makeall.java
 
 all: convert $(EXECS) java libwaveletcuda.so cudahaar.mex
 
@@ -162,22 +165,9 @@ LLOYD_INC=-IOctave/LloydsAlgorithm/src/c++
 haar: $(HAAR_OBJS)
 	$(NVCC) $(HAAR_OBJS) $(PROTOBUF_LIB_NVCC) -o $@
 
-WaveletSampleImage.class: WaveletSampleImage.java
-	$(JAVAC) $<
-
-ImageDiff.class: ImageDiff.java
-	javac $<
-
-cubelet: CubeletFile.class test_cubelet_file MovieToCubelets.class \
-  cubelet_convert CubeletViewer.class
-
-CubeletFile.class: WaveletCompress.java CubeletFile.java
-	$(JAVAC) $^
+cubelet: test_cubelet_file MovieToCubelets.class cubelet_convert
 
 MovieToCubelets.class: MovieToCubelets.java
-	$(JAVAC) $<
-
-CubeletViewer.class: CubeletViewer.java
 	$(JAVAC) $<
 
 test_haar_cpu.o: test_haar_cpu.cc dwt_cpu.h data_io.h cubelet_file.h \
@@ -344,7 +334,7 @@ libwaveletcuda.so: dwt_cpu.h dwt_cpu.cc dwt_gpu.h dwt_gpu.cu data_io.h data_io.c
 cudahaar.mex: Octave/LloydsAlgorithm/cudahaar.cc libwaveletcuda.so
 	$(MKOCT) -L. -lwaveletcuda Octave/LloydsAlgorithm/cudahaar.cc
 
-convert: Makefile WaveletSampleImage.class
+convert: Makefile
 	@echo Write $@ wrapper for \"java WaveletSampleImage\"
 	@echo '#!/bin/sh' > convert
 	@echo 'unset DISPLAY' >> convert

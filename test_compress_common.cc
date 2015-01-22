@@ -19,6 +19,7 @@
 #include "param_string.h"
 #include "test_compress_common.h"
 #include "huffman.h"
+#include "quant.h"
 
 using namespace std;
 using namespace scu_wavelet;
@@ -48,6 +49,7 @@ void printHelp() {
          "    -bq <filename> : before quantizing, save a copy of the data this file\n"
          "    -enc : print the bit encoding of each value\n"
          "    -nonstd : use nonstandard wavelet transpose order\n"
+         "    -err : compute error metrics (slow, disabled by default)\n"
          "    -q : be quiet; suppess all output\n"
          "    -v : be verbose; print the data after each step\n"
          "\n",
@@ -145,6 +147,10 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
 
     else if (!strcmp(arg, "-v")) {
       opt.verbose = true;
+    }
+
+    else if (!strcmp(arg, "-err")) {
+      opt.doComputeError = true;
     }
 
     else if (!strcmp(arg, "-experiment")) {
@@ -459,4 +465,23 @@ static bool writeQuantDataHuffman(Huffman &huff, vector<uint32_t> *outData,
            huff.getLongestEncodingLength());
 
   return true;
+}
+
+
+Quantizer *createQuantizer(const WaveletCompressionParam &param) {
+
+  int bits = ceilLog2(param.binCount);
+
+  switch (param.quantAlg) {
+  case QUANT_ALG_LOG:
+    return new QuantLog(bits, param.thresholdValue, param.maxValue);
+  case QUANT_ALG_UNIFORM:
+    return new QuantUniform(bits, param.thresholdValue, param.maxValue);
+  case QUANT_ALG_LLOYD:
+    return new QuantCodebook(param.binBoundaries, param.binValues);
+  default:
+    fprintf(stderr, "Unknown quantization algorithm id: %d\n",
+            (int)param.quantAlg);
+    return NULL;
+  }
 }

@@ -178,7 +178,7 @@ bool CubeletStreamWriter::addCubelet(const Cube *cubelet) {
   
   // if the data hasn't been set, don't output any data
   if (cubelet->data_) {
-    if (fwrite(cubelet->data_, 1, dataByteCount, outf) != dataByteCount) {
+    if (!cubelet->writeToFile(outf)) {
       fprintf(stderr, "Failed to write cubelet data to file\n");
       return false;
     }

@@ -772,7 +772,7 @@ public:
 
 
     After one transform: 7.00224, 3.52709, 6.82547, 2.87912, 7.34827, 7.39307, 6.14146, 6.57857, 2.33178, -0.122068, -0.136087, -1.33848, 5.86312, 3.64358, -4.18374, -2.92383
- */
+*/
 void cdf97(int length, float *data, int stepCount, float *tempGiven) {
 
   // check that the given array is sufficiently padded

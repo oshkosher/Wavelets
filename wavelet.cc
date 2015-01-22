@@ -146,6 +146,38 @@ int waveletDataTypeSize(WaveletDataType id) {
   }
 }
 
+
+bool Cube::writeToFile(FILE *outf) const {
+
+  // if the data is compressed, write it directly
+  if (isWaveletCompressed) {
+    int bytesRead = fwrite(data_, 1, getSizeInBytes(), outf);
+    if (bytesRead != getSizeInBytes()) {
+      fprintf(stderr, "Failed to write %d cubelet bytes\n",
+              getSizeInBytes());
+      return false;
+    } else {
+      return true;
+    }
+
+  } else {
+
+    // otherwise, be sure to only write the data that is not
+    // part of the padding
+    if (waveletDataTypeSize(datatype) == 1) {
+      const CubeByte *c = (const CubeByte*) this;
+      return c->writeToFile(outf);
+    } else if (waveletDataTypeSize(datatype) == 4) {
+      const CubeInt *c = (const CubeInt*) this;
+      return c->writeToFile(outf);
+    } else {
+      fprintf(stderr, "Unknown datatype id %d\n", datatype);
+      return false;
+    }
+  }
+}
+
+
 template<> void CubeNum<float>::setType() {
   datatype = WAVELET_DATA_FLOAT32;
 }

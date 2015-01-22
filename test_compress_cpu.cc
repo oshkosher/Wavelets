@@ -52,7 +52,7 @@ void setWaveletSteps(int3 &steps, const int3 &size);
 
 // Peform the wavelet transform
 bool waveletTransform(CubeFloat &data, const WaveletCompressionParam &param,
-                      bool isInverse, const Options &opt);
+                      bool isInverse, bool verbose);
 
 // quantize the data
 bool quantize(const CubeFloat &data, CubeInt &quantizedData,
@@ -61,11 +61,33 @@ bool quantize(const CubeFloat &data, CubeInt &quantizedData,
               float *quantErrorOut = NULL);
 
 bool dequantize(const CubeInt &quantizedData, CubeFloat &data,
-                WaveletCompressionParam &param);
+                const WaveletCompressionParam &param);
+
+void computeErrorRates(const CubeInt *quantizedData,
+                       const WaveletCompressionParam &param,
+                       const Cube *inputData,
+                       float *meanSquaredError,
+                       float *peakSNR);
 
 void quantizationExperiments(CubeFloat &data, Options &opt,
                              const float *sortedAbsData,
                              float maxAbsVal);
+
+/*
+//  test ErrorAccumulator
+int main() {
+  ErrorAccumulator err;
+  err.add(10, 12);
+  err.add(20, 17);
+  err.add(30, 35);
+  err.add(40, 50);
+  err.setMaxPossible(255);
+  printf("L1 %f, L2 %f, PSNR %f\n", err.getAverageError(),
+         err.getMeanSquaredError(), err.getPeakSignalToNoiseRatio());
+  return 0;
+}
+*/
+  
 
 int main(int argc, char **argv) {
 
@@ -123,7 +145,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
     return false;
 
   // perform the wavelet transformation
-  if (!waveletTransform(data, param, false, opt)) return false;
+  if (!waveletTransform(data, param, false, opt.verbose)) return false;
 
   // save the intermediate data to a file before quantizing
   if (opt.saveBeforeQuantizingFilename != "") {
@@ -190,6 +212,13 @@ bool compressFile(const char *inputFile, const char *outputFile,
   if (!quantize(data, quantizedData, maxAbsVal, param, nonzeroData,
                 nonzeroCount)) return false;
 
+  // compute error rates
+  if (opt.doComputeError) {
+    float meanSqErr, peakSNR;
+    computeErrorRates(&quantizedData, param, &inputData, &meanSqErr, &peakSNR);
+    printf("Mean squared error: %.3f, peak SNR: %.3f\n", meanSqErr, peakSNR);
+  }
+
   if (opt.verbose) quantizedData.print("After quantization");
   
   // deallocate sortedAbsData
@@ -252,7 +281,7 @@ bool decompressFile(const char *inputFile, const char *outputFile,
   dequantize(quantizedData, data, param);
 
   // perform inverse wavelet transform
-  if (!waveletTransform(data, param, true, opt)) return false;
+  if (!waveletTransform(data, param, true, opt.verbose)) return false;
 
   // change the data back to the original datatype, if necessary
   outputData.size = param.originalSize;
@@ -574,14 +603,14 @@ void setWaveletSteps(int3 &steps, const int3 &size) {
 
 // Peform the wavelet transform
 bool waveletTransform(CubeFloat &data, const WaveletCompressionParam &param,
-                      bool isInverse, const Options &opt) {
+                      bool isInverse, bool verbose) {
 
   // do nothing if 0 steps in each direction
   if (param.transformSteps == int3(0,0,0)) return true;
   
   double startTime = NixTimer::time();
 
-  if (opt.verbose) data.print("Before wavelet transform");
+  if (verbose) data.print("Before wavelet transform");
 
   if (param.waveletAlg == WAVELET_CDF97) {
     cdf97_3d(&data, param.transformSteps, isInverse, 
@@ -599,7 +628,7 @@ bool waveletTransform(CubeFloat &data, const WaveletCompressionParam &param,
     return false;
   }
 
-  if (opt.verbose) data.print("After wavelet transform");
+  if (verbose) data.print("After wavelet transform");
 
   double elapsedMs = (NixTimer::time() - startTime) * 1000;
 
@@ -645,7 +674,7 @@ bool quantize(const CubeFloat &data, CubeInt &quantizedData,
     {  // use a new code block so we can allocate new variables
       QuantUniform qunif(quantizeBits, param.thresholdValue, maxAbsVal);
       QuantizationLooper<QuantUniform> qloop(&qunif, quantizeBits);
-      qloop.quantize(count, inputData, outputData, true);
+      qloop.quantize(count, inputData, outputData, quantErrorOut != NULL);
       quantErr = qloop.getError();
       param.maxValue = maxAbsVal;
     }
@@ -655,7 +684,7 @@ bool quantize(const CubeFloat &data, CubeInt &quantizedData,
     {
       QuantLog qlog(quantizeBits, param.thresholdValue, maxAbsVal);
       QuantizationLooper<QuantLog> qloop(&qlog, quantizeBits);
-      qloop.quantize(count, inputData, outputData, true);
+      qloop.quantize(count, inputData, outputData, quantErrorOut != NULL);
       quantErr = qloop.getError();
       param.maxValue = maxAbsVal;
     }
@@ -672,7 +701,7 @@ bool quantize(const CubeFloat &data, CubeInt &quantizedData,
       QuantCodebook qcb(param.binBoundaries, param.binValues);
       // qcb.printCodebook();
       QuantizationLooper<QuantCodebook> qloop(&qcb, quantizeBits);
-      qloop.quantize(count, inputData, outputData, true);
+      qloop.quantize(count, inputData, outputData, quantErrorOut != NULL);
       quantErr = qloop.getError();
     }
     break;
@@ -683,23 +712,26 @@ bool quantize(const CubeFloat &data, CubeInt &quantizedData,
     return false;
   }
 
-  if (quantErr >= 0) {
+  // if the caller asked for the error rate to be computed print it and
+  // return it
+  if (quantErrorOut && quantErr >= 0) {
     if (!QUIET)
       printf("Quantization error: %g\n", quantErr);
     if (quantErrorOut) *quantErrorOut = quantErr;
   }
 
-  double elapsed = NixTimer::time() - startTime;
-  if (!QUIET)
+  if (!QUIET) {
+    double elapsed = NixTimer::time() - startTime;
     printf("Quantize %s: %.2f ms\n", quantAlgId2Name(param.quantAlg),
            elapsed*1000);
+  }
 
   return true;
 }
 
 
 bool dequantize(const CubeInt &quantizedData, CubeFloat &data,
-                WaveletCompressionParam &param) {
+                const WaveletCompressionParam &param) {
 
   double startTime = NixTimer::time();
   
@@ -748,6 +780,62 @@ bool dequantize(const CubeInt &quantizedData, CubeFloat &data,
            (NixTimer::time() - startTime) * 1000);
 
   return true;
+}
+
+
+/**
+   Compare the compressed data with the original data.
+   Given quantized data, dequantize it and apply the inverse wavelet
+   transform.
+*/
+void computeErrorRates(const CubeInt *quantizedData,
+                       const WaveletCompressionParam &param,
+                       const Cube *inputData,
+                       float *meanSquaredError,
+                       float *peakSNR) {
+
+  if (inputData->datatype != WAVELET_DATA_UINT8) {
+    fprintf(stderr, "Current implementation can only compute error rates if input data is unsigned bytes (0..255)\n");
+    return;
+  }
+
+  // dequantize quantizedData into restoredData
+  CubeFloat restoredData;
+  restoredData.size = quantizedData->size;
+  restoredData.allocate();
+  if (!dequantize(*quantizedData, restoredData, param)) return;
+
+  // perform the inverse wavelet transform on restoredData
+  if (!waveletTransform(restoredData, param, true, false)) return;
+
+  const int width = inputData->width();
+  const CubeByte *original = (const CubeByte *) inputData;
+
+  ErrorAccumulator errAccum;
+  errAccum.setMaxPossible(255);  // largest unsigned char value
+
+  // for each row of data in the original data, compare pixels
+  for (int z=0; z < original->depth(); z++) {
+    for (int y=0; y < original->height(); y++) {
+      const unsigned char *originalRow = original->pointer(0, y, z);
+      const float *restoredRow = restoredData.pointer(0, y, z);
+      
+      for (int x=0; x < width; x++) {
+        float f = (restoredRow[x] + 0.5f) * 255;
+        if (f < 0) {
+          f = 0;
+        } else if (f > 255) {
+          f = 255;
+        }
+        unsigned char pixelValue = (unsigned char) f;
+
+        errAccum.add(originalRow[x], pixelValue);
+      }
+    }
+  }
+
+  *meanSquaredError = errAccum.getMeanSquaredError();
+  *peakSNR = errAccum.getPeakSignalToNoiseRatio();
 }
 
 

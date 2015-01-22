@@ -24,16 +24,20 @@
 #ifdef _M_X64
 #define copysignf _copysignf
 #else
-#define copysignf QuantFunction::quant_copysignf
+#define copysignf Quantizer::quant_copysignf
 #endif
 #endif
 
 #endif // __CUDACC__
 
 
-class QuantFunction {
+class Quantizer {
+  
  public:
-  HD static float quant_copysignf(float x, float s) {
+  virtual void quantizeRow(const float *in, int *out, int count) = 0;
+  virtual void dequantizeRow(const int *in, float *out, int count) = 0;
+
+  HD static float copysignf(float x, float s) {
     // for some reason, copysignf is defined on 64-bit Windows, but not 32-bit
 #if defined(_WIN32) && !defined(_M_X64)
     if (s < 0)
@@ -41,15 +45,15 @@ class QuantFunction {
     else
       return x;
 #else
-    return copysignf(x, s);
+    return ::copysignf(x, s);
 #endif
   }
 
-  HD static float quant_log2(float x) {
+  HD static float log2(float x) {
 #ifdef _WIN32
     return (log(fabsf(x))/log(2.0));
 #else
-    return log2f(x);
+    return ::log2f(x);
 #endif
   }
 };
@@ -150,7 +154,7 @@ class QuantizationLooper {
 };
 
 
-class QuantUniform {
+class QuantUniform : public Quantizer {
   int bits, base;
   float threshold, maxVal;
   float scale, invScale;
@@ -210,10 +214,20 @@ class QuantUniform {
       return x * invScale - threshold;
     }
   }
+
+  // Override
+  virtual void quantizeRow(const float *in, int *out, int count) {
+    for (int i=0; i < count; i++) out[i] = quant(in[i]);
+  }
+
+  // Override
+  virtual void dequantizeRow(const int *in, float *out, int count) {
+    for (int i=0; i < count; i++) out[i] = dequant(in[i]);
+  }
 };
 
 
-class QuantLog {
+class QuantLog : public Quantizer {
   int bits, base;
   float threshold, invThresh, maxVal, lmax, lmaxInv, dqScale;
 
@@ -263,10 +277,20 @@ class QuantLog {
     float lnVal=fabsf(x*dqScale);
     return copysignf(threshold * expf(lnVal), x);
   }
+
+  // Override
+  virtual void quantizeRow(const float *in, int *out, int count) {
+    for (int i=0; i < count; i++) out[i] = quant(in[i]);
+  }
+
+  // Override
+  virtual void dequantizeRow(const int *in, float *out, int count) {
+    for (int i=0; i < count; i++) out[i] = dequant(in[i]);
+  }
 };
 
 
-class QuantCodebook {
+class QuantCodebook : public Quantizer {
   float lastBoundary;
 
  public:
@@ -324,7 +348,17 @@ class QuantCodebook {
 
     return codebook[x];
   }
-  
+
+  // Override
+  virtual void quantizeRow(const float *in, int *out, int count) {
+    for (int i=0; i < count; i++) out[i] = quant(in[i]);
+  }
+
+  // Override
+  virtual void dequantizeRow(const int *in, float *out, int count) {
+    for (int i=0; i < count; i++) out[i] = dequant(in[i]);
+  }
+
 };
 
 #endif // __QUANT_H__

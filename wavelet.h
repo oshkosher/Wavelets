@@ -355,7 +355,8 @@ class Cube {
     printf("warning: default printfFormat() called\n");
     return "%f ";
   }
-    
+
+  bool writeToFile(FILE *outf) const;
 };
 
 
@@ -464,16 +465,6 @@ class CubeNum : public Cube {
         while (p < e) sink.visit(*p++);
       }
     }
-
-    /*
-    for (int z = 0; z < depth(); z++) {
-      for (int y = 0; y < height(); y++) {
-        for (int x = 0; x < width(); x++) {
-          sink.visit(get(x, y, z));
-        }
-      }
-    }
-    */
   }
 
 
@@ -483,6 +474,15 @@ class CubeNum : public Cube {
   */
   template <class Sink>
   void visitRows(Sink &sink) {
+    for (int z = 0; z < depth(); z++) {
+      for (int y = 0; y < height(); y++) {
+        sink.visitRow(pointer(0, y, z), width(), y, z);
+      }
+    }
+  }    
+
+  template <class Sink>
+  void visitRows(Sink &sink) const {
     for (int z = 0; z < depth(); z++) {
       for (int y = 0; y < height(); y++) {
         sink.visitRow(pointer(0, y, z), width(), y, z);
@@ -557,7 +557,32 @@ class CubeNum : public Cube {
     tmp.data_ = NULL;
     size = tmp.size;
     totalSize = tmp.totalSize;
-  }    
+  }
+
+  class RowFileWriter {
+    FILE *outf;
+    bool err;
+
+   public:
+    RowFileWriter(FILE *o) : outf(o), err(false) {}
+
+    void visitRow(const NUM *row, int length, int y, int z) {
+      if (length != fwrite(row, sizeof(NUM), length, outf))
+        err = true;
+    }
+
+    bool hadError() {return err;}
+  };
+      
+
+  // write the raw binary data for this cubelet to a file
+  // return true on success
+  bool writeToFile(FILE *outf) const {
+    RowFileWriter writer(outf);
+    visitRows(writer);
+    return !writer.hadError();
+  }
+
 
   void print(const char *title = NULL) {
     if (title) printf("%s\n", title);
