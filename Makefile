@@ -121,7 +121,7 @@ PROTOC_VC = $(PROTOBUF_DIR_VC)/$(BUILD)/protoc.exe
 PROTOC = protoc
 NVCC_ARCH_SIZE = -m32
 NVCC_OPT = --compiler-options $(CL_OPT_FLAG) -D_SCL_SECURE_NO_WARNINGS  -I$(PROTOBUF_DIR_VC)/include $(NVCC_COMPILER_BINDIR)
-CLASSPATH_DIR="$(shell cygpath --windows `pwd`)"
+CLASSPATH_DIR="$(shell cygpath --windows `pwd`);protobuf-2.6.0/protobuf.jar;c:/Apps/javacv-bin/javacv.jar"
 JAVAC = javac -cp '.;$(PROTOBUF_JAR);$(JAVACV_JAR)'
 
 else
@@ -163,7 +163,7 @@ haar: $(HAAR_OBJS)
 	$(NVCC) $(HAAR_OBJS) $(PROTOBUF_LIB_NVCC) -o $@
 
 WaveletSampleImage.class: WaveletSampleImage.java
-	javac $<
+	$(JAVAC) $<
 
 ImageDiff.class: ImageDiff.java
 	javac $<

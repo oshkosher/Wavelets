@@ -151,31 +151,43 @@ public class WaveletSampleImage {
 
     String suffix = filenameSuffix(inputFile).toLowerCase();
     boolean sourceIsImage;
+    boolean destIsCubelet = false;
 
-    if (suffix.equals("jpg") || suffix.equals("jpeg")) {
+    if (suffix.equals("jpg") || suffix.equals("jpeg") ||
+        suffix.equals("gif") || suffix.equals("png")) {
       sourceIsImage = true;
-    } else if (suffix.equals("data")) {
+    } else if (suffix.equals("data") || suffix.equals("cube")) {
       sourceIsImage = false;
     } else {
-      System.err.println("Source file unrecognized. Should be .jpg, .jpeg, or .data.");
+      System.err.println("Source file unrecognized. Should be .jpg, .jpeg, .gif, .png, .data, or .cube.");
       return;
     }
 
     if (outputFile != null) {
       String destExt = filenameSuffix(outputFile).toLowerCase();
       if (sourceIsImage) {
-        if (!destExt.equals("data")) {
-          System.err.println("Output file must have .data extension.");
+        if (destExt.equals("cube")) {
+          destIsCubelet = true;
+        } else if (!destExt.equals("data")) {
+          System.err.println("Output file must have .cube or .data extension.");
           return;
         }
       } else {
-        if (!destExt.equals("jpg") && !destExt.equals("jpeg")) {
-          System.err.println("Output file must have .jpg or .jpeg extension.");
+        if (!destExt.equals("jpg") && !destExt.equals("jpeg") &&
+            !destExt.equals("gif") && !destExt.equals("png")) {
+          System.err.println("Output file must have .jpg, .jpeg, .gif, or .png extension.");
           return;
         }
       }
     } else {
-      String destExt = sourceIsImage ? "data" : "jpg";
+      String destExt;
+      if (sourceIsImage) {
+        destExt = "cube";
+        destIsCubelet = true;
+      } else {
+        destExt = "jpg";
+      }
+
       outputFile = inputFile.substring
         (0, inputFile.length() - suffix.length()) + destExt;
     }
@@ -186,7 +198,7 @@ public class WaveletSampleImage {
     }
 
     if (sourceIsImage) {
-      imageToMatrix(inputFile, outputFile, textOutput, doResize,
+      imageToMatrix(inputFile, outputFile, destIsCubelet, textOutput, doResize,
 		    minValue, maxValue);
     } else {
       matrixToImage(inputFile, outputFile, minValue, maxValue);
@@ -219,6 +231,7 @@ public class WaveletSampleImage {
 
   /* Reads a JPEG image, convert to grayscale text data. */
   public static void imageToMatrix(String inputFile, String outputFile,
+                                   boolean isCubeletOutput, 
                                    boolean textOutput, boolean doResize,
 				   float minValue, float maxValue) {
     if (VERBOSE_OUTPUT) {
@@ -232,6 +245,15 @@ public class WaveletSampleImage {
       System.err.println("Error reading \"" + inputFile + "\": " + e);
       return;
     }
+
+    if (image == null) {
+      String[] formats = ImageIO.getReaderFormatNames();
+      System.out.print(inputFile + " not one of ");
+      for (String s : formats) System.out.print(s + " ");
+      System.out.println();
+      return;
+    }
+
     int outputWidth = image.getWidth();
     int outputHeight = image.getHeight();
 
@@ -307,20 +329,35 @@ public class WaveletSampleImage {
       System.out.flush();
     }
 
-    float[] imageData = new float[outputWidth * outputHeight];
-    float colorScale = (maxValue - minValue) / 255.0f;
-    int pos = 0;
-    for (int y=0; y < outputHeight; y++) {
-      for (int x=0; x < outputWidth; x++) {
-        int colorInt = image.getRGB(x, y) & 0xff;
-        imageData[pos++] = colorInt * colorScale + minValue;
+    // for cubelet files use imageDataBytes, otherwise imageData
+    float[] imageData = null;
+    byte[] imageDataBytes = null;
+
+    if (isCubeletOutput) {
+      imageDataBytes = new byte[outputWidth * outputHeight];
+      int pos = 0;
+      for (int y=0; y < outputHeight; y++) {
+        for (int x=0; x < outputWidth; x++) {
+          imageDataBytes[pos++] = (byte) (image.getRGB(x, y) & 0xff);
+        }
+      }
+    } else {
+      imageData = new float[outputWidth * outputHeight];
+
+      float colorScale = (maxValue - minValue) / 255.0f;
+      int pos = 0;
+      for (int y=0; y < outputHeight; y++) {
+        for (int x=0; x < outputWidth; x++) {
+          int colorInt = image.getRGB(x, y) & 0xff;
+          imageData[pos++] = colorInt * colorScale + minValue;
+        }
       }
     }
 
     try {
       long startNano = System.nanoTime();
-      writeMatrix(imageData, outputWidth, outputHeight,
-		  outputFile, !textOutput);
+      writeMatrix(imageData, imageDataBytes, outputWidth, outputHeight,
+		  outputFile, isCubeletOutput, !textOutput);
       double elapsed = (System.nanoTime() - startNano) / 1e9;
       System.out.printf("%d x %d grayscale data written to \"%s\" " +
                         "in %.3f sec\n",
@@ -370,24 +407,35 @@ public class WaveletSampleImage {
                       m.width, m.height, outputFile);
   }
 
-
-  public static void writeMatrix(float[] imageData, int width, int height,
-				 String outputFile, boolean binaryFormat)
+  // use imageDataBytes if isCubeletOutput, otherwise imageData
+  public static void writeMatrix(float[] imageData, byte[] imageDataBytes,
+                                 int width, int height,
+				 String outputFile, boolean isCubeletOutput,
+                                 boolean binaryFormat)
 				 
     throws IOException {
 
-    if (binaryFormat)
-      writeMatrixBinary(imageData, width, height, outputFile);
-    else
-      writeMatrixText(imageData, width, height, outputFile);
+    if (isCubeletOutput) {
+      writeMatrixCubelet(imageDataBytes, width, height, outputFile);
+    } else {
+      if (binaryFormat) {
+        writeMatrixBinary(imageData, width, height, outputFile);
+      } else {
+        writeMatrixText(imageData, width, height, outputFile);
+      }
+    }
   }
 
 
   public static Matrix readMatrix(String inputFile) throws IOException {
-    if (isBinaryFile(inputFile)) {
-      return readMatrixBinary(inputFile);
+    if (isCubeletFile(inputFile)) {
+      return readMatrixCubelet(inputFile);
     } else {
-      return readMatrixText(inputFile);
+      if (isBinaryFile(inputFile)) {
+        return readMatrixBinary(inputFile);
+      } else {
+        return readMatrixText(inputFile);
+      }
     }
   }    
 
@@ -435,6 +483,25 @@ public class WaveletSampleImage {
   }    
 
 
+  private static void writeMatrixCubelet(byte[] imageData, int width,
+                                         int height, String outputFile) {
+    try {
+      Cubelet cube = new Cubelet();
+      cube.setSize(width, height, 1);
+      cube.datatype = Cubelet.DataType.UINT8;
+      cube.byteData = imageData;
+
+      CubeletFile.Writer out = new CubeletFile.Writer();
+      out.open(outputFile);
+      out.addCubelet(cube);
+      out.close();
+    } catch (IOException e) {
+      System.err.println("Error writing cubelet file \"" + outputFile +
+                         "\": " + e);
+    }
+  }
+
+
   private static final int reverseBytes(final int x) {
     return
       ((x & 0xff) << 24) |
@@ -445,15 +512,31 @@ public class WaveletSampleImage {
 
 
   public static boolean isBinaryFile(String filename) throws IOException {
-    FileInputStream in = new FileInputStream(filename);
-    byte buf[] = new byte[8];
+    return firstLineMatches(filename, "binary \n");
+  }
 
-    in.read(buf);
-    in.close();
 
-    String header = new String(buf);
-    // System.out.println("header = \"" + header + "\"");
-    return header.equals("binary \n");
+  public static boolean isCubeletFile(String filename) throws IOException {
+    return firstLineMatches(filename, "SCU cubelets 1.0\n");
+  }
+
+
+  public static boolean firstLineMatches(String filename,
+                                         String expectedHeader) {
+    int lineLen = expectedHeader.length();
+    byte buf[] = new byte[lineLen];
+
+    FileInputStream in = null;
+    try {
+      in = new FileInputStream(filename);
+      in.read(buf);
+      in.close();
+    } catch (IOException e) {
+      return false;
+    }
+    String firstLine = new String(buf);
+
+    return firstLine.equals(expectedHeader);
   }
 
 
@@ -524,5 +607,61 @@ public class WaveletSampleImage {
 
     return data;
   }
+
+
+  private static Matrix readMatrixCubelet(String inputFile) throws IOException {
+    Matrix data = new Matrix();
+
+    CubeletFile.Reader reader = new CubeletFile.Reader();
+    try {
+      reader.open(inputFile);
+    } catch (FileNotFoundException e) {
+      System.err.println("\"" + inputFile + "\" not found.");
+      return null;
+    } catch (Exception e) {
+      System.err.println("Error reading \"" + inputFile + "\": " + e);
+      return null;
+    }
+
+    Cubelet cube = new Cubelet();
+    while (true) {
+      if (!reader.next(cube)) {
+        System.err.println("No uncompressed cubelets found in \"" +
+                           inputFile + "\".");
+        return null;
+      }
+
+      // fetch the first uncompressed cubelet
+      if (cube.compressionAlg == Cubelet.CompressionAlg.NONE) {
+        try {
+          reader.getData(cube);
+        } catch (Exception e) {
+          System.err.println("Error reading cubelet data: " + e);
+          return null;
+        }
+        break;
+      }
+    }
+
+    Matrix image = new Matrix();
+    image.width = cube.width;
+    image.height = cube.height;
+    int count = image.width * image.height;
+    image.data = new float[count];
+    
+    if (cube.datatype == Cubelet.DataType.UINT8) {
+      for (int i=0; i < count; i++) {
+        image.data[i] = (cube.byteData[i] & 0xff) * (1.0f/255) - .5f;
+      }
+    } else {
+      for (int i=0; i < count; i++) {
+        image.data[i] = cube.floatData[i];
+      }
+    }
+
+    return image;
+  }
+    
+    
 }
     
