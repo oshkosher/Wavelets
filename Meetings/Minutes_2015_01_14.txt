@@ -1,0 +1,99 @@
+Minutes of Weekly Meeting of the Wavelet Group
+
+Date: Wednesday, January 14th, 2015
+
+Time: Noon to about 1:25 PM
+
+Present: David Concha (remotely), Anupam Goyal (remotely), Drazen Fabris, Ed Karrels (remotely), Bonnie Smithson (remotely), Sergio Zarantonello
+
+Presentations:
+
+Ed presented “Google Protocol Buffers” and how they are used with cubelets for metadata and data of cubelets.  
+
+Discussions:
+
+Features not to be implemented for the conference: Bonnie mentioned that the following features would not be implemented for the work being done for the conference:
+
+1. Color images.  Only monochrome images would be handled.
+
+2. Implementation on a PC, e.g. for running code via Visual C++.  Only Linux implementation of CUDA would be implemented.  As Anupam asked Ed to clarify, the CUDA implementation would run on Maria’a machine, which is a reliable Linux platform.
+
+3. 4-D images.  Only 3-D images would be handled.
+
+Google Protocol Buffers: Ed mentioned the following:
+
+1. Metadata about a cubelet is stored in the buffers, which is akin to description of a data structure.
+
+2. Fields get tagged internally.
+
+3. Reading and writing of data is highly optimized.  Fields in the metadata do not all need to be filled out.  If a field is not set, then it would not take up space in the data file.
+
+4. The fields are as follows:
+a. In his example, there are 14 different parameters.  First, length of that buffer is written.
+b. The header is a 24 byte text that ends in a newline.  Here the title such as “SCU Cubelet File” is stored.
+
+5. A valid index gets stored to show that this file ran to completion.
+
+Splitting Macular Data File into Cubelets:
+
+1. Ed stored macular data file provided by Serge as four cubelets of size 512 x 128 x 256 (as Anupam noted, the full file size is 512 x 128 x 1024).  Thus, the cubelet data size is 16 MB with 1 byte per voxel.
+
+2. Parameters to reconstitute the entire cube from the four cubelets are also available.  Each cubelet tracks how it is individually stored.  How a cubelet fits into the cube is stored in terms of x, y, and z offsets.
+
+3. The cubelets are essentially stored as a singly linked list.  The size of each “element” of this list is known so that it is easy to skip to the next element.  For example, the metadata is 20 bytes and the cubelet data size is 16 MB.
+
+4. Serge asked about adding an overlap to the cubelets.  Ed mentioned that it would be trivial to add the overlap.
+
+Lloyd’s Algorithm and/or Logarithmic Algorithm and Time Taken by this Step:
+
+1. Drazen asked about the biggest time-consuming step.  David mentioned that it is the Lloyd’s algorithm.  David confirmed that Lloyd’s algorithm is iterative.  Drazen mentioned that Lloyd’s algorithm could be run with very few bins.  Then, number of bins can be varied to see how error and the computation effort change.  Serge asked if running with four bins helps in getting the result for running with five bins.  David said it does not, but, starting with eight bins also gets the result for four bins.
+
+2. With regard to timing, Ed responded that it takes 129 ms to quantize, 3 ms to do Huffman encoding, and 74 ms to write out the file.  Lloyd’s algorithm takes 1200 ms to come up with codebook.  Thus, Huffman encoding is 400 times faster than Lloyd’s algorithm.
+
+3. Serge and Ed agreed that it may be best to optimize with the logarithmic method and then do one final improvement with Lloyd’s algorithm, rather than doing multiple iterations with the Lloyd’s algorithm.  Another option is just to use logarithmic encoding.
+
+Lossless Compression:
+
+1. Serge mentioned that for lossless compression, the three main methods are:
+a. Gzip
+b. Zlib
+c. Huffman encoding, as Ed has done.
+
+2. Serge asked about adding “gzip” lossless compression to Ed’s code so that a comparison can be done with the MatLab code.
+
+3. It was discussed that Ed’s Huffman encoding code can be converted to CUDA.
+
+Other Discussions: 
+
+David mentioned the following:
+
+1. He is doing 3-D in CUDA.  He has finished wavelet transform.
+
+2. He plans to upload the Lloyd’s algorithm.
+
+Drazen mentioned the following:
+
+1. He asked about looking at the accuracy and level of compression. He mentioned trying to sample for every hundredth point.  It was also mentioned it could be done on random points.
+
+2. Regarding accuracy, some wavelet coefficients are dropped during initial thresholding.  Then, more coefficients are dropped because of binning.  He mentioned that we need an error reduction strategy.
+
+Bonnie mentioned compression ratio versus speed.  Anupam suggested that at a later time this could be a user-selectable scale of speed versus compression ratio.
+
+Ed has lossless compression working on the CPU.
+
+Future Work:
+
+1. Serge plans to send the intermediate results from runs with MatLab code to Ed for comparison of results run using MatLab code and Ed’s code.
+
+2. Ed asked if Serge could include lot of comments in the MatLab code to make it understandable.  Serge plans to do that.
+
+3. Serge plans to put seismic data on the FTP site managed by Bonnie.
+
+4. Serge plans to send the dataset to Ed that he ran on the C-code.
+
+5. The Presentation: Serge and Ed would have 10 minutes each.  
+a. For Serge’s part, he plans to use macular cube data or another dataset that justifies using GPUs.  He plans to prepare 15-16 slides.  
+b. For Ed’s part, Serge suggested to Ed to not focus on Haar code but just on “9-7” wavelet transform.  Serge liked Ed’s idea of showing a 3-D matrix transposition (2-D transposition is standard).  
+i. Ed had a question about 3-D transposition about how to rotate, such as XYZ or ZYX?  Is there is standard direction?  Drazen asked to think in terms of right-hand rule in physics, where x cross y gives direction of z, and z cross x gives the direction of y.
+
+6. David would like a letter from Drazen.  Drazen plans to consult Maria about it.
