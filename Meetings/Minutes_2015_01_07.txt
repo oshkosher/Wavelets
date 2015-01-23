@@ -1,0 +1,59 @@
+Minutes of Weekly Meeting of the Wavelet Group
+
+Date: Wednesday, January 7th, 2015
+
+Time: Noon to about 1:30 PM
+
+Present: David Concha (remotely), Anupam Goyal, Ed Karrels (remotely), Bonnie Smithson (remotely), Sergio Zarantonello
+
+Presentations:
+
+Serge presented the following main code segments:
+
+1. His C-language code that compresses in 2-D with 9-7 filters (though it accepts up to 4-D data).
+
+2. His MatLab code that compresses in 3-D with 9-7 filters. We would like to convert this MatLab code to CUDA for parallel processing on GPUs.  
+
+Serge also showed PowerPoint slides for explaining high-pass and low-pass filters.
+
+Discussions:
+
+Before the meeting, Ed and Anupam discussed why a reconstructed file output by Serge’s code (C-language code that compresses in 2-D), on Maria’s machine is not read correctly by Ed’s “WaveletSampleImage” program.  Ed said that the format of this data file output by Serge’s code is different than what is expected by “WaveletSampleImage”.
+
+Serge mentioned the following for his C-language code:
+
+1. The code consists of compression and reconstruction components.
+
+2. It takes a sequence of 3-D cubes as input.  Compression is done on one 2-D section of one cube at a time.  We would like this to compress in 3-D as the MatLab code does.
+
+3. A value of 12,000 is specified as the largest integer value for quantized data. 
+
+4. The “comp” function takes input data in a 1-D array and writes the compressed values in the same array.
+
+5. Uniform quantization is done.  This should be replaced with Lloyd’s quantization.
+
+6. A bug was discovered for the case where min and max values are the same for input to quantization.
+
+Serge mentioned the following for his MatLab code:
+
+1. The compression code is a combination of transposition and reshaping.
+
+2. Compression is done in 3-D.
+
+3. First all x columns are processed, then all y columns, and finally all z columns.
+
+4. There are several types of filters available in the MatLab code including 9-7 filters.
+
+From the PowerPoint slides, Serge explained how the wavelet encoding/decoding is handled when dealing with biorthogonal wavelets. This process involves two low pass filters that are given, one for analysis, the other for synthesis, and two high pass filters created from them. The encoding process uses the analysis low pass filter and the high pass filter created from the low pass synthesis filter. The decoding process used the synthesis low pass filter and the high pass filter created from the low pass analysis filter.  He also described the parameter of Peak Signal to Noise Ration (PSNR).  It would be good to use PSNR and compression ratios for comparisons.
+
+Future Work:
+
+After the meeting, Serge discussed with Anupam doing the following on a 3-D image file named “Macular Cube 512x128.img”.
+
+1. Compress this file with H.264, using default settings of H.264.
+
+2. Extract a 2-D monochrome square slice from this image and run Ed’s Haar code on Maria’s machine on it.  Extraction of this slice could be done through modification done to “main” function in Serge’s C-language code for 2-D compression.
+
+3. Later on, we should try to de-noise this 3-D image as it has a lot of noise.
+
+4. Send an email to the group about clean HDMI format for uncompressed video.
