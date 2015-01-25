@@ -66,4 +66,5 @@ test_tile_sizes
 test_tile_sizes.exe
 test_transform
 test_transform.exe
-
+test_wavelet
+test_wavelet.exe

@@ -182,73 +182,25 @@ template<> void CubeNum<float>::setType() {
   datatype = WAVELET_DATA_FLOAT32;
 }
 
-template<> const char *CubeNum<float>::printfFormat() {
+template<> const char *CubeNum<float>::printfFormat() const {
   return "%8.4f ";
 }
-
-/*
-template<> void CubeNum<float>::print() {
-  // for (int z=0; z<depth(); z++) {
-  for (int z=0; z<1; z++) {
-    printf("z=%d\n", z);
-    for (int y=0; y<height(); y++) {
-      for (int x=0; x<width(); x++) {
-        printf("%8.4f ", get(x,y,z));
-      }
-      putchar('\n');
-    }
-    putchar('\n');
-  }
-}
-*/
 
 template<> void CubeNum<int>::setType() {
   datatype = WAVELET_DATA_INT32;
 }
 
-template<> const char *CubeNum<int>::printfFormat() {
+template<> const char *CubeNum<int>::printfFormat() const {
   return "%5d ";
 }
-
-/*
-template<> void CubeNum<int>::print() {
-  // for (int z=0; z<depth(); z++) {
-  for (int z=0; z<1; z++) {
-    printf("z=%d\n", z);
-    for (int y=0; y<height(); y++) {
-      for (int x=0; x<width(); x++) {
-        printf("%5d ", get(x,y,z));
-      }
-      putchar('\n');
-    }
-    putchar('\n');
-  }
-}
-*/
 
 template<> void CubeNum<unsigned char>::setType() {
   datatype = WAVELET_DATA_UINT8;
 }
 
-template<> const char *CubeNum<unsigned char>::printfFormat() {
+template<> const char *CubeNum<unsigned char>::printfFormat() const {
   return "%3d ";
 }
-
-/*
-template<> void CubeNum<unsigned char>::print() {
-  // for (int z=0; z<depth(); z++) {
-  for (int z=0; z<1; z++) {
-    printf("z=%d\n", z);
-    for (int y=0; y<height(); y++) {
-      for (int x=0; x<width(); x++) {
-        printf("%3d ", get(x,y,z));
-      }
-      putchar('\n');
-    }
-    putchar('\n');
-  }
-}
-*/
 
 
 void Cube::copyFromCubeletBuffer(const CubeletBuffer *buf) {

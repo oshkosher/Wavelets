@@ -212,8 +212,6 @@ bool compressFile(const char *inputFile, const char *outputFile,
   nonzeroData = NULL;
   sortedAbsData = NULL;
 
-  // testHuffman(quantizedData.intData, quantizedData.count(), opt.quantizeBits);
-
   // write the quantized data to a file
   // for now, make a new file just for this cubelet
   startTime = NixTimer::time();

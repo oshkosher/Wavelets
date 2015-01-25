@@ -9,6 +9,7 @@
 #include <vector>
 #include <string>
 #include "wavelet_compress.pb.h"
+#include <xmmintrin.h>
 
 /*
   This file defines:
@@ -277,11 +278,15 @@ class Cube {
 
     size_t byteCount = (size_t)datumSize * length;
     data_ = malloc(byteCount);
-    assert(data_ != NULL);
+    if (data_ == NULL) {
+      fprintf(stderr, "Failed to allocate %llu bytes\n", 
+              (long long unsigned) byteCount);
+      assert(data_ != NULL);
+    }
 
     ownsData = true;
 
-    memset(data_, byteCount, 0);
+    memset(data_, 0, byteCount);
 
     return data_ != NULL;
   }
@@ -299,7 +304,7 @@ class Cube {
   */
 
   void deallocate() {
-    if (data_) free(data_);
+    if (ownsData && data_) free(data_);
     data_ = NULL;
   }
 
@@ -351,7 +356,7 @@ class Cube {
     printf("warning: default setType() called\n");
   }
 
-  const char *printfFormat() {
+  const char *printfFormat() const {
     printf("warning: default printfFormat() called\n");
     return "%f ";
   }
@@ -371,7 +376,7 @@ class CubeNum : public Cube {
 
   // set the datatype field appropriately
   void setType();
-  const char *printfFormat();
+  const char *printfFormat() const;
 
   const NUM *data() const {return (NUM*) data_;}
   NUM *data() {return (NUM*) data_;}
@@ -491,38 +496,223 @@ class CubeNum : public Cube {
   }    
 
 
-  void transpose2d(CubeNum<NUM> &dest) const {
+  // transpose x&y of each level, but do not change levels
+  void transpose2dSlow() {
 
-    // transpose x&y of each level, but do not change levels
-    assert(width() == dest.height());
-    assert(height() == dest.width());
-    assert(depth() == dest.depth());
+    CubeNum<NUM> temp;
+    temp.size = int3(size.y, size.x, size.z);
+    temp.allocate();
 
     for (int z=0; z < depth(); z++)
       for (int y=0; y < height(); y++)
         for (int x=0; x < width(); x++)
-          dest.set(y, x, z, get(x, y, z));
+          temp.set(y, x, z, get(x, y, z));
+
+    // transfer the storage to this->data_
+    deallocate();
+    data_ = temp.data_;
+    ownsData = true;
+    temp.data_ = NULL;
+
+    size = temp.size;
+    totalSize = temp.totalSize;
+  }
+
+
+  /**
+     Do a 2-d transpose efficiently.
+     src is width x height, dest is height x width.
+  */
+  static void transpose2dInternal(const NUM *src, NUM *dest,
+                                  int width, int height) {
+    const int subX = 8, subY = 32;
+    
+    for (int majorY=0; majorY < height; majorY += subY) {
+      for (int majorX=0; majorX < width; majorX += subX) {
+
+        int h = height - majorY;
+        if (subY < h) h = subY;
+
+        int w = width - majorX;
+        if (subX < w) w = subX;
+
+        // if the block is at least 8x32, use the SSE transpose method
+	if (h == subY && w == subX) {
+
+	  for (int y = 0; y < subY; y+= 4) {
+	    for (int x = 0; x < subX; x += 4) {
+
+	      const NUM *s = src + width * (majorY+y) + majorX+x;
+	      NUM *d = dest + height * (majorX+x) + majorY+y;
+
+	      transpose4x4_SSE(s, d, width, height);
+	    }
+	  }
+
+	} else {
+
+	  for (int y = 0; y < h; y++) {
+	    for (int x = 0; x < w; x++) {
+	      int offsetSrc = width * (majorY + y) + majorX + x;
+	      int offsetDest = height * (majorX + x) + majorY + y;
+
+	      dest[offsetDest] = src[offsetSrc];
+	    }
+	  }
+
+        }
+
+      }
+    }
+  }
+
+
+  // This isn't noticeably faster than transpose2dInternal(), but I thought
+  // I'd leave it in because it's interesting.
+  static void transpose2dInternalMinimalChecking
+    (const NUM *src, NUM *dest, int width, int height) {
+
+    const int subX = 8, subY = 32;
+    // const int subX = 4, subY = 4;
+
+    // for all but the last row of chunks, there is no need to check
+    // if subY < height - majorY
+    int majorY = 0;
+    for (; majorY+subY <= height; majorY += subY) {
+
+      // same for the columns
+      int majorX = 0;
+      for (; majorX+subX <= width; majorX += subX) {
+
+	for (int y = 0; y < subY; y+= 4) {
+	  for (int x = 0; x < subX; x += 4) {
+
+	    const NUM *s = src + width * (majorY+y) + majorX+x;
+	    NUM *d = dest + height * (majorX+x) + majorY+y;
+
+	    transpose4x4_SSE(s, d, width, height);
+	  }
+	}
+
+
+#if 0
+        // most of the work should be here; where subY and subX are constant
+        // and known at runtime
+        for (int y = 0; y < subY; y++) {
+          const NUM *s = src + width * (majorY + y) + majorX;
+          NUM *d = dest + height * (majorX) + majorY + y;
+	  
+          for (int x = 0; x < subX; x++) {
+            *d = *s++;
+            d += height;
+          }
+
+        }
+#endif
+
+      } // majorX loop
+
+      // chunk at the end of each row
+      if (majorX < width) {
+        int w = width - majorX;
+
+        for (int y = 0; y < subY; y++) {
+          for (int x = 0; x < w; x++) {
+            int offsetSrc = width * (majorY + y) + majorX + x;
+            int offsetDest = height * (majorX + x) + majorY + y;
+
+            dest[offsetDest] = src[offsetSrc];
+          }
+        }
+
+      } // majorX < width
+
+    } // majorY loop
+
+    // chunks in the bottom row
+    if (majorY < height) {
+      int h = height - majorY;
+
+      int majorX = 0;
+      for (; majorX+subX <= width; majorX += subX) {
+
+        for (int y = 0; y < h; y++) {
+          for (int x = 0; x < subX; x++) {
+            int offsetSrc = width * (majorY + y) + majorX + x;
+            int offsetDest = height * (majorX + x) + majorY + y;
+
+            dest[offsetDest] = src[offsetSrc];
+          }
+        }
+      }
+
+      // bottom right corner
+      if (majorX < width) {
+        int w = width - majorX;
+
+        for (int y = 0; y < h; y++) {
+          for (int x = 0; x < w; x++) {
+            int offsetSrc = width * (majorY + y) + majorX + x;
+            int offsetDest = height * (majorX + x) + majorY + y;
+
+            dest[offsetDest] = src[offsetSrc];
+          }
+        }
+
+      }  // majorX < width
+    }  // majorY < height
 
   }
 
 
-  void transpose2dFast(CubeNum<NUM> &dest) const {
+  // From http://stackoverflow.com/questions/16737298/what-is-the-fastest-way-to-transpose-a-matrix-in-c
+  // Except I changed load->loadu and store->storeu to allow unaligned accesses
+  static inline void transpose4x4_SSE(const float *A, float *B, const int lda, const int ldb) {
+    __m128 row1 = _mm_loadu_ps(&A[0*lda]);
+    __m128 row2 = _mm_loadu_ps(&A[1*lda]);
+    __m128 row3 = _mm_loadu_ps(&A[2*lda]);
+    __m128 row4 = _mm_loadu_ps(&A[3*lda]);
+    _MM_TRANSPOSE4_PS(row1, row2, row3, row4);
+    _mm_storeu_ps(&B[0*ldb], row1);
+    _mm_storeu_ps(&B[1*ldb], row2);
+    _mm_storeu_ps(&B[2*ldb], row3);
+    _mm_storeu_ps(&B[3*ldb], row4);
+  }
 
-    const int subX = 10, subY = 10;
+  // void transpose2dFast(const int subX = 1, const int subY = 1) {
 
-    for (int z=0; z < depth(); z++)
-      for (int majorY=0; majorY < height(); majorY += subY)
-        for (int majorX=0; majorX < width(); majorX += subX)
+  void transpose2d() {
 
-          for (int y = 0; y < subY; y++)
-            for (int x = 0; x < subX; x++)
-              // dest.set(majorY+y, majorX+x, z, get(majorX+x, majorY+y, z));
-              dest.set(majorX+x, majorY+y, z, get(majorY+y, majorX+x, z));
+    CubeNum<NUM> temp;
+    temp.size = int3(size.y, size.x, size.z);
+    temp.allocate();
+    memset(temp.data_, 0, temp.count()*sizeof(NUM));
+
+    const NUM *s = (const NUM*) data_;
+    NUM *d = (NUM*) temp.data_;
+
+    // try a little OpenMP; this speeds up the operation a bit
+    // #pragma omp parallel for
+
+    for (int z=0; z < size.z; z++) {
+      int offset = z * size.x * size.y;
+      transpose2dInternal(s+offset, d+offset, size.x, size.y);
+      // transpose2dInternalMinimalChecking(s+offset, d+offset, size.x, size.y);
+    }
+
+    // transfer the storage to this->data_
+    deallocate();
+    data_ = temp.data_;
+    ownsData = true;
+    temp.data_ = NULL;
+
+    size = temp.size;
+    totalSize = temp.totalSize;
   }
 
 
   // transpose xyz -> yzx
-  void transpose3dFwd() {
+  void transpose3dFwdSlow() {
     assert(size == totalSize);
     CubeNum<NUM> tmp;
     tmp.totalSize = tmp.size = int3(size.y, size.z, size.x);
@@ -540,8 +730,24 @@ class CubeNum : public Cube {
     totalSize = tmp.totalSize;
   }
 
+  // transpose xyz -> yzx
+  void transpose3dFwd() {
+    assert(size == totalSize);
+    CubeNum<NUM> tmp;
+    tmp.totalSize = tmp.size = int3(size.y, size.z, size.x);
+    tmp.allocate();
+
+    transpose2dInternal(data(), tmp.data(), size.x, size.y * size.z);
+
+    deallocate();
+    data_ = tmp.data_;
+    tmp.data_ = NULL;
+    size = tmp.size;
+    totalSize = tmp.totalSize;
+  }
+
   // transpose xyz -> zxy
-  void transpose3dBack() {
+  void transpose3dBackSlow() {
     assert(size == totalSize);
     CubeNum<NUM> tmp;
     tmp.size = tmp.totalSize = int3(size.z, size.x, size.y);
@@ -559,6 +765,22 @@ class CubeNum : public Cube {
     totalSize = tmp.totalSize;
   }
 
+  // transpose xyz -> yzx
+  void transpose3dBack() {
+    assert(size == totalSize);
+    CubeNum<NUM> tmp;
+    tmp.totalSize = tmp.size = int3(size.z, size.x, size.y);
+    tmp.allocate();
+
+    transpose2dInternal(data(), tmp.data(), size.x * size.y, size.z);
+
+    deallocate();
+    data_ = tmp.data_;
+    tmp.data_ = NULL;
+    size = tmp.size;
+    totalSize = tmp.totalSize;
+  }
+
   class RowFileWriter {
     FILE *outf;
     bool err;
@@ -567,7 +789,7 @@ class CubeNum : public Cube {
     RowFileWriter(FILE *o) : outf(o), err(false) {}
 
     void visitRow(const NUM *row, int length, int y, int z) {
-      if (length != fwrite(row, sizeof(NUM), length, outf))
+      if (length != (int)fwrite(row, sizeof(NUM), length, outf))
         err = true;
     }
 
@@ -584,20 +806,31 @@ class CubeNum : public Cube {
   }
 
 
-  void print(const char *title = NULL) {
+  void print(const char *title = NULL, int z=-1, int y=-1) const {
     if (title) printf("%s\n", title);
     const char *format = printfFormat();
 
-    
-    for (int x=0; x<width(); x++) {
-      printf(format, get(x,0,0));
-    }
-    putchar('\n');
+    int startz, endz, starty, endy;
 
-    /*    
-    for (int z=0; z<depth(); z++) {
+    if (z == -1) {
+      startz = 0;
+      endz = size.z-1;
+    } else {
+      startz = z;
+      endz = z;
+    }
+
+    if (y == -1) {
+      starty = 0;
+      endy = size.y-1;
+    } else {
+      starty = y;
+      endy = y;
+    }
+    
+    for (int z=startz; z <= endz; z++) {
       printf("z=%d\n", z);
-      for (int y=0; y<height(); y++) {
+      for (int y=starty; y <= endy; y++) {
         for (int x=0; x<width(); x++) {
           printf(format, get(x,y,z));
         }
@@ -605,22 +838,22 @@ class CubeNum : public Cube {
       }
       putchar('\n');
     }
-    */
+
   }
 
 };
 
 typedef CubeNum<float> CubeFloat;
 template<> void CubeNum<float>::setType();
-template<> const char *CubeNum<float>::printfFormat();
+template<> const char *CubeNum<float>::printfFormat() const;
 
 typedef CubeNum<int> CubeInt;
 template<> void CubeNum<int>::setType();
-template<> const char *CubeNum<int>::printfFormat();
+template<> const char *CubeNum<int>::printfFormat() const;
 
 typedef CubeNum<unsigned char> CubeByte;
 template<> void CubeNum<unsigned char>::setType();
-template<> const char *CubeNum<unsigned char>::printfFormat();
+template<> const char *CubeNum<unsigned char>::printfFormat() const;
 
 
 #endif // __WAVELET_H__
