@@ -1,0 +1,67 @@
+Minutes of Weekly Meeting of the Wavelet Group
+
+Date: Wednesday, January 21st, 2015
+
+Time: 12:15 PM to about 1:55 PM
+
+Present: David Concha (remotely), Anupam Goyal, Drazen Fabris, Ed Karrels (remotely), Bonnie Smithson (remotely), Sergio Zarantonello
+
+Presentations:
+
+Serge showed and described his MatLab code.
+
+Discussions:
+
+Serge’s MatLab Code:
+
+1. It reads the macular cube (as an example) and works on a portion of the cube. 
+
+2. L2 error is computed at present.  L1 error is also planned for addition per discussions between Serge and Drazen.
+
+3. Wavelet coefficients are sorted to find a threshold to determine the percentage of coefficients that are set to zero.  The program first finds the maximum allowed cutoff that gives an acceptable error, then the minimum number of bins necessary to keep the error within bounds. Looping is needed to find a cut that is consistent with maximum error that is specified.  
+
+4. Serge made to some changes to the code so that it runs in a reasonable amount of time on his laptop. He sub-sampled the thresholded wavelet coefficients with stride=4 in each xyz direction for Lloyds quantization.
+
+5. Serge clarified that a pixel is a location and the value associated with that location.
+
+Serge’s C-Code for 2-D Compression:
+
+1. It does forward wavelet transform, then quantization, and then lossless compression, one slice at a time.
+
+Parallelization:
+
+1. It is still to be discussed more whether improvement from parallelizing wavelet transform or using cubelets are better.  Serge thinks that using cubelets is better.
+
+2. Serge favors running on a very large GPU because finding optimal parameters would require repeated passes.  Maria’s machine has a large GPU.
+
+Update on code being developed by Ed:
+
+1. Ed has not yet implemented PSNR (Peak Signal to Noise Ratio) as a metric.
+
+Template of slides to be sent for conference by January 30, 2015:
+
+1. Slides which have at least headers for all of these need to be sent by January 30, 2015.
+
+2. Serge would handle the mathematical parts of the presentation.
+
+Other discussions:
+
+1. Lloyd’s algorithm takes the longest of all steps.
+
+2. David’s planned arrival in the US is March 1, 2015.
+
+Future Work:
+
+1. Bonnie plans to reconcile Serge’s MatLab implementation and Ed’s implementation.
+
+2. Serge plans to try logarithmic quantization.
+
+3. Drazen plans to send the contact of a camera company to Bonnie.
+
+4. Ed would give a framework to Serge for using his code.
+
+5. Serge would work with Drazen to improve time efficiency.
+
+6. Serge would send template for slides for the conference to Ed.
+
+7. Ed plans to develop an interface for the optimization, which would be implemented by Serge, Drazen, and Bonnie.
