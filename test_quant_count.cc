@@ -57,7 +57,7 @@ int main3() {
 }
 
 
-int main() {
+int main_compres_with_previous() {
   float *data, *origData, *dequantizedData;
   int width, height, *quantizedData;
   
@@ -97,8 +97,7 @@ int main() {
       elapsed1 = NixTimer::time() - startTime;
       QuantUniform qu;
       qu.init(bits, threshold, maxVal);
-      QuantizationLooper<QuantUniform> qlu;
-      qlu.init(&qu, bits);
+      QuantizationLooper<QuantUniform> qlu(&qu, 1 << bits);
       qlu.quantize(width*height, origData, quantizedData, doComputeErr);
       elapsed2 = qlu.getExecuteTime();
       err = qlu.getError();
@@ -112,8 +111,7 @@ int main() {
       elapsed1 = NixTimer::time() - startTime;
       QuantLog qu;
       qu.init(bits, threshold, maxVal);
-      QuantizationLooper<QuantLog> qlu;
-      qlu.init(&qu, bits);
+      QuantizationLooper<QuantLog> qlu(&qu, 1 << bits);
       qlu.quantize(width*height, origData, quantizedData, doComputeErr);
       elapsed2 = qlu.getExecuteTime();
       err = qlu.getError();
@@ -128,8 +126,7 @@ int main() {
       quant_boundaries_array(boundaries, width*height, data);
       elapsed1 = NixTimer::time() - startTime;
       QuantCodebook qu(boundaries, codebook);
-      QuantizationLooper<QuantCodebook> qlu;
-      qlu.init(&qu, bits);
+      QuantizationLooper<QuantCodebook> qlu(&qu, 1 << bits);
       qlu.quantize(width*height, origData, quantizedData, doComputeErr);
       elapsed2 = qlu.getExecuteTime();
       err = qlu.getError();
@@ -226,4 +223,42 @@ int main4() {
   return 0;
 }
 
+
+void tryQuant(float f, QuantLog &qlog, QuantUniform &quniform) {
+  printf("%f -> %d  %d\n", f, qlog.quant(f), quniform.quant(f));
+}
+
   
+int main_quick_test() {
+  QuantLog qlog(100, 1, 5);
+  QuantUniform quniform(100, 1, 5);
+
+  printf("Quantize\n");
+  tryQuant(0, qlog, quniform);
+  tryQuant(.5, qlog, quniform);
+  tryQuant(1, qlog, quniform);
+  tryQuant(1.1, qlog, quniform);
+  tryQuant(3, qlog, quniform);
+  tryQuant(4.9, qlog, quniform);
+  tryQuant(5, qlog, quniform);
+  tryQuant(5.1, qlog, quniform);
+  tryQuant(20, qlog, quniform);
+
+  tryQuant(-.5, qlog, quniform);
+  tryQuant(-1, qlog, quniform);
+  tryQuant(-1.1, qlog, quniform);
+  tryQuant(-3, qlog, quniform);
+  tryQuant(-4.9, qlog, quniform);
+  tryQuant(-5, qlog, quniform);
+  tryQuant(-10, qlog, quniform);
+
+  return 0;
+}
+
+
+int main() {
+  main_quick_test();
+  
+  return 0;
+}
+

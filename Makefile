@@ -67,8 +67,8 @@ movieconvert: MovieToCubelets.class
 oct: cudahaar.mex
 
 # Set this to YES or NO, to select between a Debug or Release build
-# IS_DEBUG=YES
-IS_DEBUG=NO
+IS_DEBUG=YES
+# IS_DEBUG=NO
 
 
 ifeq ($(IS_DEBUG),YES)
@@ -142,7 +142,7 @@ JAVACV_JAR = /usr/local/javacv/bin/javacv.jar
 PROTOC = protoc
 NVCC_OPT = -std=c++11
 NVCC_SHLIB_OPT=--compiler-options -fPIC
-CLASSPATH_DIR=$(CURDIR)
+CLASSPATH_DIR=$(CURDIR):$(PROTOBUF_JAR)
 JAVAC = javac -cp .:$(PROTOBUF_JAR):$(JAVACV_JAR)
 
 endif

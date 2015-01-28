@@ -73,16 +73,18 @@ class QuantizationLooper {
   Quantizer *quantizer;
   double sumErrSquared, executeTime;
   size_t inputSize;
-  unsigned maxQuantizedValue;
+  int binCount;
 
  public:
-  QuantizationLooper(Quantizer *q = NULL, int quantizeBits = 0) {
-    init(q, quantizeBits);
+  QuantizationLooper() : quantizer(NULL), binCount(0) {}
+
+  QuantizationLooper(Quantizer *q, int b) {
+    init(q, b);
   }
 
-  void init(Quantizer *q, int quantizeBits) {
+  void init(Quantizer *q, int b) {
     quantizer = q;
-    maxQuantizedValue = 1u << quantizeBits;
+    binCount = b;
     executeTime = 0;
     sumErrSquared = 0;
   }
@@ -90,7 +92,7 @@ class QuantizationLooper {
   // XXX add peak signal-to-noise ratio
   void quantize(size_t length, const float *dataIn, int *dataOut = NULL,
 		bool doComputeErr = false) {
-    assert(quantizer != NULL && maxQuantizedValue > 1);
+    assert(quantizer != NULL && binCount > 1);
 
     if (dataOut == NULL)
       dataOut = (int*) dataIn;
@@ -110,14 +112,14 @@ class QuantizationLooper {
 	// printf("%g\n", fabsf(originalValue - restoredValue));
 	float err = restoredValue - originalValue;
 	sumErrSquared += err*err;
-        assert(dataOut[i] >= 0 && dataOut[i] < maxQuantizedValue);
+        assert(dataOut[i] >= 0 && dataOut[i] < binCount);
       }
 
     } else {
       for (size_t i=0; i < length; i++) {
 	dataOut[i] = quantizer->quant(dataIn[i]);
         // printf("%f\t%d\n", dataIn[i], dataOut[i]);
-        assert(dataOut[i] >= 0 && dataOut[i] < maxQuantizedValue);
+        assert(dataOut[i] >= 0 && dataOut[i] < binCount);
       }
     }
 
@@ -126,7 +128,7 @@ class QuantizationLooper {
 
 
   void dequantize(size_t length, const int *dataIn, float *dataOut = NULL) {
-    assert(quantizer != NULL && maxQuantizedValue > 1);
+    assert(quantizer != NULL && binCount > 1);
 
     if (dataOut == NULL)
       dataOut = (float*) dataIn;
@@ -134,8 +136,9 @@ class QuantizationLooper {
     double startTime = NixTimer::time();
 
     for (size_t i=0; i < length; i++) {
-      assert(dataIn[i] >= 0 && dataIn[i] < maxQuantizedValue);
+      assert(dataIn[i] >= 0 && dataIn[i] < binCount);
       dataOut[i] = quantizer->dequant(dataIn[i]);
+      // printf("%d\t%f\n", dataIn[i], dataOut[i]);
     }
 
     executeTime = NixTimer::time() - startTime;
@@ -154,65 +157,135 @@ class QuantizationLooper {
 };
 
 
+/**
+   Quantize uniformly over a specified range.
+
+   Values < -maxVal map to 0
+   Values > +maxVal map to binCount-1
+
+   zeroBin = floor( (binCount-1) / 2 )
+
+   For example, if there are 7 bins, zeroBin = 3:
+     0..2 : negative values,
+     3 : -threshold .. +threshold
+     4..6 : positive values
+
+   If there is an odd number of bins, then the number of bins for
+   negative and positive values are the same. If even, then we'll give one
+   more to the positives.
+
+   For example, if there are 8 bins:
+     0..2 : negative values,
+     3 : -threshold .. +threshold
+     4..7 : positive values
+*/
 class QuantUniform : public Quantizer {
-  int bits, base;
-  float threshold, maxVal;
-  float scale, invScale;
+  int binCount;
+  float threshold, maxVal, negOffset, posOffset;
+  float negScale, negInvScale, posScale, posInvScale;
 
  public:
   HD QuantUniform() {}
 
-  HD QuantUniform(int bits_, float threshold_, float maxVal_) {
-    init(bits_, threshold_, maxVal_);
+  HD QuantUniform(int binCount_, float threshold_, float maxVal_) {
+    init(binCount_, threshold_, maxVal_);
   }
 
-  HD void init(int bits_, float threshold_, float maxVal_) {
-    bits = bits_;
+  HD void init(int binCount_, float threshold_, float maxVal_) {
+    binCount = binCount_;
     threshold = threshold_;
     maxVal = maxVal_;
-    // if bits==8, then base = 127
-    base = (1 << (bits-1)) - 1;
+
+    assert(maxVal > threshold);
+    assert(threshold >= 0);
+    assert(binCount > 0);
 
     /*
-      y = base * ((x-threshold) / (maxVal-threshold))
-        = (x-threshold) * (base / (maxVal-threshold))
+      For each side (negative and positive)
+      Map thresh..max to 1..binCountThisSide
+        y = x * scale + offset
+        1 = thresh * scale + offset
+        N = max * scale + offset
 
-      Let scale = base / (maxVal - threshold)
-      and invScale = 1/scale
+        offset = 1 - thresh * scale
+        offset = N - max * scale
 
-      y = (x-threshold) * scale
-      y * invScale + threshold = x
+        1 - thresh * scale = N - max * scale
+        (max - thresh) * scale = N - 1
+
+        scale = (N - 1) / (max - thresh)
+        offset = 1 - thresh * scale
+
+        y = x * scale + offset
+        y - offset = x * scale
+        (y - offset) * (1/scale) = x
+        cache 1/scale as invScale
     */
-    
-    scale = base / (maxVal - threshold);
-    invScale = 1 / scale;
 
-    printf("QuantUniform  bits=%d, threshold=%.8g, maxVal=%.8g, base=%d, scale = %.8g, invScale = %.8g\n", bits, threshold, maxVal, base, scale, invScale);
+    // number of bins for negative,positive numbers
+    int negBinCount = (binCount-1) / 2;
+    negScale = (negBinCount - 1) / (maxVal - threshold);
+    
+
+    int posBinCount = binCount / 2;
+    posScale = (posBinCount - 1) / (maxVal - threshold);
+    
+    negInvScale = negScale==0 ? 0 : 1 / negScale;
+    posInvScale = posScale==0 ? 0 : 1 / posScale;
+
+    negOffset = 1 - threshold * negScale;
+    posOffset = 1 - threshold * posScale;
+
+    // printf("QuantUniform  bits=%d, threshold=%.8g, maxVal=%.8g, base=%d, scale = %.8g, invScale = %.8g\n", bits, threshold, maxVal, base, scale, invScale);
   }
 
   HD int quant(float x) const {
 
-    float absx = fabsf(x);
+    int zeroBin = (binCount-1) >> 1;
 
-    // apply threshold
-    if (absx <= threshold) return base;
+    if (x < 0) {
 
-    float scaled = (absx - threshold) * scale + 1;
-    if (scaled >= base) scaled = base;
+      if (x >= -threshold) {
+        return zeroBin;
+      } else {
+        x = x * negScale - negOffset;
+        int bin = (int)x + zeroBin;
+        if (bin < 0) {
+          return 0;
+        } else {
+          return bin;
+        }
+      }
 
-    // add the base to shift the range from -base/2..base/2 to 0..base
-    return (int) copysignf(scaled, x) + base;
+    } else {  // x >= 0
+
+      if (x <= threshold) {
+        return zeroBin;
+      } else {
+        x = x * posScale + posOffset + zeroBin;
+        if (x > binCount - 1) {
+          return binCount - 1;
+        } else {
+          return (int) x;
+        }
+      }
+    }
+
   }
 
   HD float dequant(int x) const {
-    x -= base;
-    if (x == 0) {
+    assert(x >= 0 && x < binCount);
+
+    int zeroBin = (binCount-1) >> 1;
+
+    // add half a bin to dequantize into the midpoint of the range
+    // of values that quantized into that bin
+    if (x < zeroBin) 
+      return (x - 0.5f + negOffset - zeroBin) * negInvScale;
+    else if (x > zeroBin)
+      return (x + 0.5f - posOffset - zeroBin) * posInvScale;
+    else
       return 0;
-    } else if (x > 0) {
-      return x * invScale + threshold;
-    } else {
-      return x * invScale - threshold;
-    }
   }
 
   // Override
@@ -227,55 +300,112 @@ class QuantUniform : public Quantizer {
 };
 
 
+/**
+   Similar to QuantUniform:
+
+   zeroBin = floor( (binCount-1) / 2 )
+
+     0..(zeroBin-1) : negative
+     zeroBin : -threshold .. +threshold
+     (zeroBin+1)..(binCount-1) : positive
+*/
 class QuantLog : public Quantizer {
-  int bits, base;
-  float threshold, invThresh, maxVal, lmax, lmaxInv, dqScale;
+  int binCount;
+  float threshold;
+  float negScale, negInvScale, negOffset;
+  float posScale, posInvScale, posOffset;
 
  public:
   HD QuantLog() {}
   
-  HD QuantLog(int bits_, float threshold_, float maxVal_) {
-    init(bits_, threshold_, maxVal_);
+  HD QuantLog(int binCount_, float threshold_, float maxVal_) {
+    init(binCount_, threshold_, maxVal_);
   }
 
-  HD void init(int bits_, float threshold_, float maxVal_) {
-    bits = bits_;
+  HD void init(int binCount_, float threshold_, float maxVal_) {
+    binCount = binCount_;
     threshold = threshold_;
-    maxVal = maxVal_;
+    float maxVal = maxVal_;
 
-    base = (1 << (bits-1)) - 1;
+    assert(maxVal > threshold);
+    assert(threshold > 0);
+    assert(binCount > 0);
 
-    if (maxVal == threshold) {
-      lmax = 1;
-      lmaxInv = 1;
-    } else {
-      lmax = logf(maxVal/threshold);
-      lmaxInv = 1 / lmax;
-    }
-    invThresh = (threshold == 0) ? 1 : (1 / threshold);
-    dqScale = lmax / base;
+    /*
+      Map lo..hi to 1..N logarithmically
+      y = 1 + scale * log(x / thresh)
+        = 1 + scale * (log(x) - log(thresh))
+        = 1 - scale*log(thresh) + scale * log(x)
+
+      N = 1 + scale * log(maxVal / thresh)
+      scale = (N - 1) / log(maxVal / thresh)
+      offset = 1 - scale*log(thresh)
+      y = scale * log(x) + offset
+
+      (y - offset) / scale = log(x)
+
+      e^( (y - offset) / scale ) = x
+      x = e^( (y - offset) * invScale )
+    */
+
+
+    int negBinCount = (binCount-1) / 2;
+    negScale = (negBinCount - 1) / logf(maxVal / threshold);
+    negInvScale = 1 / negScale;
+    negOffset = 1 - negScale * logf(threshold);
+
+    int posBinCount = binCount / 2;
+    posScale = (posBinCount - 1) / logf(maxVal / threshold);
+    posInvScale = 1 / posScale;
+    posOffset = 1 - posScale * logf(threshold);
   }
 
   HD int quant(float x) const {
 
-    float absx = fabsf(x);
-    if (absx <= threshold) return base;
-    // int sign=x/fabsf(x);
-    
-    float lnVal = logf(absx * invThresh);
-    float result = base * lnVal * lmaxInv + 1;
+    int zeroBin = (binCount-1) >> 1;
 
-    if (result > base) result = base;
+    if (x < 0) {
 
-    return (int) copysignf(result, x) + base;
+      x = -x;
+
+      if (x <= threshold) {
+        return zeroBin;
+      } else {
+        x = zeroBin - negScale * logf(x) - negOffset;
+        if (x < 0) {
+          return 0;
+        } else {
+          return (int) x;
+        }
+      }
+
+    } else {  // x >= 0
+
+      if (x <= threshold) {
+        return zeroBin;
+      } else {
+        x = zeroBin + posScale * logf(x) + posOffset;
+        if (x >= binCount) {
+          return binCount-1;
+        } else {
+          return (int) x;
+        }
+      }
+    }
+
   }
 
   HD float dequant(int x) const {
-    x -= base;
-    if (x == 0) return 0;
-    // int sign=x/abs(x);
-    float lnVal=fabsf(x*dqScale);
-    return copysignf(threshold * expf(lnVal), x);
+    assert(x >= 0 && x < binCount);
+
+    int zeroBin = (binCount-1) >> 1;
+
+    if (x < zeroBin)
+      return -expf( (zeroBin - x - negOffset) * negInvScale );
+    else if (x > zeroBin)
+      return expf( (x - zeroBin - posOffset) * posInvScale );
+    else
+      return 0;
   }
 
   // Override
@@ -298,15 +428,33 @@ class QuantCodebook : public Quantizer {
 
   QuantCodebook() {}
 
+  QuantCodebook(const std::vector<float> &codebook_) {
+    init(codebook_);
+  }
+
   QuantCodebook(const std::vector<float> &boundaries_,
 		const std::vector<float> &codebook_) {
     init(boundaries_, codebook_);
   }
 
+  // given both a codebook and set of boundaries
   void init(const std::vector<float> &boundaries_,
 	    const std::vector<float> &codebook_) {
     boundaries = boundaries_;
     codebook = codebook_;
+    lastBoundary = boundaries[boundaries.size()-1];
+  }
+
+  // Given just the codebook, automatically create boundaries at the
+  // midpoint between each pair of adjacent codebook entries.
+  void init(const std::vector<float> &codebook_) {
+    codebook = codebook_;
+    boundaries.resize(codebook.size() - 1);
+
+    for (size_t i = 0; i < boundaries.size(); i++) {
+      boundaries[i] = (codebook[i] + codebook[i+1]) / 2;
+    }
+
     lastBoundary = boundaries[boundaries.size()-1];
   }
 
@@ -321,21 +469,6 @@ class QuantCodebook : public Quantizer {
 
     // if the x is >= the end of the last bin, return the last bin
     if (x >= lastBoundary) return boundaries.size();
-    /*
-    int lastPos = (int)boundaries.size()-1;
-    float lastBound = boundaries[lastPos];
-    if (x >= lastBound)
-      return lastPos+1;
-    */
-
-    // Find the first boundary that is greater than x.
-    // For example, if the boundaries are:
-    // boundaries[0] = 3
-    // boundaries[1] = 5
-    // boundaries[2] = 10
-    // Given .5, it returns 0 because 3 > .5
-    // Given 5, it returns 2, because 10 > 5
-    // Given 100, it return 3, because no entry is > 100
 
     int bin = std::upper_bound(boundaries.begin(), boundaries.end(), x)
       - boundaries.begin();

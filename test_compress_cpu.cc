@@ -29,7 +29,8 @@ void translateCubeDataToFloat(Cube *src, CubeFloat *dest);
 void translateCubeFloatToData(CubeFloat *src, Cube *dest, bool verbose = false);
 
 
-void computeLloydQuantization(const float *inputData, int count, int bits,
+void computeLloydQuantization(const float *inputData, int count,
+                              int binCount, float minVal, float maxVal,
 			      std::vector<float> &quantBinBoundaries,
 			      std::vector<float> &quantBinValues);
 void testHuffman(const int data[], int count, int bitCount);
@@ -58,6 +59,7 @@ bool waveletTransform(CubeFloat &data, const WaveletCompressionParam &param,
 bool quantize(const CubeFloat &data, CubeInt &quantizedData,
               float maxAbsVal, WaveletCompressionParam &param,
               const float *nonzeroData, int nonzeroCount,
+              float minValue, float maxValue,
               float *quantErrorOut = NULL);
 
 bool dequantize(const CubeInt &quantizedData, CubeFloat &data,
@@ -196,7 +198,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   */
 
   if (!quantize(data, quantizedData, maxAbsVal, param, nonzeroData,
-                nonzeroCount)) return false;
+                nonzeroCount, minVal, maxVal)) return false;
 
   // compute error rates
   if (opt.doComputeError) {
@@ -630,6 +632,7 @@ bool waveletTransform(CubeFloat &data, const WaveletCompressionParam &param,
 bool quantize(const CubeFloat &data, CubeInt &quantizedData,
               float maxAbsVal, WaveletCompressionParam &param,
               const float *nonzeroData, int nonzeroCount,
+              float minVal, float maxVal,
               float *quantErrorOut) {
 
   float quantErr = -1;
@@ -637,10 +640,6 @@ bool quantize(const CubeFloat &data, CubeInt &quantizedData,
   // for now, to make the processing easier, don't accept padded data
   assert(data.size == data.totalSize);
   
-  // XXX remove this when all the quantization algorithms switch from
-  // quantizeBits to binCount
-  int quantizeBits = ceilLog2(param.binCount);
-
   // allocate memory for the quantized data if it isn't already
   quantizedData.size = quantizedData.totalSize = data.size;
   quantizedData.inset = int3(0,0,0);
@@ -656,8 +655,8 @@ bool quantize(const CubeFloat &data, CubeInt &quantizedData,
     
   case QUANT_ALG_UNIFORM:
     {  // use a new code block so we can allocate new variables
-      QuantUniform qunif(quantizeBits, param.thresholdValue, maxAbsVal);
-      QuantizationLooper<QuantUniform> qloop(&qunif, quantizeBits);
+      QuantUniform qunif(param.binCount, param.thresholdValue, maxAbsVal);
+      QuantizationLooper<QuantUniform> qloop(&qunif, param.binCount);
       qloop.quantize(count, inputData, outputData, quantErrorOut != NULL);
       quantErr = qloop.getError();
       param.maxValue = maxAbsVal;
@@ -666,8 +665,8 @@ bool quantize(const CubeFloat &data, CubeInt &quantizedData,
 
   case QUANT_ALG_LOG:
     {
-      QuantLog qlog(quantizeBits, param.thresholdValue, maxAbsVal);
-      QuantizationLooper<QuantLog> qloop(&qlog, quantizeBits);
+      QuantLog qlog(param.binCount, param.thresholdValue, maxAbsVal);
+      QuantizationLooper<QuantLog> qloop(&qlog, param.binCount);
       qloop.quantize(count, inputData, outputData, quantErrorOut != NULL);
       quantErr = qloop.getError();
       param.maxValue = maxAbsVal;
@@ -676,7 +675,8 @@ bool quantize(const CubeFloat &data, CubeInt &quantizedData,
 
   case QUANT_ALG_LLOYD: 
     {
-      computeLloydQuantization(nonzeroData, nonzeroCount, quantizeBits,
+      computeLloydQuantization(nonzeroData, nonzeroCount, param.binCount,
+                               minVal, maxVal,
 			       param.binBoundaries, param.binValues);
       double elapsed = NixTimer::time() - startTime;
       if (!QUIET)
@@ -684,7 +684,7 @@ bool quantize(const CubeFloat &data, CubeInt &quantizedData,
       startTime = NixTimer::time();
       QuantCodebook qcb(param.binBoundaries, param.binValues);
       // qcb.printCodebook();
-      QuantizationLooper<QuantCodebook> qloop(&qcb, quantizeBits);
+      QuantizationLooper<QuantCodebook> qloop(&qcb, param.binCount);
       qloop.quantize(count, inputData, outputData, quantErrorOut != NULL);
       quantErr = qloop.getError();
     }
@@ -723,23 +723,19 @@ bool dequantize(const CubeInt &quantizedData, CubeFloat &data,
   const int *inputData = quantizedData.pointer(0,0,0);
   float *outputData = data.pointer(0,0,0);
 
-  // XXX remove this when all the quantization algorithms switch from
-  // quantizeBits to binCount
-  int quantizeBits = ceilLog2(param.binCount);
-
   switch (param.quantAlg) {
   case QUANT_ALG_UNIFORM:
     {
-      QuantUniform qunif(quantizeBits, param.thresholdValue, param.maxValue);
-      QuantizationLooper<QuantUniform> qloop(&qunif, quantizeBits);
+      QuantUniform qunif(param.binCount, param.thresholdValue, param.maxValue);
+      QuantizationLooper<QuantUniform> qloop(&qunif, param.binCount);
       qloop.dequantize(count, inputData, outputData);
     }
     break;
 
   case QUANT_ALG_LOG:
     {
-      QuantLog qunif(quantizeBits, param.thresholdValue, param.maxValue);
-      QuantizationLooper<QuantLog> qloop(&qunif, quantizeBits);
+      QuantLog qunif(param.binCount, param.thresholdValue, param.maxValue);
+      QuantizationLooper<QuantLog> qloop(&qunif, param.binCount);
       qloop.dequantize(count, inputData, outputData);
     }
     break;
@@ -748,7 +744,7 @@ bool dequantize(const CubeInt &quantizedData, CubeFloat &data,
     {
       QuantCodebook qcb;
       qcb.init(param.binBoundaries, param.binValues);
-      QuantizationLooper<QuantCodebook> qloop(&qcb, quantizeBits);
+      QuantizationLooper<QuantCodebook> qloop(&qcb, param.binCount);
       qloop.dequantize(count, inputData, outputData);
     }
     break;
@@ -824,15 +820,15 @@ void computeErrorRates(const CubeInt *quantizedData,
 
 
 /*
-  Distribute N codebook entries like this:
+  If N is odd, distribute N codebook entries like this:
 
-                                      1
-                                      |
-       N/2-1        1        N/2-1    v
-  ---negatives--+-------+--positives--x
-                ^   0   ^             ^
-                |       |             |
-          -thresh       +thresh      max
+                                      
+                                      
+      (N-1)/2       1       (N-1)/2
+  ---negatives--+-------+--positives---
+                ^   0   ^             
+                |       |             
+          -thresh       +thresh      
 
   Except for the maximum positive value, which has its own codebook
   entry, negative and positive entries will be mirrored.
@@ -841,85 +837,87 @@ void computeErrorRates(const CubeInt *quantizedData,
   set of positive codebook entries is: 1, 3, 7
   All codebook entries:
    -7, -3, 1, 0, 1, 3, 7, 10
+
+  If N is even, add the larger of minVal or maxVal to the
+  beginning or end, respectively.
+
 */
 void computeLloydQuantization
 (const float *inputData, int count, 
- int bits,  // # of quantization bits
+ int binCount, float minVal, float maxVal,
  std::vector<float> &quantBinBoundaries,
  std::vector<float> &quantBinValues) {
-  
-  int binCount = (1 << (bits - 1)) - 1;
+
+  // Make 'codebookSize' entries on either size of 0
+  int codebookSize = (binCount-1) / 2;
+
   quantBinBoundaries.clear();
   quantBinValues.clear();
-  float *binBoundaries = new float[binCount-1];
-  float *binValues = new float[binCount];
+  float *binBoundaries = new float[codebookSize-1];
+  float *binValues = new float[codebookSize];
 
   // inputData is sorted, use it to get minVal and maxVal
   // Skip the last entry in inputData[] because it is often much larger than
   // the rest and skews the results
-  float maxVal = inputData[count-2];
-  assert(maxVal > 0);
+  float maxAbsVal = inputData[count-2];
+  assert(maxAbsVal > 0);
 
-  float minVal = inputData[0];
-  if (minVal <= 0) {
-    const float *nonzeroIdx = std::upper_bound(inputData, inputData+count, 0);
-    minVal = *nonzeroIdx;
+  // if the smallest input value is zero, set minAbsVal to the smallest
+  // nonzero value
+  float minAbsVal = inputData[0];
+  if (minAbsVal <= 0) {
+    minAbsVal = *std::upper_bound(inputData, inputData+count, 0);
   }
 
-  assert(minVal > 0);
-  assert(maxVal > minVal);
+  assert(minAbsVal > 0);
+  assert(maxAbsVal > minAbsVal);
 
   /* use log quantization to create an initial codebook
-     f(minVal) = 0, f(maxVal) = binCount
+     f(minAbsVal) = 0, f(maxAbsVal) = codebookSize
      f(x) = b*log(a*x)
 
        b*log(a*min) = 0  b*log(a*max) = binCount
-       log(a*min) = 0    b = binCount / log(a*max)
+       log(a*min) = 0    b = codebookSize / log(a*max)
        a*min = 1
        a = 1/min
-
 
      y = b*log(a*x)
      y/b = log(a*x)
      e^(y/b) = a*x
      e^(y/b) / a = x
 
-       1/a = min, logScale = 1/b = log(max/min) / binCount
+       1/a = min, logScale = 1/b = log(max/min) / codebookSize
 
      min * e^(y*logScale) = x
   */
 
-  // printf("min=%f, max=%f\n", minVal, maxVal);
-  float logScale = logf(maxVal / minVal) / binCount;
-  for (int i=0; i < binCount; i++) {
-    binValues[i] = minVal * expf(i * logScale);
+  // printf("min=%f, max=%f\n", minAbsVal, maxAbsVal);
+  float logScale = logf(maxAbsVal / minAbsVal) / codebookSize;
+  for (int i=0; i < codebookSize; i++) {
+    binValues[i] = minAbsVal * expf(i * logScale);
+    // printf("InitCB %d: %f\n", i, binValues[i]);
   }
 
-  /*
-  for (int i=0; i < binCount; i++) {
-    printf("InitCB %d: %f\n", i, binValues[i]);
-  }
-  */
 
   // fine-tune the codebook and bin boundaries using Lloyd's algorithm.
   // This also applies the quantization to each value, writing the values
   // to quantizedData[].
   float dist, reldist;
   unsigned *quantizedData = new unsigned[count];
-  lloyd(inputData, count-1, binValues, binCount, binBoundaries, dist,
+  lloyd(inputData, count-1, binValues, codebookSize, binBoundaries, dist,
         reldist, quantizedData);
 
   /*
   printf("LLoyd output:\n");
   for (int i=0; ; i++) {
     printf("codebook %d: %g\n", i, binValues[i]);
-    if (i == binCount-1) break;
+    if (i == codebookSize-1) break;
     printf("bin %d: %g\n", i, binBoundaries[i]);
   }
   */
 
   // sanity-check
-  for (int i=0; i < binCount-1; i++) {
+  for (int i=0; i < codebookSize-1; i++) {
     if (binValues[i] > binValues[i+1]) {
       fprintf(stderr, "ERROR: codebook[%d] > codebook[%d]  (%f > %f)\n",
               i, i+1, binValues[i], binValues[i+1]);
@@ -931,29 +929,50 @@ void computeLloydQuantization
     }
   }
 
-  // negative bins
-  quantBinValues.push_back(-binValues[binCount-1]);
+  // if binCount is even and abs(minVal) > maxVal, add minVal as the
+  // first codebook entry
+  if ((binCount & 1)==0 && fabsf(minVal) > maxVal) {
+    quantBinValues.push_back(minVal);
+    quantBinBoundaries.push_back( (minVal + -binValues[codebookSize-1])/2 );
+  }
 
-  for (int i=binCount-2; i >= 0; i--) {
+  // negative bins
+  quantBinValues.push_back(-binValues[codebookSize-1]);
+
+  for (int i=codebookSize-2; i >= 0; i--) {
     quantBinBoundaries.push_back(-binBoundaries[i]);
     quantBinValues.push_back(-binValues[i]);
   }
 
   // zero bin
-  quantBinBoundaries.push_back(-minVal);
+  quantBinBoundaries.push_back(-minAbsVal);
   quantBinValues.push_back(0);
-  quantBinBoundaries.push_back(minVal);
+  quantBinBoundaries.push_back(minAbsVal);
 
   // positive bins
-  for (int i=0; i < binCount-1; i++) {
+  for (int i=0; i < codebookSize-1; i++) {
     quantBinValues.push_back(binValues[i]);
     quantBinBoundaries.push_back(binBoundaries[i]);
   }    
-  quantBinValues.push_back(binValues[binCount-1]);
+  quantBinValues.push_back(binValues[codebookSize-1]);
 
   // top bin
-  quantBinBoundaries.push_back(inputData[count-1]);
-  quantBinValues.push_back(inputData[count-1]);
+  if ((binCount & 1)==0 && maxVal >= fabsf(minVal) ) {
+    quantBinValues.push_back(maxVal);
+    quantBinBoundaries.push_back( (maxVal + binValues[codebookSize-1])/2 );
+  }
+
+  // fprintf(stderr, "%d bin values, binCount=%d\n", (int)quantBinValues.size(), binCount);
+  assert(quantBinBoundaries.size() + 1 == quantBinValues.size());
+  assert((int)quantBinValues.size() == binCount);
+
+  // print all the value and boundaries
+  /*
+  for (size_t i=0; i < quantBinBoundaries.size(); i++) {
+    printf("   %f\n%f\n", quantBinValues[i], quantBinBoundaries[i]);
+  }
+  printf("   %f\n", quantBinValues[quantBinValues.size()-1]);
+  */
 
   /*
     // print all the input data and the quantized value for each
