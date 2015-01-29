@@ -1,0 +1,40 @@
+Minutes of Weekly Meeting of the Wavelet Group
+
+Date: Wednesday, January 28th, 2015
+
+Time: Noon to about 1 PM
+
+Present: David Concha (remotely), Anupam Goyal, Ed Karrels (remotely), Bonnie Smithson (remotely), Sergio Zarantonello
+
+Presentations:
+
+Serge presented his MatLab code.
+
+Discussions:
+
+Serge’s MatLab Code:
+  
+1. It starts with a macular cube of dimensions 512x1024x128.  Then a cropped version of this macular cube of dimensions 512x960x128 is used.  
+
+2. Serge explained that L2 error is essentially Root Mean Squared Error (R-MSE).  Peak Signal to Noise Ratio (PSNR) is another way of presenting MSE.  
+
+3. The important parameters are cutoff and number of bins of quantization.  In response to Anupam, Serge mentioned that thresholding is same as setting a number of wavelet coefficients to zero.  Serge gave some sample numbers for cutoffs and number of bins.
+
+4. Macular cube is a noisy dataset.  It would be good to de-noise this data. 
+
+Serge’s C-Code for 2-D Compression:
+
+It was decided in consultation with Ed that we should no longer work with Serge’s C-Code for 2-D compression on Maria’s machine.  Earlier, Anupam mentioned that he got valid values of minimum and maximum wavelet coefficients for the first slice, where he was substituting Lloyd’s quantization as the quantization method, which is the next step after forward wavelet transform.
+
+Getting ProRes movies at SCU:
+
+Serge and Anupam are going to meet Craig Gower in the Department of Communication at the Santa Clara University, to see if they can get raw or minimally compressed movie clips for input to our comparison of wavelet compression with H.264 compression.  Bonnie was of the opinion that even if it is minimally compressed, ground truth is not know.  We will also see if Craig can help provide a way of converting the file format he uses (various versions of ProRes) to a raw RGB format.  Bonnie mentioned that ImageJ program can view raw data.
+
+Various codes for internal and external Comparisons:
+
+In conjunction with stopping the work on Serge’s C-Code for 2-D compression, it was decided that there would be 3-D and 2-D version of his code that Ed would develop.  Then, we would compare the 3-D and 2-D versions to see the potential benefits of compressing in 3-D.
+Serge’s Matlab code would be used for internal comparison with Ed’s code.
+
+Future Work:
+
+Anupam would work on testing the code being written by Ed.  Anupam asked if Ed can provide a framework for doing so.
