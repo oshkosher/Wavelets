@@ -1015,8 +1015,10 @@ void cdf97_3d(CubeFloat *data, scu_wavelet::int3 stepCount, bool inverse,
     }
   }
 
+  /*
   if (!quiet) {
     printf("Transpose %.3f ms + %.3f ms = %.3f ms\n", 
            xform1*1000, xform2*1000, (xform1+xform2)*1000);
   }
+  */
 }

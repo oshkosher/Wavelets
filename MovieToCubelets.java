@@ -9,6 +9,15 @@ import java.io.File;
   This requires JavaCV to compile or run. To download:
   http://search.maven.org/remotecontent?filepath=org/bytedeco/javacv/0.10/javacv-0.10-bin.zip
 
+    wget http://search.maven.org/remotecontent?filepath=org/bytedeco/javacv/0.10/javacv-0.10-bin.zip
+    mv *javacv*.zip javacv.zip
+    sudo mkdir -p /usr/local/javacv
+    sudo unzip -d /usr/local/javacv/ javacv.zip
+    sudo mv /usr/local/javacv/javacv-bin /usr/local/javacv/bin
+    sudo rm /usr/local/javacv/bin/*{android,macosx,windows}*.jar
+    sudo chmod 444 /usr/local/javacv/bin/*.jar
+
+
   Sample usage:
   java -cp '.;protobuf-2.6.0/protobuf.jar;c:/Apps/javacv-bin/javacv.jar' MovieToCubelets around.cube 2>/dev/null
 

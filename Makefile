@@ -37,6 +37,9 @@
 #   mkoctfile (Octave C interface)
 #     Install liboctave-dev package.
 # 
+# In short, on a fresh Ubuntu 14 install, this should install all the needed
+# tools:
+#    sudo apt-get install g++ openjdk-7-jdk make git protobuf-compiler libprotobuf-dev libprotobuf-java unzip 
 
 # build all the tools that don't require CUDA
 default: test_compress_cpu java convert histogram cubelet_convert
@@ -241,6 +244,9 @@ test_compress_cpu.o: test_compress_cpu.cc test_compress_common.h \
 wavelet.o: wavelet.cc wavelet.h wavelet_compress.pb.h
 	$(CC) -c $<
 
+optimize.o: optimize.cc optimize.h test_compress_cpu.h wavelet.h
+	$(CC) -c $<
+
 test_compress_common.o: test_compress_common.cc test_compress_common.h \
 	  rle.h bit_stream.h nixtimer.h huffman.h dwt_cpu.h \
 	  wavelet_compress.pb.h
@@ -292,7 +298,7 @@ TEST_COMPRESS_CPU_OBJS=test_compress_cpu.o wavelet.o \
 	test_compress_common.o dwt_cpu.o data_io.o \
 	nixtimer.o thresh_cpu.o \
 	quant.o wavelet_compress.pb.o \
-	lloyds.o huffman.o cubelet_file.o 
+	lloyds.o huffman.o cubelet_file.o optimize.o
 
 test_compress_cpu: $(TEST_COMPRESS_CPU_OBJS)
 	$(CC) $(TEST_COMPRESS_CPU_OBJS) -o $@ $(LIBS) $(PROTOBUF_LIB)

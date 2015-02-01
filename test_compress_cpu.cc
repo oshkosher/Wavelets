@@ -1,5 +1,6 @@
 #include <google/protobuf/stubs/common.h>
 #include <algorithm>
+#include "test_compress_cpu.h"
 #include "test_compress_common.h"
 #include "dwt_cpu.h"
 #include "nixtimer.h"
@@ -33,7 +34,7 @@ void computeLloydQuantization(const float *inputData, int count,
                               int binCount, float minVal, float maxVal,
 			      std::vector<float> &quantBinBoundaries,
 			      std::vector<float> &quantBinValues);
-void testHuffman(const int data[], int count, int bitCount);
+
 
 // Read one cubelet from the input file into 'inputData' (the original data)
 // and a copy in 'data' (padded and translated to floats).
@@ -54,16 +55,6 @@ void setWaveletSteps(int3 &steps, const int3 &size);
 // Peform the wavelet transform
 bool waveletTransform(CubeFloat &data, const WaveletCompressionParam &param,
                       bool isInverse, bool verbose);
-
-// quantize the data
-bool quantize(const CubeFloat &data, CubeInt &quantizedData,
-              float maxAbsVal, WaveletCompressionParam &param,
-              const float *nonzeroData, int nonzeroCount,
-              float minValue, float maxValue,
-              float *quantErrorOut = NULL);
-
-bool dequantize(const CubeInt &quantizedData, CubeFloat &data,
-                const WaveletCompressionParam &param);
 
 void computeErrorRates(const CubeInt *quantizedData,
                        const WaveletCompressionParam &param,
@@ -175,6 +166,18 @@ bool compressFile(const char *inputFile, const char *outputFile,
                  &minVal, &sortedAbsData);
 
   maxAbsVal = sortedAbsData[count-1];
+  
+  // call the parameter optimization routine
+  if (opt.doOptimize) {
+    assert(inputData.datatype == WAVELET_DATA_UINT8);
+    OptimizationData optData((CubeByte*)&inputData, &data, 
+                             count, sortedAbsData,
+                             nonzeroCount,
+                             minVal, maxVal, maxAbsVal, param.transformSteps,
+                             param.waveletAlg);
+    if (!optimizeParameters(&optData, &param.thresholdValue, &param.binCount))
+      return true;
+  }
 
   // nonzeroCount is the number of nonzero entries (those whose absolute
   // values are greater than thresholdValue) in sortedAbsData[].
@@ -494,7 +497,8 @@ void translateCubeFloatToData(CubeFloat *src, Cube *dest, bool verbose) {
     unsigned char *writep = d->pointer(0,0,0);
 
     while (readp < endp) {
-      int x = (*readp++ + 0.5f) * 255;
+      // add half to round rather than truncate
+      int x = (*readp++ + 0.5f) * 255 + 0.5f;
       if (x < 0) {
         x = 0;
       } else if (x > 255) {
@@ -763,21 +767,11 @@ bool dequantize(const CubeInt &quantizedData, CubeFloat &data,
 }
 
 
-/**
-   Compare the compressed data with the original data.
-   Given quantized data, dequantize it and apply the inverse wavelet
-   transform.
-*/
 void computeErrorRates(const CubeInt *quantizedData,
                        const WaveletCompressionParam &param,
                        const Cube *inputData,
                        float *meanSquaredError,
                        float *peakSNR) {
-
-  if (inputData->datatype != WAVELET_DATA_UINT8) {
-    fprintf(stderr, "Current implementation can only compute error rates if input data is unsigned bytes (0..255)\n");
-    return;
-  }
 
   // dequantize quantizedData into restoredData
   CubeFloat restoredData;
@@ -785,20 +779,43 @@ void computeErrorRates(const CubeInt *quantizedData,
   restoredData.allocate();
   if (!dequantize(*quantizedData, restoredData, param)) return;
 
+  ErrorAccumulator errAccum;
+
+  computeErrorRatesAfterDequant(&restoredData, param, inputData, &errAccum);
+
+  *meanSquaredError = errAccum.getMeanSquaredError();
+  *peakSNR = errAccum.getPeakSignalToNoiseRatio();
+}
+
+
+/**
+   Compare the compressed data with the original data.
+   Note: restoredData will be modified in-place.
+*/
+void computeErrorRatesAfterDequant
+(CubeFloat *restoredData,
+ const WaveletCompressionParam &param,
+ const Cube *inputData,
+ ErrorAccumulator *errAccum) {
+
+  if (inputData->datatype != WAVELET_DATA_UINT8) {
+    fprintf(stderr, "Current implementation can only compute error rates if input data is unsigned bytes (0..255)\n");
+    return;
+  }
+
   // perform the inverse wavelet transform on restoredData
-  if (!waveletTransform(restoredData, param, true, false)) return;
+  if (!waveletTransform(*restoredData, param, true, false)) return;
 
   const int width = inputData->width();
   const CubeByte *original = (const CubeByte *) inputData;
 
-  ErrorAccumulator errAccum;
-  errAccum.setMaxPossible(255);  // largest unsigned char value
+  errAccum->setMaxPossible(255);  // largest unsigned char value
 
   // for each row of data in the original data, compare pixels
   for (int z=0; z < original->depth(); z++) {
     for (int y=0; y < original->height(); y++) {
       const unsigned char *originalRow = original->pointer(0, y, z);
-      const float *restoredRow = restoredData.pointer(0, y, z);
+      const float *restoredRow = restoredData->pointer(0, y, z);
       
       for (int x=0; x < width; x++) {
         float f = (restoredRow[x] + 0.5f) * 255;
@@ -807,15 +824,14 @@ void computeErrorRates(const CubeInt *quantizedData,
         } else if (f > 255) {
           f = 255;
         }
-        unsigned char pixelValue = (unsigned char) f;
+        // add half to round rather than truncate
+        unsigned char pixelValue = (unsigned char) (f + .5f);
 
-        errAccum.add(originalRow[x], pixelValue);
+        errAccum->add(originalRow[x], pixelValue);
       }
     }
   }
 
-  *meanSquaredError = errAccum.getMeanSquaredError();
-  *peakSNR = errAccum.getPeakSignalToNoiseRatio();
 }
 
 

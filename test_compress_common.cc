@@ -46,6 +46,8 @@ void printHelp() {
          "    -wave <wavelet> : Wavelet to use: haar or cdf97. (default = %s)\n"
          "    -qalg <alorithm> : quantization algorithm: uniform, log, count, or lloyd\n"
          "                       (default = %s)\n"
+         "    -opt : enable parameter optimization\n"
+         "           this will automatically find the threshold and bin count\n"
          "    -bq <filename> : before quantizing, save a copy of the data this file\n"
          "    -enc : print the bit encoding of each value\n"
          "    -nonstd : use nonstandard wavelet transpose order\n"
@@ -133,6 +135,10 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
       }
     }
 
+    else if (!strcmp(arg, "-opt")) {
+      opt.doOptimize = true;
+    }
+
     else if (!strcmp(arg, "-enc")) {
       opt.printHuffmanEncoding = true;
     }
@@ -166,112 +172,6 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
 
   return true;
 }
-
-
-/**
-   Format:
-   16 bytes: File type identification string "SCU wavelet 1.0\n"
-   4 bytes: The length of the header in bytes, not including the 20 bytes
-            for this and the ID string, encoded as a little-endian int.
-   variable length: Header, encoded as a Google Protocol Buffer
-   variable length: Data. Layout can be determined by reading the header.
-*/
-#if 0
-bool writeQuantData(const char *filename, const Data2d &data, Options &opt,
-                    int *fileSizeBytes) {
-  
-  if (fileSizeBytes) *fileSizeBytes = 0;
-
-  // initialize the huffman encoding
-  Huffman huff;
-  initHuffman(huff, data, opt.quantizeBits, opt.quiet);
-  if (opt.printHuffmanEncoding) huff.printEncoding();
-  
-  FILE *outf = fopen(filename, "wb");
-  if (!outf) {
-    printf("Error writing to \"%s\"\n", filename);
-    return false;
-  }
-
-  fputs(FILE_ID_STRING, outf);
-
-  // build the protobuf
-  WaveletCompressedImage buf;
-
-  // copy parameters into protocol buffer
-  buf.set_width(data.width);
-  buf.set_height(data.height);
-  buf.set_wavelet_transform_step_count(opt.waveletSteps.x);
-  buf.set_standard_transpose(opt.isWaveletTransposeStandard);
-  buf.set_quantize_bits(opt.quantizeBits);
-  buf.set_threshold_value(opt.thresholdValue);
-  buf.set_wavelet_algorithm(WaveletCompressedImage_WaveletAlgorithm_HAAR);
-  buf.set_quantization_algorithm(quantAlgId2ProtoId(opt.quantizeAlgorithm));
-
-  int sizeBeforeCodebook = buf.ByteSize();
-
-  if (opt.quantizeAlgorithm == QUANT_ALG_UNIFORM ||
-      opt.quantizeAlgorithm == QUANT_ALG_LOG) {
-    buf.set_quant_max_value(opt.maxAbsVal);
-  } else {
-    for (size_t i=0; i < opt.quantBinBoundaries.size(); i++)
-      buf.add_quant_bin_boundaries(opt.quantBinBoundaries[i]);
-    for (size_t i=0; i < opt.quantBinValues.size(); i++)
-      buf.add_quant_bin_values(opt.quantBinValues[i]);
-  }
-
-  int sizeBeforeHufftable = buf.ByteSize();
-  int codebookSize = sizeBeforeHufftable - sizeBeforeCodebook;
-
-  // add the Huffman decode table to the protocol buffer
-  vector<int> huffDecodeTable;
-  huff.getDecoderTable(huffDecodeTable);
-  for (size_t i=0; i < huffDecodeTable.size(); i++) {
-    buf.add_huffman_encode_table(huffDecodeTable[i]);
-  }
-
-  int huffDecodeTableSize = buf.ByteSize() - sizeBeforeHufftable;
-  /*
-  printf("Decode table, %d entries\n", (int)huffDecodeTable.size());
-  for (size_t i=0; i < huffDecodeTable.size(); i += 2) {
-    printf("%4d: %d %d\n", (int)i, huffDecodeTable[i], huffDecodeTable[i+1]);
-  }
-  */
-
-  // get the size of the header and write the size to the file
-  assert(sizeof(unsigned) == 4);
-  unsigned codedLen = (unsigned) buf.ByteSize();
-  fwrite(&codedLen, sizeof codedLen, 1, outf);
-  if (!opt.quiet)
-    printf("Header %u bytes (codebook %d bytes, %d bytes huff decode[%d])\n",
-           codedLen, codebookSize, huffDecodeTableSize,
-           (int)huffDecodeTable.size());;
-
-  // encode the header
-  char *codedBuf = new char[codedLen];
-  assert(codedBuf);
-  if (!buf.SerializeToArray(codedBuf, codedLen)) {
-    fprintf(stderr, "Failed to encode parameters\n");
-    return false;
-  }
-
-  // write the header to the file
-  if (fwrite(codedBuf, 1, codedLen, outf) != codedLen) {
-    fprintf(stderr, "Failed to write encoded parameters to file\n");
-    return false;
-  }
-  delete[] codedBuf;
-    
-  bool success = writeQuantDataHuffman(huff, outf, data, opt.quantizeBits,
-                                       opt.quiet);
-
-  if (fileSizeBytes) *fileSizeBytes = (int) ftell(outf);
-  
-  fclose(outf);
-
-  return success;
-}
-#endif
 
 
 /**
@@ -355,30 +255,6 @@ bool readQuantData(CubeletStreamReader &cubeletStream, CubeInt *cube) {
 }
 
 
-#if 0
-static void initHuffman(Huffman &huff, const Data2d &data, int quantizeBits,
-                        bool quiet) {
-
-  double startTime = NixTimer::time();
-
-  int count = data.count();
-
-  // number of possible values
-  int valueCount = 1 << quantizeBits;
-  huff.init(valueCount);
-
-  assert(data.floatData == NULL && data.intData != NULL);
-
-  // train the huffman encoder
-  for (int i=0; i < count; i++) huff.increment(data.intData[i]);
-
-  huff.computeHuffmanCoding();
-  double elapsed = NixTimer::time() - startTime;
-  if (!quiet)
-    printf("Huffman build table %.3f ms\n", elapsed*1000);
-}
-#endif
-
 class TraverseForHuffman {
 public:
   Huffman &huff;
@@ -406,39 +282,6 @@ static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet) {
     printf("Huffman build table %.3f ms\n", elapsed*1000);
 }
 
-#if 0
-static bool writeQuantDataHuffman(Huffman &huff, FILE *outf,
-                                  const Data2d &data, int quantizeBits,
-                                  bool quiet) {
-
-  // write the data
-  BitStreamFileSink fileSink(outf);
-  BitStreamWriter<BitStreamFileSink> bitWriter(&fileSink);
-  int count = data.count();
-
-  // number of possible values
-  int valueCount = 1 << quantizeBits;
-  
-  huff.encodeToStream(&bitWriter, data.intData, count);
-  bitWriter.flush();
-
-  // printf("%llu bits written\n", (long long unsigned) bitWriter.size());
-  size_t bitsWritten = bitWriter.size();
-  int bytesWritten = (bitsWritten + 31) / 32 * 4;
-
-  long long unsigned totalBits = 0;
-  for (int i=0; i < valueCount; i++)
-    totalBits += huff.encodedLength(i) * huff.getCount(i);
-
-  if (!quiet)
-    printf("Huffman encoding: %d bytes, %.2f bits/pixel, "
-           "longest encoding = %d bits\n",
-           bytesWritten, (double)totalBits / count,
-           huff.getLongestEncodingLength());
-
-  return true;
-}
-#endif
 
 static bool writeQuantDataHuffman(Huffman &huff, vector<uint32_t> *outData,
                                   const CubeInt *data, bool quiet) {

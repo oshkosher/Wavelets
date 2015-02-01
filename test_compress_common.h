@@ -12,6 +12,7 @@
 #include "wavelet_compress.pb.h"
 #include "cubelet_file.h"
 #include "quant.h"
+#include "optimize.h"
 
 #define FILE_ID_STRING "SCU wavelet 1.0\n"
 
@@ -35,6 +36,10 @@ struct Options {
   // After quantizing, dequant, reverse the wavelet transform, and compare
   // the original image with the compressed & decompressed result
   bool doComputeError;
+
+  // After loading the data and doing the wavelet transform, call
+  // the parameter optimzation routine to set the threshold and bin count.
+  bool doOptimize;
 
   // -bq option : if not "", save a copy data in this file before quantizing
   std::string saveBeforeQuantizingFilename;
