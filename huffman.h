@@ -109,6 +109,10 @@ class Huffman {
   // return the length of the encoded form of this value
   int encodedLength(int value);
 
+  // with the given frequencies for each value, return the total number
+  // number of bytes needed to encode all of them.
+  int totalEncodedLengthBytes();
+
   int getLongestEncodingLength() {return longestBitString;}
 
   void encode(int value, int &length, unsigned bits[]);

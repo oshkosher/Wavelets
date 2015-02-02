@@ -215,10 +215,18 @@ void Huffman::orderNodes(std::vector<Node*> &orderedNodes) {
 
 
 int Huffman::encodedLength(int value) {
-  if (!computed) return -1;
+  assert(computed);
   assert(value >= 0 && value < size);
 
   return encodeTable[value*2];
+}
+
+int Huffman::totalEncodedLengthBytes() {
+  if (!computed) return -1;
+  int total = 0;
+  for (int v = 0; v < size; v++)
+    total += encodedLength(v) * getCount(v);
+  return (total + 31) / 32 * 4;
 }
   
 

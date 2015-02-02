@@ -37,6 +37,11 @@
 #   mkoctfile (Octave C interface)
 #     Install liboctave-dev package.
 # 
+# In short, on a fresh Ubuntu 14 install, start by installing these:
+#    sudo apt-get install g++ openjdk-7-jdk make git protobuf-compiler libprotobuf-dev libprotobuf-java unzip liboctave-dev
+#
+#    Then install CUDA
+#      http://developer.download.nvidia.com/compute/cuda/6_5/rel/installers/cuda_6.5.14_linux_64.run
 
 # build all the tools that don't require CUDA
 default: test_compress_cpu java convert histogram cubelet_convert
@@ -58,17 +63,17 @@ makeall.class Cubelet.class CubeletFile.class CubeletViewer.class \
     ImageDiff.java WaveletCompress.java WaveletSampleImage.java
 	$(JAVAC) makeall.java
 
-all: convert $(EXECS) java libwaveletcuda.so cudahaar.mex
+all: convert $(EXECS) java
 
 # this is the only part that require JavaCV, so if you don't have
 # JavaCV installed, this is the only part you can't build
 movieconvert: MovieToCubelets.class
 
-oct: cudahaar.mex
+octave: libwaveletcuda.so cudahaar.mex
 
 # Set this to YES or NO, to select between a Debug or Release build
-IS_DEBUG=YES
-# IS_DEBUG=NO
+# IS_DEBUG=YES
+IS_DEBUG=NO
 
 
 ifeq ($(IS_DEBUG),YES)
@@ -165,6 +170,8 @@ HAAR_OBJS=haar.$(OBJ_EXT) dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) \
 
 LLOYD_INC=-IOctave/LloydsAlgorithm/src/c++
 
+haar.$(OBJ_EXT): wavelet_compress.pb.h haar.cu dwt_cpu.h data_io.h dwt_gpu.h
+
 haar: $(HAAR_OBJS)
 	$(NVCC) $(HAAR_OBJS) $(PROTOBUF_LIB_NVCC) -o $@
 
@@ -241,6 +248,9 @@ test_compress_cpu.o: test_compress_cpu.cc test_compress_common.h \
 wavelet.o: wavelet.cc wavelet.h wavelet_compress.pb.h
 	$(CC) -c $<
 
+optimize.o: optimize.cc optimize.h test_compress_cpu.h wavelet.h
+	$(CC) -c $<
+
 test_compress_common.o: test_compress_common.cc test_compress_common.h \
 	  rle.h bit_stream.h nixtimer.h huffman.h dwt_cpu.h \
 	  wavelet_compress.pb.h
@@ -292,7 +302,7 @@ TEST_COMPRESS_CPU_OBJS=test_compress_cpu.o wavelet.o \
 	test_compress_common.o dwt_cpu.o data_io.o \
 	nixtimer.o thresh_cpu.o \
 	quant.o wavelet_compress.pb.o \
-	lloyds.o huffman.o cubelet_file.o 
+	lloyds.o huffman.o cubelet_file.o optimize.o
 
 test_compress_cpu: $(TEST_COMPRESS_CPU_OBJS)
 	$(CC) $(TEST_COMPRESS_CPU_OBJS) -o $@ $(LIBS) $(PROTOBUF_LIB)
