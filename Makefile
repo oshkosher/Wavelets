@@ -37,9 +37,11 @@
 #   mkoctfile (Octave C interface)
 #     Install liboctave-dev package.
 # 
-# In short, on a fresh Ubuntu 14 install, this should install all the needed
-# tools:
-#    sudo apt-get install g++ openjdk-7-jdk make git protobuf-compiler libprotobuf-dev libprotobuf-java unzip 
+# In short, on a fresh Ubuntu 14 install, start by installing these:
+#    sudo apt-get install g++ openjdk-7-jdk make git protobuf-compiler libprotobuf-dev libprotobuf-java unzip liboctave-dev
+#
+#    Then install CUDA
+#      http://developer.download.nvidia.com/compute/cuda/6_5/rel/installers/cuda_6.5.14_linux_64.run
 
 # build all the tools that don't require CUDA
 default: test_compress_cpu java convert histogram cubelet_convert
@@ -61,17 +63,17 @@ makeall.class Cubelet.class CubeletFile.class CubeletViewer.class \
     ImageDiff.java WaveletCompress.java WaveletSampleImage.java
 	$(JAVAC) makeall.java
 
-all: convert $(EXECS) java libwaveletcuda.so cudahaar.mex
+all: convert $(EXECS) java
 
 # this is the only part that require JavaCV, so if you don't have
 # JavaCV installed, this is the only part you can't build
 movieconvert: MovieToCubelets.class
 
-oct: cudahaar.mex
+octave: libwaveletcuda.so cudahaar.mex
 
 # Set this to YES or NO, to select between a Debug or Release build
-IS_DEBUG=YES
-# IS_DEBUG=NO
+# IS_DEBUG=YES
+IS_DEBUG=NO
 
 
 ifeq ($(IS_DEBUG),YES)
