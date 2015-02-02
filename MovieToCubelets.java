@@ -21,9 +21,11 @@ import java.io.File;
 
 public class MovieToCubelets {
 
-  public static final int CUBELET_WIDTH = 512;
-  public static final int CUBELET_HEIGHT = 512;
-  public static final int CUBELET_DEPTH = 512;
+  public static final int maxCubeletCount = -1;
+
+  public static final int CUBELET_WIDTH = 256;
+  public static final int CUBELET_HEIGHT = 256;
+  public static final int CUBELET_DEPTH = 256;
 
   
   private static int cubesAcross, cubesDown;
@@ -76,6 +78,7 @@ public class MovieToCubelets {
     cubeletOut.height = height;
     cubeletOut.open(outputCubeletFile);
     Cubelet cubes[] = setupCubelets(width, height);
+    int cubeletsAdded = 0;
 
     int frameNo, currentDepth = 0;
     if (endFrame < 0) endFrame = frameCount;
@@ -115,6 +118,13 @@ public class MovieToCubelets {
         for (Cubelet cube : cubes) {
           cube.depth = currentDepth;
           cubeletOut.addCubelet(cube);
+
+          // exit early if maxCubeletCount is set
+          ++cubeletsAdded;
+          if (maxCubeletCount > 0 && cubeletsAdded >= maxCubeletCount) {
+            frameNo = endFrame;
+            break;
+          }
 
           // z offset for the next copy of the cubelet starts at the next frame
           cube.zOffset = frameNo+1;
