@@ -170,6 +170,8 @@ HAAR_OBJS=haar.$(OBJ_EXT) dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) \
 
 LLOYD_INC=-IOctave/LloydsAlgorithm/src/c++
 
+haar.$(OBJ_EXT): wavelet_compress.pb.h haar.cu dwt_cpu.h data_io.h dwt_gpu.h
+
 haar: $(HAAR_OBJS)
 	$(NVCC) $(HAAR_OBJS) $(PROTOBUF_LIB_NVCC) -o $@
 
