@@ -57,7 +57,7 @@ class BitStack {
   }
 
   int getBitCount() const {
-    return (vec.size() - 1) * 32 + bitOffset;
+    return ((int)vec.size() - 1) * 32 + bitOffset;
   }
 
   unsigned getWord(int i) const {

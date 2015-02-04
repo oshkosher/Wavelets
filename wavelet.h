@@ -122,6 +122,22 @@ class int3 {
     x = y = z = 1;
     return sscanf(str, "%d,%d,%d", &x, &y, &z);
   }
+
+  // rotate the axes XYZ -> YZX
+  void rotateFwd() {
+    int tmp = x;
+    x = y;
+    y = z;
+    z = tmp;
+  }
+
+  // rotate the axes XYZ -> ZXY
+  void rotateBack() {
+    int tmp = z;
+    z = y;
+    y = x;
+    x = tmp;
+  }
 };
 
 } // namespace scu_wavelet
@@ -276,7 +292,7 @@ class Cube {
     // are small enough to fit in an int
     assert(length <= INT_MAX);
 
-    size_t byteCount = (size_t)datumSize * length;
+    size_t byteCount = (size_t)(datumSize * length);
     data_ = malloc(byteCount);
     if (data_ == NULL) {
       fprintf(stderr, "Failed to allocate %llu bytes\n", 

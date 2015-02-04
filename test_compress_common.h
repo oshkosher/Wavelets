@@ -16,6 +16,8 @@
 
 #define FILE_ID_STRING "SCU wavelet 1.0\n"
 
+// global variable that disables status output
+extern bool QUIET;
 
 /** This holds the the parameters as set by the user on the command line,
     and the ones saved in the data file. */
@@ -59,48 +61,12 @@ struct Options {
     verbose = false;
     printHuffmanEncoding = false;
     doComputeError = false;
+    doOptimize = false;
     saveBeforeQuantizingFilename = "";
     runQuantizationExperiments = false;
 
     param.init();
   }
-};
-
-
-// Store 2d data
-struct Data2d {
-  int width, height;
-  float *floatData;
-  int *intData;
-
-  Data2d() {
-    width = height = -1;
-    floatData = NULL;
-    intData = NULL;
-  }
-
-  ~Data2d() {
-    if (floatData) delete[] floatData;
-    if (intData) delete[] intData;
-  }
-
-  void initInts(int width_, int height_) {
-    assert(intData == NULL);
-    width = width_;
-    height = height_;
-    floatData = NULL;
-    intData = new int[width*height];
-  }
-
-  void initFloats(int width_, int height_) {
-    assert(floatData == NULL);
-    width = width_;
-    height = height_;
-    floatData = new float[width*height];
-    intData = NULL;
-  }
-
-  int count() const {return width*height;}
 };
 
 
@@ -142,16 +108,16 @@ class ErrorAccumulator {
 
   float getAverageError() {
     if (count == 0) return 0;
-    return sumDiff / count;
+    return (float)(sumDiff / count);
   }
 
-  float getL1Error() {return sumDiff;}
+  float getL1Error() {return (float)sumDiff;}
   
-  float getL2Error() {return sqrt(sumDiffSquared);}
+  float getL2Error() {return (float)sqrt(sumDiffSquared);}
   
   float getMeanSquaredError() {
     if (count == 0) return 0;
-    return sumDiffSquared / count;
+    return (float)(sumDiffSquared / count);
   }
 
   float getPeakSignalToNoiseRatio() {
@@ -166,14 +132,67 @@ class ErrorAccumulator {
 void printHelp();
 bool parseOptions(int argc, char **argv, Options &opt, int &nextArg);
 
+// returns true iff 'suffix' is a suffix of 's'
+bool endsWith(const char *s, const char *suffix);
+
+// Read one cubelet from the input file into 'inputData' (the original data)
+// and a copy in 'data' (padded and translated to floats).
+// Both .data (data_io.h) and .cube (cubelet_file.h) files are supported.
+// Based on the compression parameters, the data may be padded also.
+bool readData(const char *filename,
+              Cube *inputData,  // the original data, may not be floats
+              CubeFloat *data,  // input data transformed into floats
+              CubeletStreamReader *cubeletStream,
+              WaveletCompressionParam *param);
+
+// If the user specified too many steps or a negative number of steps,
+// set them to the maximum number given the data size.
+void setWaveletSteps(scu_wavelet::int3 &steps, const scu_wavelet::int3 &size);
+
+// Find the size to which the data needs to be padded so each transform
+// step has an even number of elements. Change the given size in-place.
+void padDataSize(scu_wavelet::int3 &size, scu_wavelet::int3 steps);
+
+// pad the data, repeating the last value in each axis as needed
+void padData(CubeFloat &data, scu_wavelet::int3 originalSize);
+
+// make the cubelet data into floats, if it isn't already
+void translateCubeDataToFloat(Cube *src, CubeFloat *dest);
+
+
+// Peform the wavelet transform
+bool waveletTransform(CubeFloat &data, const WaveletCompressionParam &param,
+                      bool isInverse, bool verbose);
+
+bool dequantize(const CubeInt &quantizedData, CubeFloat &data,
+                const WaveletCompressionParam &param);
+
+void computeErrorRates(const CubeInt *quantizedData,
+                       const WaveletCompressionParam &param,
+                       const Cube *inputData,
+                       float *meanSquaredError,
+                       float *peakSNR);
+
+
+// this will modify restoredData in place
+void computeErrorRatesAfterDequant
+(CubeFloat *restoredData,
+ const WaveletCompressionParam &param,
+ const Cube *inputData,
+ ErrorAccumulator *errAccum);
+
+// turn the data back into the original datatype, if it wasn't floats
+void translateCubeDataToOriginal(CubeFloat *src, Cube *dest,
+                                 bool verbose = false);
+
+// Read cubelet from a file
+bool readQuantData(CubeletStreamReader &cubeletStream, CubeInt *data);
+
 // Write 'cube' to a cubelet stream.
 // If sizeBytes is not NULL, store the size of the output data in it.
 bool writeQuantData(CubeletStreamWriter &cubeletStream,
                     CubeInt *cube, Options &opt,
                     int *sizeBytes = NULL);
-
-// Read cubelet from a file
-bool readQuantData(CubeletStreamReader &cubeletStream, CubeInt *data);
 
 Quantizer *createQuantizer(const WaveletCompressionParam &param);
 

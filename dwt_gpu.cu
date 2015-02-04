@@ -11,6 +11,7 @@
 #include "nixtimer.h"
 #include "cuda_timer.h"
 
+
 #define SQRT2     1.4142135623730950488f
 #define INV_SQRT2 0.70710678118654752440f
 
@@ -34,10 +35,31 @@
 
 */
 
+
 template<typename NUM>
 float haar_2d_cuda_internal
 (int size, NUM *data, bool inverse, int stepCount, int threadBlockSize,
  bool useCombinedTranspose);
+
+
+template<typename NUM>
+__device__ void haar_kernel_row(int length, NUM *inputRow, NUM *outputRow) {
+
+  int half = length >> 1;
+
+  // point d at the first half of the temporary row
+  NUM *s = outputRow;
+  
+  // point d at the second half of the temporary row
+  NUM *d = s + half;
+  
+  for (int i=threadIdx.x; i < half; i += blockDim.x) {
+    NUM a = inputRow[2*i], b = inputRow[2*i + 1];
+    d[i] = (a - b) * INV_SQRT2;
+    s[i] = (a + b) * INV_SQRT2;
+  }
+}
+
 
 
 /*
@@ -57,19 +79,7 @@ __global__ void haar_2d_kernel
   NUM *inputRow = data + y * arrayWidth;
   NUM *outputRow = result + y * arrayWidth;
 
-  // Set s to point to my row in the output data
-  NUM *s = outputRow;
-
-  int half = transformLength >> 1;
-  
-  // point d at the second half of the temporary row
-  NUM *d = s + half;
-  
-  for (int i=threadIdx.x; i < half; i += blockDim.x) {
-    NUM a = inputRow[2*i], b = inputRow[2*i + 1];
-    d[i] = (a - b) * INV_SQRT2;
-    s[i] = (a + b) * INV_SQRT2;
-  }
+  haar_kernel_row(transformLength, inputRow, outputRow);
 }
 
 
@@ -373,7 +383,7 @@ float haar_2d_cuda_internal
 
         // transpose the matrix into temp_dev
         transposeTimer.start(stream);
-        gpuTranspose(size, transformLength, data2_dev, data1_dev, stream);
+        gpuTransposeSquare(size, transformLength, data2_dev, data1_dev, stream);
         transposeTimer.end(stream);
     
         // transform rows
@@ -385,7 +395,7 @@ float haar_2d_cuda_internal
 
         // transpose the matrix into data_dev
         transposeTimer.start(stream);
-        gpuTranspose(size, transformLength, data2_dev, data1_dev, stream);
+        gpuTransposeSquare(size, transformLength, data2_dev, data1_dev, stream);
         transposeTimer.end(stream);
 
         // results are in data1_dev
@@ -433,7 +443,7 @@ float haar_2d_cuda_internal
 
         // transpose the matrix into temp_dev
         transposeTimer.start(stream);
-        gpuTranspose(size, transformLength, data2_dev, data1_dev, stream);
+        gpuTransposeSquare(size, transformLength, data2_dev, data1_dev, stream);
         transposeTimer.end(stream);
     
         // do the wavelet transform on columns
@@ -445,7 +455,7 @@ float haar_2d_cuda_internal
     
         // transpose the matrix back into data_dev
         transposeTimer.start(stream);
-        gpuTranspose(size, transformLength, data2_dev, data1_dev, stream);
+        gpuTransposeSquare(size, transformLength, data2_dev, data1_dev, stream);
         transposeTimer.end(stream);
 
       }
@@ -493,4 +503,115 @@ float haar_2d_cuda_internal
   CUCHECK(cudaFree(data2_dev));
 
   return overallTimer.time();
+}
+
+
+__device__ void copy_row(float *dest, float *src, int count) {
+  int i = threadIdx.x;
+  while (i < count) {
+    dest[i] = src[i];
+    i += blockDim.x;
+  }
+}
+
+__global__ void haar_3d_kernel_allglobal
+(float *data1, float *data2, int rowLength, int stepCount) {
+  
+  int offset = rowLength * (blockIdx.y + blockIdx.z*gridDim.y);
+  float *row = data1 + offset;
+  float *tempRow = data2 + offset;
+  
+  while (stepCount > 0) {
+
+    // copy data from tempRow to row
+    copy_row(tempRow, row, rowLength);
+
+    __syncthreads();
+
+    // read tempRow, write to row
+    haar_kernel_row(rowLength, tempRow, row);
+
+    stepCount--;
+    rowLength >>= 1;
+
+    __syncthreads();
+  }
+}
+
+/**
+  Input data is in data1. data2 is temp space.
+  Update 'size', since the dimensions will rotate.
+
+  On each pass, the input row is copied to a temp row.
+  Entries in the temp row are read, processed, and written to the input row.
+  
+  If the row is short enough to fit in shared memory, use shared memory
+  as the temp row.
+
+  If the row is short enough to fit two copies in shared memory
+    1. Copy input row from global to shared memory.
+    2. Do regular processing with shared memory as temp row.
+    3. Copy input row from shared to global memory.
+
+  If the row is short enough to fit in registers, use them as the temp row.
+*/
+void haar_3d_cuda(float *data, float *tmpData, scu_wavelet::int3 &alteredSize,
+                  scu_wavelet::int3 stepCount, bool inverse,
+                  bool isStandardTranspose,
+                  CudaTimer *transformTimer,
+                  CudaTimer *transposeTimer) {
+
+  scu_wavelet::int3 size = alteredSize;
+
+  if (!(size <= scu_wavelet::int3(65535,65535,65535))) {
+    fprintf(stderr, "Cubelet too large: max is 65535x65535x65535\n");
+    return;
+  }
+
+  dim3 gridDim(1, size.y, size.z);
+  dim3 blockDim(128);
+
+  // X transform
+  if (transformTimer) transformTimer->start();
+  haar_3d_kernel_allglobal<<<gridDim, blockDim>>>
+    (data, tmpData, size.x, stepCount.x);
+  if (transformTimer) transformTimer->end();
+
+  // transpose XYZ -> YZX
+  if (transposeTimer) transposeTimer->start();
+  gpuTranspose(data, tmpData, size.x, size.y*size.z);
+  alteredSize.rotateFwd();
+  if (transposeTimer) transposeTimer->end();
+
+  // data is now in tmpData
+
+  // Y transform
+  gridDim.y = size.z;
+  gridDim.z = size.x;
+  if (transformTimer) transformTimer->start();
+  haar_3d_kernel_allglobal<<<gridDim, blockDim>>>
+    (tmpData, data, size.y, stepCount.y);
+  if (transformTimer) transformTimer->end();
+
+  // transpose YZX -> ZXY
+  if (transposeTimer) transposeTimer->start();
+  gpuTranspose(tmpData, data, size.y, size.z*size.x);
+  alteredSize.rotateFwd();
+  if (transposeTimer) transposeTimer->end();
+
+  // data is back in data
+
+  // Z transform
+  gridDim.y = size.x;
+  gridDim.z = size.y;
+  if (transformTimer) transformTimer->start();
+  haar_3d_kernel_allglobal<<<gridDim, blockDim>>>
+    (data, tmpData, size.z, stepCount.z);
+  if (transformTimer) transformTimer->end();
+
+  /*
+  CUCHECK(cudaMemcpy(data, tmpData, sizeof(float)*size.x*size.y*size.z,
+                     cudaMemcpyDeviceToDevice));
+  */
+  
 }

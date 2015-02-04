@@ -195,10 +195,10 @@ class BitStreamFileSource {
 
 class BitStreamMemorySource {
   const std::vector<unsigned> *buffer;
-  size_t pos = 0;
+  size_t pos;
 
  public:
-  BitStreamMemorySource(const std::vector<unsigned> *b) : buffer(b) {}
+  BitStreamMemorySource(const std::vector<unsigned> *b) : buffer(b), pos(0) {}
 
   bool get(unsigned &word) {
     if (pos < buffer->size()) {

@@ -1,6 +1,8 @@
 #ifndef __DWT_GPU_H__
 #define __DWT_GPU_H__
 
+#include "cuda_timer.h"
+
 /*
   CUDA implementation of Haar discrete wavelet transform.
 
@@ -50,6 +52,12 @@ template<typename NUM>
 __global__ void haar_inv_transpose_2d_kernel
 (int arrayWidth, int transformLength, NUM *data, NUM *result, int tileSize);
 
+// transform the data and update 'size', since the dimensions will rotate
+void haar_3d_cuda(float *input_data, float *output_data,
+                  scu_wavelet::int3 &size, scu_wavelet::int3 stepCount,
+                  bool inverse = false, bool isStandardTranspose = true,
+                  CudaTimer *transformTimer = NULL,
+                  CudaTimer *transposeTimer = NULL);
 
 int bestHaarGPUTileSize();
 

@@ -15,6 +15,7 @@
 #include <string>
 #include <cstdio>
 #include "cuda.h"
+#include "cucheck.h"
 
 using namespace std;
 
@@ -47,7 +48,11 @@ class CudaTimer {
   const char *getName() {return name.c_str();}
 
   void print() {
-    printf("%s: %.3fms\n", getName(), time());
+    if (count() == 1) {
+      printf("%s: %.3f ms\n", getName(), time());
+    } else {
+      printf("%s: %d calls in %.3f ms\n", getName(), count(), time());
+    }
   }
 
   // start timer
@@ -83,7 +88,7 @@ class CudaTimer {
   }
 
   // return the number of start/end pairs
-  int count() {return events.size() / 2;}
+  int count() {return (int)(events.size() / 2);}
 
   // Compute the total time in milliseconds.
   float time() {
@@ -97,7 +102,7 @@ class CudaTimer {
   }
 
   // return the number of CUDA events
-  int countEvents() {return events.size() / 2;}
+  int countEvents() {return (int)(events.size() / 2);}
   cudaEvent_t getEvent(size_t i) {return events[i];}
   cudaEvent_t getLastEvent() {return events[events.size()-1];}
 

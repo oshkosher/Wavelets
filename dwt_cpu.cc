@@ -861,9 +861,9 @@ void cdf97_inverse(int length, float *data, int stepCount, float *tempGiven) {
     array.setLength(stepLength);
 
     // interleave: 01234567 -> 04152636
-    for (int i=0; i < half; i++) {
-      temp[i*2] = data[i];
-      temp[i*2+1] = data[half+i];
+    for (int j=0; j < half; j++) {
+      temp[j*2] = data[j];
+      temp[j*2+1] = data[half+j];
     }
 
     int i=0;

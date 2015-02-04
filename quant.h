@@ -36,6 +36,7 @@ class Quantizer {
  public:
   virtual void quantizeRow(const float *in, int *out, int count) = 0;
   virtual void dequantizeRow(const int *in, float *out, int count) = 0;
+  virtual ~Quantizer() {}
 
   HD static float copysignf(float x, float s) {
     // for some reason, copysignf is defined on 64-bit Windows, but not 32-bit
@@ -51,7 +52,7 @@ class Quantizer {
 
   HD static float log2(float x) {
 #ifdef _WIN32
-    return (log(fabsf(x))/log(2.0));
+    return (logf(fabsf(x))/logf(2.0));
 #else
     return ::log2f(x);
 #endif
@@ -179,17 +180,12 @@ class QuantizationLooper {
      3 : -threshold .. +threshold
      4..7 : positive values
 */
-class QuantUniform : public Quantizer {
+class QuantUniform {
   int binCount;
   float threshold, maxVal, negOffset, posOffset;
   float negScale, negInvScale, posScale, posInvScale;
 
  public:
-  HD QuantUniform() {}
-
-  HD QuantUniform(int binCount_, float threshold_, float maxVal_) {
-    init(binCount_, threshold_, maxVal_);
-  }
 
   HD void init(int binCount_, float threshold_, float maxVal_) {
     binCount = binCount_;
@@ -288,14 +284,26 @@ class QuantUniform : public Quantizer {
       return 0;
   }
 
+};
+
+
+// Provide the services of a QuantUniform but with a virtual methods
+class QuantizerUniform : public Quantizer {
+  QuantUniform q;
+  
+ public:
+  QuantizerUniform(int binCount, float threshold, float maxVal) {
+    q.init(binCount, threshold, maxVal);
+  }
+
   // Override
   virtual void quantizeRow(const float *in, int *out, int count) {
-    for (int i=0; i < count; i++) out[i] = quant(in[i]);
+    for (int i=0; i < count; i++) out[i] = q.quant(in[i]);
   }
 
   // Override
   virtual void dequantizeRow(const int *in, float *out, int count) {
-    for (int i=0; i < count; i++) out[i] = dequant(in[i]);
+    for (int i=0; i < count; i++) out[i] = q.dequant(in[i]);
   }
 };
 
@@ -309,18 +317,16 @@ class QuantUniform : public Quantizer {
      zeroBin : -threshold .. +threshold
      (zeroBin+1)..(binCount-1) : positive
 */
-class QuantLog : public Quantizer {
+class QuantLog {
   int binCount;
   float threshold;
   float negScale, negInvScale, negOffset;
   float posScale, posInvScale, posOffset;
 
  public:
+  // this object is used as a CUDA shared memory variable, so it cannot
+  // have any constructors
   HD QuantLog() {}
-  
-  HD QuantLog(int binCount_, float threshold_, float maxVal_) {
-    init(binCount_, threshold_, maxVal_);
-  }
 
   HD void init(int binCount_, float threshold_, float maxVal_) {
     binCount = binCount_;
@@ -407,25 +413,37 @@ class QuantLog : public Quantizer {
     else
       return 0;
   }
+};
+
+
+// Provide the services of a QuantLog but with a virtual methods
+class QuantizerLog : public Quantizer {
+  QuantLog q;
+  
+ public:
+  QuantizerLog(int binCount, float threshold, float maxVal) {
+    q.init(binCount, threshold, maxVal);
+  }
 
   // Override
   virtual void quantizeRow(const float *in, int *out, int count) {
-    for (int i=0; i < count; i++) out[i] = quant(in[i]);
+    for (int i=0; i < count; i++) out[i] = q.quant(in[i]);
   }
 
   // Override
   virtual void dequantizeRow(const int *in, float *out, int count) {
-    for (int i=0; i < count; i++) out[i] = dequant(in[i]);
+    for (int i=0; i < count; i++) out[i] = q.dequant(in[i]);
   }
 };
 
 
-class QuantCodebook : public Quantizer {
+class QuantCodebook {
   float lastBoundary;
 
  public:
   std::vector<float> boundaries, codebook;
 
+  /*
   QuantCodebook() {}
 
   QuantCodebook(const std::vector<float> &codebook_) {
@@ -436,14 +454,17 @@ class QuantCodebook : public Quantizer {
 		const std::vector<float> &codebook_) {
     init(boundaries_, codebook_);
   }
+  */
 
   // given both a codebook and set of boundaries
+  /*
   void init(const std::vector<float> &boundaries_,
 	    const std::vector<float> &codebook_) {
     boundaries = boundaries_;
     codebook = codebook_;
     lastBoundary = boundaries[boundaries.size()-1];
   }
+  */
 
   // Given just the codebook, automatically create boundaries at the
   // midpoint between each pair of adjacent codebook entries.
@@ -468,10 +489,10 @@ class QuantCodebook : public Quantizer {
   int quant(float x) const {
 
     // if the x is >= the end of the last bin, return the last bin
-    if (x >= lastBoundary) return boundaries.size();
+    if (x >= lastBoundary) return (int)boundaries.size();
 
-    int bin = std::upper_bound(boundaries.begin(), boundaries.end(), x)
-      - boundaries.begin();
+    int bin = (int)(std::upper_bound(boundaries.begin(), boundaries.end(), x)
+      - boundaries.begin());
 
     return bin;
   }
@@ -482,16 +503,27 @@ class QuantCodebook : public Quantizer {
     return codebook[x];
   }
 
+};
+
+
+// Provide the services of a QuantLog but with a virtual methods
+class QuantizerCodebook : public Quantizer {
+  QuantCodebook q;
+  
+ public:
+  QuantizerCodebook(const std::vector<float> &codebook) {
+    q.init(codebook);
+  }
+
   // Override
   virtual void quantizeRow(const float *in, int *out, int count) {
-    for (int i=0; i < count; i++) out[i] = quant(in[i]);
+    for (int i=0; i < count; i++) out[i] = q.quant(in[i]);
   }
 
   // Override
   virtual void dequantizeRow(const int *in, float *out, int count) {
-    for (int i=0; i < count; i++) out[i] = dequant(in[i]);
+    for (int i=0; i < count; i++) out[i] = q.dequant(in[i]);
   }
-
 };
 
 #endif // __QUANT_H__
