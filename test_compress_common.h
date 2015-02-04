@@ -59,6 +59,7 @@ struct Options {
     verbose = false;
     printHuffmanEncoding = false;
     doComputeError = false;
+    doOptimize = false;
     saveBeforeQuantizingFilename = "";
     runQuantizationExperiments = false;
 
