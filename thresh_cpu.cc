@@ -44,7 +44,7 @@ float thresh_cpu(int count, float *data, float compRatio,
 
   int threshIdx = (int)(compRatio * count);
   float threshold = absData[threshIdx];
-  if (threshold == 0) threshold = 1e-16;
+  if (threshold == 0) threshold = MIN_THRESHOLD_VALUE;
 
   *nonzeroCount = count - threshIdx - 1;
 

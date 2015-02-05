@@ -14,6 +14,8 @@ unsigned ceilLog2(unsigned x);
 // Is essentially ceil(log2(length))
 int dwtMaximumSteps(int length);
 
+bool is_padded_for_wavelet(int length, int steps);
+bool is_padded_for_wavelet(scu_wavelet::int3 size, scu_wavelet::int3 steps);
 
 // Transpose a square matrix.
 void transpose_square(int size, float data[]);

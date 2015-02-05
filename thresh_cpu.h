@@ -4,6 +4,8 @@
 #include <cstddef>
 #include "wavelet.h"
 
+#define MIN_THRESHOLD_VALUE 1e-16
+
 // Allocates absData on the heap and loads it with abs(data)
 // Sorts absData.  Finds the index corresponding to the compRatio, and 
 // reads that element to get the threshold. Sets max value and minimum value.

@@ -1,6 +1,8 @@
 #ifndef __TRANSPOSE_GPU_H__
 #define __TRANSPOSE_GPU_H__
 
+#include "wavelet.h"
+
 // Transpose the upper left square corner of the 2-d array.
 
 // These are implemented via templates, so these wrappers just instatiate
@@ -16,8 +18,15 @@ void gpuTransposeSquare(int fullWidth, int transposeSize,
                         cudaStream_t stream);
 #endif
 
-void gpuTranspose(float *src, float *dest, int width, int height, 
+void gpuTranspose(float *dest, float *src, int width, int height, 
                   cudaStream_t stream = 0);
+
+// 'size' will be modified to match the destination shape
+void gpuTranspose3dFwd(float *dest, float *src, scu_wavelet::int3 &size,
+                       cudaStream_t stream = 0);
+
+void gpuTranspose3dBack(float *dest, float *src, scu_wavelet::int3 &size,
+                        cudaStream_t stream = 0);
 
 
 #endif // __TRANSPOSE_GPU_H__

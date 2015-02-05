@@ -15,6 +15,8 @@
 #define SQRT2     1.4142135623730950488f
 #define INV_SQRT2 0.70710678118654752440f
 
+#define HAAR_3D_BLOCK_SIZE 128
+
 /*
   To see a previous version of this code that tried out surfaces and
   iterating down columns (rather than rows), see the version as checked
@@ -42,6 +44,10 @@ float haar_2d_cuda_internal
  bool useCombinedTranspose);
 
 
+/**
+   Perform one pass of the Haar transform on the first 'length' 
+   elements of inputRow using outputRow as temp space.
+*/
 template<typename NUM>
 __device__ void haar_kernel_row(int length, NUM *inputRow, NUM *outputRow) {
 
@@ -57,6 +63,29 @@ __device__ void haar_kernel_row(int length, NUM *inputRow, NUM *outputRow) {
     NUM a = inputRow[2*i], b = inputRow[2*i + 1];
     d[i] = (a - b) * INV_SQRT2;
     s[i] = (a + b) * INV_SQRT2;
+  }
+}
+
+
+/**
+   Perform one pass of the inverse Haar transform on the first 'length' 
+   elements of inputRow using outputRow as temp space.
+*/
+template<typename NUM>
+__device__ void haar_kernel_row_inverse(int length, NUM *inputRow,
+                                        NUM *outputRow) {
+
+  // Set s to point to my row in the input data
+  NUM *s = inputRow;
+
+  int half = length >> 1;
+
+  // point d at the second half of the temporary row
+  NUM *d = s + half;
+
+  for (int i=threadIdx.x; i < half; i += blockDim.x) {
+    outputRow[2*i]   = INV_SQRT2 * (s[i] + d[i]);
+    outputRow[2*i+1] = INV_SQRT2 * (s[i] - d[i]);
   }
 }
 
@@ -95,18 +124,7 @@ __global__ void haar_inv_2d_kernel
   NUM *inputRow = data + y * arrayWidth;
   NUM *outputRow = result + y * arrayWidth;
 
-  // Set s to point to my row in the input data
-  NUM *s = inputRow;
-
-  int half = transformLength >> 1;
-
-  // point d at the second half of the temporary row
-  NUM *d = s + half;
-
-  for (int i=threadIdx.x; i < half; i += blockDim.x) {
-    outputRow[2*i]   = INV_SQRT2 * (s[i] + d[i]);
-    outputRow[2*i+1] = INV_SQRT2 * (s[i] - d[i]);
-  }
+  haar_kernel_row_inverse(transformLength, inputRow, outputRow);
 }
 
 
@@ -538,6 +556,33 @@ __global__ void haar_3d_kernel_allglobal
   }
 }
 
+
+__global__ void haar_3d_kernel_allglobal_inverse
+(float *data1, float *data2, int rowLength, int stepCount) {
+  
+  int offset = rowLength * (blockIdx.y + blockIdx.z*gridDim.y);
+  float *row = data1 + offset;
+  float *tempRow = data2 + offset;
+
+  rowLength >>= (stepCount-1);
+  
+  while (stepCount > 0) {
+
+    // copy data from tempRow to row
+    copy_row(tempRow, row, rowLength);
+
+    __syncthreads();
+
+    // read tempRow, write to row
+    haar_kernel_row_inverse(rowLength, tempRow, row);
+
+    stepCount--;
+    rowLength <<= 1;
+
+    __syncthreads();
+  }
+}
+
 /**
   Input data is in data1. data2 is temp space.
   Update 'size', since the dimensions will rotate.
@@ -555,63 +600,125 @@ __global__ void haar_3d_kernel_allglobal
 
   If the row is short enough to fit in registers, use them as the temp row.
 */
-void haar_3d_cuda(float *data, float *tmpData, scu_wavelet::int3 &alteredSize,
+void haar_3d_cuda(float *data, float *tmpData, scu_wavelet::int3 &size,
                   scu_wavelet::int3 stepCount, bool inverse,
                   bool isStandardTranspose,
                   CudaTimer *transformTimer,
                   CudaTimer *transposeTimer) {
-
-  scu_wavelet::int3 size = alteredSize;
 
   if (!(size <= scu_wavelet::int3(65535,65535,65535))) {
     fprintf(stderr, "Cubelet too large: max is 65535x65535x65535\n");
     return;
   }
 
-  dim3 gridDim(1, size.y, size.z);
-  dim3 blockDim(128);
+  if (!isStandardTranspose) {
+    fprintf(stderr, "Nonstandard transpose not implemented.\n");
+    return;
+  }
 
-  // X transform
-  if (transformTimer) transformTimer->start();
-  haar_3d_kernel_allglobal<<<gridDim, blockDim>>>
-    (data, tmpData, size.x, stepCount.x);
-  if (transformTimer) transformTimer->end();
+  if (inverse) stepCount.rotateBack();
+  if (!is_padded_for_wavelet(size, stepCount)) {
+    fprintf(stderr, "%dx%dx%d data is not properly padded for %d,%d,%d "
+            "transform steps.\n",
+            size.x, size.y, size.z, stepCount.x, stepCount.y, stepCount.z);
+    return;
+  }
+  if (inverse) stepCount.rotateFwd();
 
-  // transpose XYZ -> YZX
-  if (transposeTimer) transposeTimer->start();
-  gpuTranspose(data, tmpData, size.x, size.y*size.z);
-  alteredSize.rotateFwd();
-  if (transposeTimer) transposeTimer->end();
+  dim3 gridDim;
+  dim3 blockDim(HAAR_3D_BLOCK_SIZE);
 
-  // data is now in tmpData
+  if (!inverse) {
 
-  // Y transform
-  gridDim.y = size.z;
-  gridDim.z = size.x;
-  if (transformTimer) transformTimer->start();
-  haar_3d_kernel_allglobal<<<gridDim, blockDim>>>
-    (tmpData, data, size.y, stepCount.y);
-  if (transformTimer) transformTimer->end();
+    // X transform
+    gridDim.y = size.y;
+    gridDim.z = size.z;
+    if (transformTimer) transformTimer->start();
+    haar_3d_kernel_allglobal<<<gridDim, blockDim>>>
+      (data, tmpData, size.x, stepCount.x);
+    if (transformTimer) transformTimer->end();
 
-  // transpose YZX -> ZXY
-  if (transposeTimer) transposeTimer->start();
-  gpuTranspose(tmpData, data, size.y, size.z*size.x);
-  alteredSize.rotateFwd();
-  if (transposeTimer) transposeTimer->end();
+    // transpose XYZ -> YZX
+    if (transposeTimer) transposeTimer->start();
+    gpuTranspose3dFwd(tmpData, data, size);
+    if (transposeTimer) transposeTimer->end();
 
-  // data is back in data
+    // data is now in tmpData
 
-  // Z transform
-  gridDim.y = size.x;
-  gridDim.z = size.y;
-  if (transformTimer) transformTimer->start();
-  haar_3d_kernel_allglobal<<<gridDim, blockDim>>>
-    (data, tmpData, size.z, stepCount.z);
-  if (transformTimer) transformTimer->end();
+    // Y transform
+    gridDim.y = size.y;
+    gridDim.z = size.z;
+    if (transformTimer) transformTimer->start();
+    haar_3d_kernel_allglobal<<<gridDim, blockDim>>>
+      (tmpData, data, size.x, stepCount.y);
+    if (transformTimer) transformTimer->end();
 
-  /*
-  CUCHECK(cudaMemcpy(data, tmpData, sizeof(float)*size.x*size.y*size.z,
-                     cudaMemcpyDeviceToDevice));
-  */
+    // transpose YZX -> ZXY
+    if (transposeTimer) transposeTimer->start();
+    gpuTranspose3dFwd(data, tmpData, size);
+    if (transposeTimer) transposeTimer->end();
+
+    // data is back in data
+
+    // Z transform
+    gridDim.y = size.y;
+    gridDim.z = size.z;
+    if (transformTimer) transformTimer->start();
+    haar_3d_kernel_allglobal<<<gridDim, blockDim>>>
+      (data, tmpData, size.x, stepCount.z);
+    if (transformTimer) transformTimer->end();
+
+  } else { // is inverse
+
+    // inverse Z transform
+    gridDim.y = size.y;
+    gridDim.z = size.z;
+    if (transformTimer) transformTimer->start();
+    haar_3d_kernel_allglobal_inverse<<<gridDim, blockDim>>>
+      (data, tmpData, size.x, stepCount.z);
+    if (transformTimer) transformTimer->end();
+
+    // transpose ZXY -> YZX
+    if (transposeTimer) transposeTimer->start();
+    gpuTranspose3dBack(tmpData, data, size);
+    if (transposeTimer) transposeTimer->end();
+
+    // data is in 'tmpData'
+
+    // inverse Y transform
+    gridDim.y = size.y;
+    gridDim.z = size.z;
+    if (transformTimer) transformTimer->start();
+    haar_3d_kernel_allglobal_inverse<<<gridDim, blockDim>>>
+      (tmpData, data, size.x, stepCount.y);
+    if (transformTimer) transformTimer->end();
+
+    // transpose YZX -> XYZ
+    if (transposeTimer) transposeTimer->start();
+    gpuTranspose3dBack(data, tmpData, size);
+    if (transposeTimer) transposeTimer->end();
+
+    // data is in 'data'
+
+    // inverse X transform
+    gridDim.y = size.y;
+    gridDim.z = size.z;
+    if (transformTimer) transformTimer->start();
+    haar_3d_kernel_allglobal_inverse<<<gridDim, blockDim>>>
+      (data, tmpData, size.x, stepCount.x);
+    if (transformTimer) transformTimer->end();
+  }
+
+    /*
+      CUCHECK(cudaMemcpy(data, tmpData, sizeof(float)*size.x*size.y*size.z,
+      cudaMemcpyDeviceToDevice));
+
+Mean squared error: 469.826, peak SNR: 21.411
+Huffman build table 0.779 ms
+Huffman encoding: 288 bytes, 4.48 bits/pixel, longest encoding = 10 bits
+Write data file: 3.32 ms
+Total: 19.02 ms
+
+    */
   
 }

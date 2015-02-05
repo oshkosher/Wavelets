@@ -14,7 +14,15 @@
 	     cudaGetErrorString(err));		    \
       exit(1); }} while(0)
 
+#include "cuda.h"
+#define HD __host__ __device__
+#define DV __device__
+
+#else // __CUDACC__
+
+#define HD
+#define DV
+
 #endif // __CUDACC__
 
 #endif // __CUCHECK_H__
-

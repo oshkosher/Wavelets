@@ -44,7 +44,7 @@
 #      http://developer.download.nvidia.com/compute/cuda/6_5/rel/installers/cuda_6.5.14_linux_64.run
 
 # build all the tools that don't require CUDA
-default: test_compress_cpu java convert histogram cubelet_convert
+default: test_compress_cpu java convert histogram cubelet_convert test_compress_gpu
 
 EXECS = test_compress_cpu test_haar_cpu haar \
   test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu \
@@ -104,7 +104,7 @@ NVCC_ARCH = \
 # enable one of these to generate code for just one generation of GPU
 # (reduces compile time by 30%)
 # NVCC_ARCH=-arch sm_20
-NVCC_ARCH=-arch sm_30
+NVCC_ARCH=-gencode arch=compute_30,code=sm_30
 
 # use this to direct NVCC to use a different host compiler, if necessary
 # NVCC_COMPILER_BINDIR=--compiler-bindir='C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\bin'
@@ -253,7 +253,7 @@ optimize.o: optimize.cc optimize.h test_compress_cpu.h wavelet.h
 
 test_compress_common.o: test_compress_common.cc test_compress_common.h \
 	  rle.h bit_stream.h nixtimer.h huffman.h dwt_cpu.h \
-	  wavelet_compress.pb.h
+	  wavelet_compress.pb.h wavelet.h
 	$(CC) -c $<
 
 dwt_cpu.o: dwt_cpu.cc dwt_cpu.h nixtimer.h wavelet.h

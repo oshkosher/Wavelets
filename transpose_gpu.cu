@@ -145,7 +145,7 @@ __global__ void gpuTransposeKernel(float *src, float *dest,
 
 
 /* Transpose rectangular 2-d arrays. */
-void gpuTranspose(float *src_d, float *dest_d, int width, int height, 
+void gpuTranspose(float *dest_d, float *src_d, int width, int height, 
                   cudaStream_t stream) {
   
   dim3 gridSize, blockSize(TX_BLOCK_SIZE, TX_BLOCK_SIZE);
@@ -159,6 +159,22 @@ void gpuTranspose(float *src_d, float *dest_d, int width, int height,
 
   gpuTransposeKernel<<<gridSize, blockSize, 0, stream>>>
     (src_d, dest_d, width, height);
+
+}
+
+
+void gpuTranspose3dFwd(float *dest, float *src, scu_wavelet::int3 &size,
+                       cudaStream_t stream) {
+  gpuTranspose(dest, src, size.x, size.y*size.z, stream);
+  size.rotateFwd();
+}
+
+
+void gpuTranspose3dBack(float *dest, float *src, scu_wavelet::int3 &size,
+                       cudaStream_t stream) {
+
+  gpuTranspose(dest, src, size.x*size.y, size.z, stream);
+  size.rotateBack();
 
 }
 

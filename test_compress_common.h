@@ -96,6 +96,10 @@ class ErrorAccumulator {
     }
   }
 
+  void setSumDiff(double s) {sumDiff = s;}
+  void setSumDiffSquared(double s) {sumDiffSquared = s;}
+  void setCount(int c) {count = c;}
+
   // add one pair of values
   void add(float a, float b) {
     float diff = fabsf(a-b);

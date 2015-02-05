@@ -7,16 +7,9 @@
 #include <cassert>
 #include <algorithm>
 #include "nixtimer.h"
+#include "cucheck.h"
 
-#ifdef __CUDACC__
-#include "cuda.h"
-#define HD __host__ __device__
-#define DV __device__
-
-#else
-
-#define HD
-#define DV
+#ifndef __CUDACC__
 
 // For some reason, copysignf is defined on 64-bit Windows, but not 32-bit.
 // And on 64-bit, it's called _copysignf, not copysignf.

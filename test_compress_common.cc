@@ -408,7 +408,7 @@ public:
     const unsigned char *end = readp + length;
     float *writep = dest->pointer(0, y, z);
     while (readp < end) {
-      *writep++ = *readp++ * (1.0f / 255) - 0.5f;
+      *writep++ = ByteInputData::byteToFloat(*readp++);
     }
   }
 };
@@ -538,6 +538,14 @@ void computeErrorRates(const CubeInt *quantizedData,
   restoredData.allocate();
   if (!dequantize(*quantizedData, restoredData, param)) return;
 
+  // print dequantized data
+  /*  
+  for (int i=0; i < restoredData.size.count(); i++) {
+    printf("%d) %d -> %f\n", i, quantizedData->get(i,0,0),
+           restoredData.get(i,0,0));
+  }
+  */
+
   ErrorAccumulator errAccum;
 
   computeErrorRatesAfterDequant(&restoredData, param, inputData, &errAccum);
@@ -565,6 +573,7 @@ void computeErrorRatesAfterDequant
   // perform the inverse wavelet transform on restoredData
   // restoredData->print("Before transform");
   if (!waveletTransform(*restoredData, param, true, false)) return;
+
   // restoredData->print("After transform");
 
   const int width = inputData->width();
@@ -579,14 +588,9 @@ void computeErrorRatesAfterDequant
       const float *restoredRow = restoredData->pointer(0, y, z);
       
       for (int x=0; x < width; x++) {
-        float f = (restoredRow[x] + 0.5f) * 255;
-        if (f < 0) {
-          f = 0;
-        } else if (f > 255) {
-          f = 255;
-        }
-        // add half to round rather than truncate
-        unsigned char pixelValue = (unsigned char) (f + .5f);
+        unsigned char pixelValue = ByteInputData::floatToByte(restoredRow[x]);
+
+        // printf("%d,%d,%d %d %d\n", z, y, x, originalRow[x], pixelValue);
 
         errAccum->add(originalRow[x], pixelValue);
       }
@@ -625,14 +629,7 @@ void translateCubeDataToOriginal(CubeFloat *src, Cube *dest, bool verbose) {
     unsigned char *writep = d->pointer(0,0,0);
 
     while (readp < endp) {
-      // add half to round rather than truncate
-      int x = (int) ((*readp++ + 0.5f) * 255 + 0.5f);
-      if (x < 0) {
-        x = 0;
-      } else if (x > 255) {
-        x = 255;
-      }
-      *writep++ = x;
+      *writep++ = ByteInputData::floatToByte(*readp++);
     }
     if (verbose) d->print("After restoring data type");
   }

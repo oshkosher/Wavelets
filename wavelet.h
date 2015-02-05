@@ -10,6 +10,7 @@
 #include <string>
 #include "wavelet_compress.pb.h"
 #include <xmmintrin.h>
+#include "cucheck.h"
 
 /*
   This file defines:
@@ -141,6 +142,50 @@ class int3 {
 };
 
 } // namespace scu_wavelet
+
+
+// this determines how we handle byte input data
+
+// Convert bytes 0..255 into floats 0..255
+class ByteInputDataUnchanged {
+ public:
+  HD static float byteToFloat(unsigned char b) {
+    return (float) b;
+  }
+
+  HD static unsigned char floatToByte(float f) {
+    if (f <= 0) {
+      return 0;
+    } else if (f >= 255) {
+      return 255;
+    } else {
+      return (unsigned char) f;
+    }
+  }
+};
+
+
+// Convert bytes 0..255 into floats -.5 .. +.5
+class ByteInputDataHalfAtZero {
+ public:
+  HD static float byteToFloat(unsigned char b) {
+    return b * (1.0f / 255) - 0.5f;
+  }
+
+  HD static unsigned char floatToByte(float f) {
+    f = (f + 0.5f) * 255 + 0.5f;
+    if (f <= 0) {
+      f = 0;
+    } else if (f >= 255) {
+      f = 255;
+    }
+    return (unsigned char) f;
+  }
+};
+
+
+// use the second one: -.5 .. +.5
+typedef ByteInputDataHalfAtZero ByteInputData;
 
 
 class WaveletCompressionParam {

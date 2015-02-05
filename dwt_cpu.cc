@@ -88,6 +88,20 @@ int dwtMaximumSteps(int length) {
 }
 
 
+// If the length is not a multiple of 2^steps, it is not padded
+bool is_padded_for_wavelet(int length, int steps) {
+  int multiple = 1 << steps;
+  return (length & (multiple - 1)) == 0;
+}
+
+bool is_padded_for_wavelet(scu_wavelet::int3 size, scu_wavelet::int3 steps) {
+  return
+    is_padded_for_wavelet(size.x, steps.x) &&
+    is_padded_for_wavelet(size.y, steps.y) &&
+    is_padded_for_wavelet(size.z, steps.z);
+}
+
+
 void print_matrix(int width, int height, float *data) {
   for (int y=0; y < height; y++) {
     printf("%8.4f", *data++);
