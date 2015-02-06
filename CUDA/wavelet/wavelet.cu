@@ -29,7 +29,7 @@ __constant__ float c_Kernel[KERNEL_LENGTH*2];
 // Row convolution with Low and Hi pass filter
 ////////////////////////////////////////////////////////////////////////////////
 #define ROWS_BLOCKDIM_X 16
-#define ROWS_BLOCKDIM_Y 2
+#define ROWS_BLOCKDIM_Y 16
 #define	ROWS_RESULT_STEPS 1 //8
 #define ROWS_HALO_STEPS 1
 
@@ -73,7 +73,6 @@ __global__ void convolutionRowsMirrorHiLoKernel(float *d_Dst, float *d_Src, int 
     //Compute and store results
     __syncthreads();
 #pragma unroll
-
     for (int i = ROWS_HALO_STEPS; i < ROWS_HALO_STEPS + ROWS_RESULT_STEPS; i++)
     {
         float sum = 0;
@@ -84,7 +83,6 @@ __global__ void convolutionRowsMirrorHiLoKernel(float *d_Dst, float *d_Src, int 
         {
 			sum += c_Kernel[fidx * KERNEL_LENGTH + KERNEL_RADIUS + j] * s_Data[threadIdx.y][threadIdx.x + i * ROWS_BLOCKDIM_X + j];
         }
-
 		d_Dst[i * ROWS_BLOCKDIM_X] = sum;
     }
 }
@@ -145,43 +143,75 @@ __global__ void invConvolutionRowsMirrorHiLoKernel(float *d_Dst, float *d_Src, i
     }
 }
 
-void fwt_1D(float *data, const unsigned level, const unsigned nx, const unsigned ny) {
+void fwt_1D(float **data, const unsigned level, const unsigned nx, const unsigned ny) {
     assert(ROWS_BLOCKDIM_X * ROWS_HALO_STEPS >= KERNEL_RADIUS);
     assert(d_w % (ROWS_RESULT_STEPS * ROWS_BLOCKDIM_X) == 0);
     assert(d_h % ROWS_BLOCKDIM_Y == 0);
 
+	const int mem_size = nx*ny*sizeof(float);
+
+	float *data1, *data2, *aux;
+	data1 = *data;
+	cudaMalloc(&data2, mem_size);
+
+	unsigned w = nx;
+
     dim3 blocks(nx / (ROWS_RESULT_STEPS * ROWS_BLOCKDIM_X), ny / ROWS_BLOCKDIM_Y);
     dim3 threads(ROWS_BLOCKDIM_X, ROWS_BLOCKDIM_Y);
-	unsigned w = nx;
-	for (unsigned i = 0; i < level; i++) {
-		convolutionRowsMirrorHiLoKernel<<<blocks, threads>>>(data, data, w, ny, w);
+	convolutionRowsMirrorHiLoKernel<<<blocks, threads>>>(data2, data1, w, ny, w);
 
+	for (unsigned i = 1; i < level; i++) {
 		blocks.x /= 2;
 		w /= 2;
+
+		aux = data2;
+		data2 = data1;
+		data1 = aux;
+
+		cudaMemcpy(data2+w*ny, data1+w*ny, w*ny*sizeof(float), cudaMemcpyDeviceToDevice);
+
+		convolutionRowsMirrorHiLoKernel<<<blocks, threads>>>(data2, data1, w, ny, w);
 	}
     
-	//cudaMemcpy(output, data, d_w * d_h * sizeof(float), cudaMemcpyDeviceToHost);
+	*data = data2;
+	cudaFree(data1);
 
 	printf("Rows: %s\n",cudaGetErrorString(cudaGetLastError()));
 }
 
-void iwt_1D(float *data, const unsigned level, const unsigned nx, const unsigned ny) {
+void iwt_1D(float **data, const unsigned level, const unsigned nx, const unsigned ny) {
     assert(ROWS_BLOCKDIM_X * ROWS_HALO_STEPS >= KERNEL_RADIUS);
     assert(d_w % (ROWS_RESULT_STEPS * ROWS_BLOCKDIM_X) == 0);
     assert(d_h % ROWS_BLOCKDIM_Y == 0);
 
-    dim3 blocks(nx / (ROWS_RESULT_STEPS * ROWS_BLOCKDIM_X), ny / ROWS_BLOCKDIM_Y);
-    dim3 threads(ROWS_BLOCKDIM_X, ROWS_BLOCKDIM_Y);
-	unsigned w = nx;
-	for (unsigned i = 0; i < level; i++) {
-		invConvolutionRowsMirrorHiLoKernel<<<blocks, threads>>>(data, data, w, ny, w);
+	const int mem_size = nx*ny*sizeof(float);
 
-		blocks.x /= 2;
-		w /= 2;
+	float *data1, *data2, *aux;
+	data1 = *data;
+	cudaMalloc(&data2, mem_size);
+
+	unsigned w = nx >> (level-1);
+
+    dim3 blocks(w / (ROWS_RESULT_STEPS * ROWS_BLOCKDIM_X), ny / ROWS_BLOCKDIM_Y);
+    dim3 threads(ROWS_BLOCKDIM_X, ROWS_BLOCKDIM_Y);
+	invConvolutionRowsMirrorHiLoKernel<<<blocks, threads>>>(data2, data1, w, ny, w);
+
+	for (unsigned i = 1; i < level; i++) {
+		cudaMemcpy(data2+w*ny, data1+w*ny, (nx-w)*ny*sizeof(float), cudaMemcpyDeviceToDevice);
+		
+		blocks.x *= 2;
+		w *= 2;
+
+		aux = data2;
+		data2 = data1;
+		data1 = aux;
+
+		invConvolutionRowsMirrorHiLoKernel<<<blocks, threads>>>(data2, data1, w, ny, w);
 	}
     
-	//cudaMemcpy(output, data, d_w * d_h * sizeof(float), cudaMemcpyDeviceToHost);
-	cudaDeviceSynchronize();
+	*data = data2;
+	cudaFree(data1);
+
 	printf("Rows: %s\n",cudaGetErrorString(cudaGetLastError()));
 }
 
@@ -239,6 +269,41 @@ extern "C" void setUpFilter(const float *filter){
 	printf("Setup: %s\n",cudaGetErrorString(cudaGetLastError()));
 }
 
+extern "C" void fwt_1D_GPU(float *data, const unsigned level, const unsigned nx, const unsigned ny) {
+	const int mem_size = nx*ny*sizeof(float);
+
+	float *d_idata;
+	cudaMalloc(&d_idata, mem_size);
+
+	cudaMemcpy(d_idata, data, mem_size, cudaMemcpyHostToDevice);
+
+	fwt_1D(&d_idata, level, nx, ny);
+
+	cudaMemcpy(data, d_idata, mem_size, cudaMemcpyDeviceToHost);
+
+	cudaDeviceSynchronize();
+	printf("FWT_GPU: %s\n",cudaGetErrorString(cudaGetLastError()));
+
+	cudaFree(d_idata);
+}
+
+extern "C" void iwt_1D_GPU(float *data, const unsigned level, const unsigned nx, const unsigned ny) {
+	const int mem_size = nx*ny*sizeof(float);
+
+	float *d_idata;
+	cudaMalloc(&d_idata, mem_size);
+
+	cudaMemcpy(d_idata, data, mem_size, cudaMemcpyHostToDevice);
+
+	iwt_1D(&d_idata, level, nx, ny);
+
+	cudaMemcpy(data, d_idata, mem_size, cudaMemcpyDeviceToHost);
+
+	cudaDeviceSynchronize();
+	printf("IWT_GPU: %s\n",cudaGetErrorString(cudaGetLastError()));
+
+	cudaFree(d_idata);
+}
 
 extern "C" void comp(float *data, const unsigned nx, const unsigned ny, const unsigned nz, const unsigned lvlx, const unsigned lvly, const unsigned lvlz) {
 	const int mem_size = nx*ny*nz*sizeof(float);
@@ -249,15 +314,15 @@ extern "C" void comp(float *data, const unsigned nx, const unsigned ny, const un
 
 	cudaMemcpy(d_idata, data, mem_size, cudaMemcpyHostToDevice);
 
-	fwt_1D(d_idata, lvlx, nx, ny*nz);
+	fwt_1D(&d_idata, lvlx, nx, ny*nz);
 
 	transpose(d_tdata, d_idata, nx, ny*nz);
 
-	fwt_1D(d_tdata, lvly, ny, nz*nx);
+	fwt_1D(&d_tdata, lvly, ny, nz*nx);
 
 	transpose(d_idata, d_tdata, ny, nz*nx);
 
-	fwt_1D(d_idata, lvlz, nz, nx*ny);
+	fwt_1D(&d_idata, lvlz, nz, nx*ny);
 
 	cudaMemcpy(data, d_idata, mem_size, cudaMemcpyDeviceToHost);
 
@@ -277,15 +342,15 @@ extern "C" void ucomp(float *data, const unsigned nx, const unsigned ny, const u
 
 	cudaMemcpy(d_idata, data, mem_size, cudaMemcpyHostToDevice);
 
-	iwt_1D(d_idata, lvlz, nz, nx*ny);
+	iwt_1D(&d_idata, lvlz, nz, nx*ny);
 
 	transpose(d_tdata, d_idata, nz*nx, ny);
 
-	iwt_1D(d_tdata, lvly, ny, nz*nx);
+	iwt_1D(&d_tdata, lvly, ny, nz*nx);
 
 	transpose(d_idata, d_tdata, ny*nz, nx);
 
-	iwt_1D(d_idata, lvlx, nx, ny*nz);
+	iwt_1D(&d_idata, lvlx, nx, ny*nz);
 
 
 	cudaMemcpy(data, d_idata, mem_size, cudaMemcpyDeviceToHost);
