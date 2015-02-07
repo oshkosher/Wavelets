@@ -4,23 +4,32 @@ Date: Wednesday, February 4th, 2015
 
 Time:  From about 12:10 PM to 1 PM
 
-Present: David Concha (remotely), Anupam Goyal, Drazen Fabris, Ed Karrels (remotely), Bonnie Smithson (remotely), Sergio Zarantonello
+Present: David Concha (remotely), Anupam Goyal, Drazen Fabris, Ed Karrels (remotely), Bonnie Smithson (remotely), 
+Sergio Zarantonello
 
 Presentations:
 
-Serge went over his draft of slides for the GPU conference.  Ed started to go over his part, but could not complete it by the time meeting ended.
+Serge went over his draft of slides for the GPU conference.  Ed started to go over his part, but could not 
+complete it by the time meeting ended.
 
 Discussions:
 
-For Sergeís Part of the Presentation:
+For Serge‚Äôs Part of the Presentation:
 
-Drazen commented that there should be a slide in the beginning that explains the motivation for our work or answer the question ìWhy?î.  Thus, from a reference article that is a review article (to be searched for by Anupam), it should give current state of the technology, the scope of the problem, etc.  Anupam feels that it should give what contribution our work makes to advance the current state of technology.
+Drazen commented that there should be a slide in the beginning that explains the motivation for our work or answer 
+the question ‚ÄúWhy?‚Äù.  Thus, from a reference article that is a review article (to be searched for by Anupam), it 
+should give current state of the technology, the scope of the problem, etc.  Anupam feels that it should give what 
+contribution our work makes to advance the current state of technology.
 
-For the slide titled ìError Control Loopî, Anupam suggested that the last point should be broken into two parts.  Drazen suggested that the part in this point - ìerror constrained by prescribed maximumî, should be put first on this slide and explained.
+For the slide titled ‚ÄúError Control Loop‚Äù, Anupam suggested that the last point should be broken into two parts.  
+Drazen suggested that the part in this point - ‚Äúerror constrained by prescribed maximum‚Äù, should be put first 
+on this slide and explained.
 
-For the slide titled ì2?D Tensorial Wavelets; Examplesî, Drazen mentioned that this slide should explain what type of wavelet it is, what is the application of this wavelet.
+For the slide titled ‚Äú2-D Tensorial Wavelets; Examples‚Äù, Drazen mentioned that this slide should explain what 
+type of wavelet it is, what is the application of this wavelet.
 
-For the slide titled ì3D Procedureî, Drazen mentioned that the axes shown on the top right hand corner should be corrected, e.g. all three axes should be labeled and the axis appearing as ìyî should be ìzî.
+For the slide titled ‚Äú3D Procedure‚Äù, Drazen mentioned that the axes shown on the top right hand corner should 
+be corrected, e.g. all three axes should be labeled and the axis appearing as ‚Äúy‚Äù should be ‚Äúz‚Äù.
 
 Future Work:
 Anupam should gather feedback from all of us about the slides.
