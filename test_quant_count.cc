@@ -125,7 +125,8 @@ int main_compres_with_previous() {
       startTime = NixTimer::time();
       quant_boundaries_array(boundaries, width*height, data);
       elapsed1 = NixTimer::time() - startTime;
-      QuantCodebook qu(boundaries, codebook);
+      QuantCodebook qu;
+      qu.init(boundaries, codebook);
       QuantizationLooper<QuantCodebook> qlu(&qu, 1 << bits);
       qlu.quantize(width*height, origData, quantizedData, doComputeErr);
       elapsed2 = qlu.getExecuteTime();
@@ -230,8 +231,10 @@ void tryQuant(float f, QuantLog &qlog, QuantUniform &quniform) {
 
   
 int main_quick_test() {
-  QuantLog qlog(100, 1, 5);
-  QuantUniform quniform(100, 1, 5);
+  QuantLog qlog;
+  QuantUniform quniform;
+  qlog.init(100, 1, 5);
+  quniform.init(100, 1, 5);
 
   printf("Quantize\n");
   tryQuant(0, qlog, quniform);

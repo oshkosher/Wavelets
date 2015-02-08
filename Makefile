@@ -46,7 +46,7 @@
 # build all the tools that don't require CUDA
 default: test_compress_cpu java convert histogram cubelet_convert
 
-EXECS = test_compress_cpu test_haar_cpu haar \
+EXECS = test_compress_cpu test_compress_gpu test_haar_cpu haar \
   test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu \
   normalize test_rle test_huffman test_bit_stream test_quant_count \
   list_data image_error test_transform test_lloyd \
