@@ -20,13 +20,14 @@
 /*  - OUT    - groups:        assign each point its codebook index           */
 /*                            must be an array of size 'psize'               */
 /*  - IN     - stop_criteria: typically 10e-7                                */
+/*  - OUT    - iterations:    If not null, the number of iterations done     */
 /*****************************************************************************/
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
 
-void lloyd(const float *points, unsigned int psize,float *codebook, unsigned int csize, float *partition, float &dist, float &reldist, unsigned int *groups, float stop_criteria = 10e-7) {
+void lloyd(const float *points, unsigned int psize,float *codebook, unsigned int csize, float *partition, float &dist, float &reldist, unsigned int *groups, float stop_criteria, int *iterations) {
 
 	float   *sum   = (float*)calloc(csize,sizeof(float));
 	unsigned *count = (unsigned*)calloc(csize,sizeof(unsigned));
@@ -39,6 +40,7 @@ void lloyd(const float *points, unsigned int psize,float *codebook, unsigned int
 	float pmax = points[0];
 	float pmin = points[0];
 	dist = 0;
+        if (iterations) *iterations = 0;
 
 	// Assign points to codebook (for codebook update)
 	for(unsigned int i = 0; i < psize; i++) {
@@ -66,6 +68,7 @@ void lloyd(const float *points, unsigned int psize,float *codebook, unsigned int
 
 	while(reldist > stop_criteria) {
 		// printf("reldist: %f(%f)\n",reldist,stop_criteria);
+		if (iterations) ++*iterations;
 
 		// Update codebook
 		for(unsigned int i = 0; i < csize; i++) {

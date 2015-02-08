@@ -398,13 +398,31 @@ class QuantLog {
     assert(x >= 0 && x < binCount);
 
     int zeroBin = (binCount-1) >> 1;
+    float sign, scale, offset;
+    if (x < zeroBin) {
+      sign = -1;
+      offset = negOffset;
+      scale = negInvScale;
+    } else {
+      sign = 1;
+      offset = posOffset;
+      scale = posInvScale;
+    }
 
+    if (x == zeroBin) {
+      return 0;
+    } else {
+      return sign * expf( (sign*(x - zeroBin) - offset) * scale );
+    }
+
+      /*
     if (x < zeroBin)
       return -expf( (zeroBin - x - negOffset) * negInvScale );
     else if (x > zeroBin)
       return expf( (x - zeroBin - posOffset) * posInvScale );
     else
       return 0;
+      */
   }
 };
 
@@ -425,7 +443,11 @@ class QuantizerLog : public Quantizer {
 
   // Override
   virtual void dequantizeRow(const int *in, float *out, int count) {
-    for (int i=0; i < count; i++) out[i] = q.dequant(in[i]);
+    for (int i=0; i < count; i++) {
+      int tmp = in[i];
+      out[i] = q.dequant(tmp);
+      // printf("dequant %6d: %d %.2g\n", i, tmp, out[i]);
+    }
   }
 };
 
@@ -450,17 +472,16 @@ class QuantCodebook {
   */
 
   // given both a codebook and set of boundaries
-  /*
-  void init(const std::vector<float> &boundaries_,
-	    const std::vector<float> &codebook_) {
-    boundaries = boundaries_;
+  void init(const std::vector<float> &codebook_,
+            const std::vector<float> &boundaries_) {
     codebook = codebook_;
+    boundaries = boundaries_;
     lastBoundary = boundaries[boundaries.size()-1];
   }
-  */
 
   // Given just the codebook, automatically create boundaries at the
   // midpoint between each pair of adjacent codebook entries.
+  /*
   void init(const std::vector<float> &codebook_) {
     codebook = codebook_;
     boundaries.resize(codebook.size() - 1);
@@ -471,7 +492,7 @@ class QuantCodebook {
 
     lastBoundary = boundaries[boundaries.size()-1];
   }
-
+  */
 
   // Generate boundaries and codebook entries based on bins with
   // equal numbers of values in each.
@@ -484,10 +505,18 @@ class QuantCodebook {
     // if the x is >= the end of the last bin, return the last bin
     if (x >= lastBoundary) return (int)boundaries.size();
 
-    int bin = (int)(std::upper_bound(boundaries.begin(), boundaries.end(), x)
+    int bin = (int)(std::lower_bound(boundaries.begin(), boundaries.end(), x)
       - boundaries.begin());
 
     return bin;
+
+    // return quant(x, (int)boundaries.size(), boundaries.data());
+  }
+
+  static HD int quant(float x, int boundaryCount, const float *boundaries) {
+    int i=0;
+    while (i < boundaryCount && x > boundaries[i]) i++;
+    return i;
   }
 
   float dequant(int x) const {
@@ -499,13 +528,14 @@ class QuantCodebook {
 };
 
 
-// Provide the services of a QuantLog but with a virtual methods
+// Provide the services of a QuantCodebook but with virtual methods
 class QuantizerCodebook : public Quantizer {
   QuantCodebook q;
   
  public:
-  QuantizerCodebook(const std::vector<float> &codebook) {
-    q.init(codebook);
+  QuantizerCodebook(const std::vector<float> &codebook,
+                    const std::vector<float> &boundaries) {
+    q.init(codebook, boundaries);
   }
 
   // Override

@@ -539,7 +539,7 @@ void computeErrorRates(const CubeInt *quantizedData,
   if (!dequantize(*quantizedData, restoredData, param)) return;
 
   // print dequantized data
-  /*  
+  /*
   for (int i=0; i < restoredData.size.count(); i++) {
     printf("%d) %d -> %f\n", i, quantizedData->get(i,0,0),
            restoredData.get(i,0,0));
@@ -649,6 +649,108 @@ void translateCubeDataToOriginal(CubeFloat *src, Cube *dest, bool verbose) {
 
   src->deallocate();
 
+}
+
+
+void initialLloydCodebook(std::vector<float> &codebook, int codebookSize,
+                          float minAbsVal, float maxAbsVal) {
+  codebook.resize(codebookSize);
+
+  assert(minAbsVal > 0);
+  assert(maxAbsVal > minAbsVal);
+
+  /* use log quantization to create an initial codebook
+     f(minAbsVal) = 0, f(maxAbsVal) = codebookSize
+     f(x) = b*log(a*x)
+
+       b*log(a*min) = 0  b*log(a*max) = binCount
+       log(a*min) = 0    b = codebookSize / log(a*max)
+       a*min = 1
+       a = 1/min
+
+     y = b*log(a*x)
+     y/b = log(a*x)
+     e^(y/b) = a*x
+     e^(y/b) / a = x
+
+       1/a = min, logScale = 1/b = log(max/min) / codebookSize
+
+     min * e^(y*logScale) = x
+  */
+
+  // printf("min=%f, max=%f\n", minAbsVal, maxAbsVal);
+  float logScale = logf(maxAbsVal / minAbsVal) / codebookSize;
+  for (int i=0; i < codebookSize; i++) {
+    codebook[i] = minAbsVal * expf(i * logScale);
+    // printf("InitCB %d: %f\n", i, binValues[i]);
+  }
+}
+
+
+// Given a codebook with with n/2 entries just for the positive data,
+// fill in all the bin values and boundaries between each pair of values.
+void setBinsFromCodebook(std::vector<float> &binValues,
+                         std::vector<float> &binBoundaries,
+                         int binCount,
+                         std::vector<float> &codebook,
+                         float thresholdValue, float minVal, float maxVal) {
+  int codebookSize = (int) codebook.size();
+
+  // sanity-check, make sure codebook is ordered
+  for (int i=0; i < codebookSize-1; i++) {
+    if (codebook[i] > codebook[i+1]) {
+      fprintf(stderr, "ERROR: codebook[%d] > codebook[%d]  (%f > %f)\n",
+              i, i+1, binValues[i], binValues[i+1]);
+    }
+  }
+
+  binValues.clear();
+  binBoundaries.clear();
+
+  // if binCount is even and abs(minVal) > maxVal, add minVal as the
+  // first codebook entry
+  if ((binCount & 1)==0 && fabsf(minVal) > maxVal) {
+    binValues.push_back(minVal);
+    binBoundaries.push_back( (minVal + -codebook[codebookSize-1])/2 );
+  }
+
+  // negative bins
+  binValues.push_back(-codebook[codebookSize-1]);
+
+  for (int i=codebookSize-2; i >= 0; i--) {
+    binBoundaries.push_back( (-codebook[i] + -codebook[i+1]) / 2 );
+    binValues.push_back(-codebook[i]);
+  }
+
+  // zero bin
+  binBoundaries.push_back(-thresholdValue);
+  binValues.push_back(0);
+  binBoundaries.push_back(thresholdValue);
+
+  // positive bins
+  for (int i=0; i < codebookSize-1; i++) {
+    binValues.push_back(codebook[i]);
+    binBoundaries.push_back( (codebook[i] + codebook[i+1]) / 2 );
+  }    
+  binValues.push_back(codebook[codebookSize-1]);
+
+  // top bin
+  if ((binCount & 1)==0 && maxVal >= fabsf(minVal) ) {
+    binValues.push_back(maxVal);
+    binBoundaries.push_back( (maxVal + codebook[codebookSize-1])/2 );
+  }
+
+  assert(binBoundaries.size() + 1 == binValues.size());
+  assert((int)binValues.size() == binCount);
+
+  // print all the value and boundaries
+  /*
+  for (size_t i=0; i < binBoundaries.size(); i++) {
+    printf("[%4d] %f\n  %f\n", (int)i, binValues[i], binBoundaries[i]);
+  }
+  printf("[%4d] %f\n", (int)binValues.size()-1, binValues[binValues.size()-1]);
+  */
+  
 }
 
 
@@ -762,7 +864,7 @@ Quantizer *createQuantizer(const WaveletCompressionParam &param) {
   case QUANT_ALG_UNIFORM:
     return new QuantizerUniform(param.binCount, param.thresholdValue, param.maxValue);
   case QUANT_ALG_LLOYD:
-    return new QuantizerCodebook(param.binValues);
+    return new QuantizerCodebook(param.binValues, param.binBoundaries);
   default:
     fprintf(stderr, "Unknown quantization algorithm id: %d\n",
             (int)param.quantAlg);

@@ -1,6 +1,7 @@
 #ifndef __DWT_GPU_H__
 #define __DWT_GPU_H__
 
+#include "cuda.h"
 #include "cuda_timer.h"
 
 /*
@@ -8,6 +9,35 @@
 
   Ed Karrels, ed.karrels@gmail.com, June 2014
 */
+
+class WaveletAtomic {
+
+ public:
+
+  // I borrowed this code from CUDA/lloyds/cudalloyds.cu, thanks David :-)
+  __device__ static float max(float* address, float val) {
+    int* address_as_i = (int*) address;
+    int old = *address_as_i, assumed;
+    do {
+      assumed = old;
+      old = ::atomicCAS(address_as_i, assumed,
+                        __float_as_int(::fmaxf(val, __int_as_float(assumed))));
+    } while (assumed != old);
+    return __int_as_float(old);
+  }
+
+  __device__ static float min(float* address, float val) {
+    int* address_as_i = (int*) address;
+    int old = *address_as_i, assumed;
+    do {
+      assumed = old;
+      old = ::atomicCAS(address_as_i, assumed,
+                        __float_as_int(::fminf(val, __int_as_float(assumed))));
+    } while (assumed != old);
+    return __int_as_float(old);
+  }
+};
+
 
 /*
   Forward transform on a square 2-d array.

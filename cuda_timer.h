@@ -90,6 +90,8 @@ class CudaTimer {
   // return the number of start/end pairs
   int count() {return (int)(events.size() / 2);}
 
+  void sync() {CUCHECK(cudaThreadSynchronize());}
+
   // Compute the total time in milliseconds.
   float time() {
     float total = 0;

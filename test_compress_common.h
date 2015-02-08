@@ -189,6 +189,16 @@ void computeErrorRatesAfterDequant
 void translateCubeDataToOriginal(CubeFloat *src, Cube *dest,
                                  bool verbose = false);
 
+// create an initial codebook before using Lloyd's algorithm
+void initialLloydCodebook(std::vector<float> &codebook, int codebookSize,
+                          float minAbsVal, float maxAbsVal);
+
+void setBinsFromCodebook(std::vector<float> &binValues,
+                         std::vector<float> &binBoundaries,
+                         int binCount,
+                         std::vector<float> &codebook,
+                         float thresholdValue, float minVal, float maxVal);
+
 // Read cubelet from a file
 bool readQuantData(CubeletStreamReader &cubeletStream, CubeInt *data);
 
