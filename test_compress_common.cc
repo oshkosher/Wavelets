@@ -539,12 +539,7 @@ void computeErrorRates(const CubeInt *quantizedData,
   if (!dequantize(*quantizedData, restoredData, param)) return;
 
   // print dequantized data
-  /*
-  for (int i=0; i < restoredData.size.count(); i++) {
-    printf("%d) %d -> %f\n", i, quantizedData->get(i,0,0),
-           restoredData.get(i,0,0));
-  }
-  */
+  // restoredData.print("Dequantized");
 
   ErrorAccumulator errAccum;
 

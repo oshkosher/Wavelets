@@ -83,11 +83,17 @@ __global__ void haar_inv_transpose_2d_kernel
 (int arrayWidth, int transformLength, NUM *data, NUM *result, int tileSize);
 
 // transform the data and update 'size', since the dimensions will rotate
-void haar_3d_cuda(float *input_data, float *output_data,
+void haar_3d_cuda(float *data, float *tmpData,
                   scu_wavelet::int3 &size, scu_wavelet::int3 stepCount,
-                  bool inverse = false, bool isStandardTranspose = true,
+                  bool inverse = false,
                   CudaTimer *transformTimer = NULL,
                   CudaTimer *transposeTimer = NULL);
+
+void cdf97_3d_cuda(float *data, float *tmpData,
+                   scu_wavelet::int3 &size, scu_wavelet::int3 stepCount,
+                   bool inverse = false,
+                   CudaTimer *transformTimer = NULL,
+                   CudaTimer *transposeTimer = NULL);
 
 int bestHaarGPUTileSize();
 

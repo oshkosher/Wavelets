@@ -16,6 +16,7 @@
 #define INV_SQRT2 0.70710678118654752440f
 
 #define HAAR_3D_BLOCK_SIZE 128
+#define CDF97_3D_BLOCK_SIZE 128
 
 /*
   To see a previous version of this code that tried out surfaces and
@@ -49,9 +50,10 @@ float haar_2d_cuda_internal
    elements of inputRow using outputRow as temp space.
 */
 template<typename NUM>
-__device__ void haar_kernel_row(int length, NUM *inputRow, NUM *outputRow) {
+__device__ void haar_kernel_row(int length, NUM *outputRow,
+                                const NUM *inputRow) {
 
-  int half = length >> 1;
+  const int half = length >> 1;
 
   // point d at the first half of the temporary row
   NUM *s = outputRow;
@@ -72,8 +74,8 @@ __device__ void haar_kernel_row(int length, NUM *inputRow, NUM *outputRow) {
    elements of inputRow using outputRow as temp space.
 */
 template<typename NUM>
-__device__ void haar_kernel_row_inverse(int length, NUM *inputRow,
-                                        NUM *outputRow) {
+__device__ void haar_kernel_row_inverse(int length, NUM *outputRow,
+                                        NUM *inputRow) {
 
   // Set s to point to my row in the input data
   NUM *s = inputRow;
@@ -108,7 +110,7 @@ __global__ void haar_2d_kernel
   NUM *inputRow = data + y * arrayWidth;
   NUM *outputRow = result + y * arrayWidth;
 
-  haar_kernel_row(transformLength, inputRow, outputRow);
+  haar_kernel_row(transformLength, outputRow, inputRow);
 }
 
 
@@ -124,7 +126,7 @@ __global__ void haar_inv_2d_kernel
   NUM *inputRow = data + y * arrayWidth;
   NUM *outputRow = result + y * arrayWidth;
 
-  haar_kernel_row_inverse(transformLength, inputRow, outputRow);
+  haar_kernel_row_inverse(transformLength, outputRow, inputRow);
 }
 
 
@@ -524,7 +526,7 @@ float haar_2d_cuda_internal
 }
 
 
-__device__ void copy_row(float *dest, float *src, int count) {
+__device__ void copy_row(int count, float *dest, float *src) {
   int i = threadIdx.x;
   while (i < count) {
     dest[i] = src[i];
@@ -538,16 +540,16 @@ __global__ void haar_3d_kernel_allglobal
   int offset = rowLength * (blockIdx.y + blockIdx.z*gridDim.y);
   float *row = data1 + offset;
   float *tempRow = data2 + offset;
-  
+
   while (stepCount > 0) {
 
-    // copy data from tempRow to row
-    copy_row(tempRow, row, rowLength);
+    // copy data from row to tempRow
+    copy_row(rowLength, tempRow, row);
 
     __syncthreads();
 
     // read tempRow, write to row
-    haar_kernel_row(rowLength, tempRow, row);
+    haar_kernel_row(rowLength, row, tempRow);
 
     stepCount--;
     rowLength >>= 1;
@@ -568,13 +570,13 @@ __global__ void haar_3d_kernel_allglobal_inverse
   
   while (stepCount > 0) {
 
-    // copy data from tempRow to row
-    copy_row(tempRow, row, rowLength);
+    // copy data from row to tempRow
+    copy_row(rowLength, tempRow, row);
 
     __syncthreads();
 
     // read tempRow, write to row
-    haar_kernel_row_inverse(rowLength, tempRow, row);
+    haar_kernel_row_inverse(rowLength, row, tempRow);
 
     stepCount--;
     rowLength <<= 1;
@@ -602,17 +604,12 @@ __global__ void haar_3d_kernel_allglobal_inverse
 */
 void haar_3d_cuda(float *data, float *tmpData, scu_wavelet::int3 &size,
                   scu_wavelet::int3 stepCount, bool inverse,
-                  bool isStandardTranspose,
                   CudaTimer *transformTimer,
                   CudaTimer *transposeTimer) {
 
+  // limitation on the number of thread blocks
   if (!(size <= scu_wavelet::int3(65535,65535,65535))) {
     fprintf(stderr, "Cubelet too large: max is 65535x65535x65535\n");
-    return;
-  }
-
-  if (!isStandardTranspose) {
-    fprintf(stderr, "Nonstandard transpose not implemented.\n");
     return;
   }
 
@@ -722,3 +719,261 @@ Total: 19.02 ms
     */
   
 }
+
+
+__device__ void cdf97_kernel_row(int rowLength, float *outputRow,
+                                 MirroredArray &inputRow) {
+
+  const int half = rowLength >> 1;
+
+  int writeIdx = threadIdx.x;
+
+  while (writeIdx < half) {
+    int readIdx = writeIdx << 1;
+
+    // Apply the low pass filter convolution.
+    // It's symmetric, so apply coefficient N to inputRow[i+N] and inputRow[i-N].
+    outputRow[writeIdx] = 
+      CDF97_ANALYSIS_LOWPASS_FILTER_0 * inputRow[readIdx]
+      + CDF97_ANALYSIS_LOWPASS_FILTER_1 *
+      (inputRow[readIdx + 1] + inputRow[readIdx - 1])
+      + CDF97_ANALYSIS_LOWPASS_FILTER_2 *
+      (inputRow[readIdx + 2] + inputRow[readIdx - 2])
+      + CDF97_ANALYSIS_LOWPASS_FILTER_3 *
+      (inputRow[readIdx + 3] + inputRow[readIdx - 3])
+      + CDF97_ANALYSIS_LOWPASS_FILTER_4 *
+      (inputRow[readIdx + 4] + inputRow[readIdx - 4]);
+
+    readIdx++;
+
+    // Apply the high pass filter convolution
+    outputRow[writeIdx+half] =
+      CDF97_ANALYSIS_HIGHPASS_FILTER_0 * inputRow[readIdx]
+      + CDF97_ANALYSIS_HIGHPASS_FILTER_1 *
+      (inputRow[readIdx + 1] + inputRow[readIdx - 1])
+      + CDF97_ANALYSIS_HIGHPASS_FILTER_2 *
+      (inputRow[readIdx + 2] + inputRow[readIdx - 2])
+      + CDF97_ANALYSIS_HIGHPASS_FILTER_3 *
+      (inputRow[readIdx + 3] + inputRow[readIdx - 3]);
+
+    writeIdx += blockDim.x;
+  }
+
+}
+
+
+// interleave: 01234567 -> 04152636
+__device__ void cdf97_kernel_row_interleave(int rowLength, float *outputRow,
+                                            const float *inputRow) {
+  const int half = rowLength >> 1;
+  int i = threadIdx.x;
+  
+  while (i < half) {
+    outputRow[i*2] = inputRow[i];
+    outputRow[i*2+1] = inputRow[i+half];
+    i += blockDim.x;
+  }
+}
+
+
+__device__ void cdf97_kernel_row_inverse(int rowLength, float *outputRow,
+                                         MirroredArray &inputRow) {
+
+  int i = threadIdx.x * 2;
+
+  while (i < rowLength) {
+    // evens
+    outputRow[i] =
+      CDF97_SYNTHESIS_LOWPASS_FILTER_0 * inputRow[i]
+      + CDF97_SYNTHESIS_LOWPASS_FILTER_1 *
+      (inputRow[i+1] + inputRow[i-1])
+      + CDF97_SYNTHESIS_LOWPASS_FILTER_2 *
+      (inputRow[i+2] + inputRow[i-2])
+      + CDF97_SYNTHESIS_LOWPASS_FILTER_3 *
+      (inputRow[i+3] + inputRow[i-3]);
+
+    i++;
+
+    // odds
+    outputRow[i] = 
+      CDF97_SYNTHESIS_HIGHPASS_FILTER_0 * inputRow[i]
+      + CDF97_SYNTHESIS_HIGHPASS_FILTER_1 *
+      (inputRow[i+1] + inputRow[i-1])
+      + CDF97_SYNTHESIS_HIGHPASS_FILTER_2 *
+      (inputRow[i+2] + inputRow[i-2])
+      + CDF97_SYNTHESIS_HIGHPASS_FILTER_3 *
+      (inputRow[i+3] + inputRow[i-3])
+      + CDF97_SYNTHESIS_HIGHPASS_FILTER_4 *
+      (inputRow[i+4] + inputRow[i-4]);
+
+    i = (i-1) + blockDim.x*2;
+  }
+
+}
+
+
+__global__ void cdf97_3d_kernel_allglobal
+(float *data, float *tempData, int rowLength, int stepCount) {
+  
+  int offset = rowLength * (blockIdx.y + blockIdx.z*gridDim.y);
+  float *row = data + offset;
+  float *tempRow = tempData + offset;
+  MirroredArray inputRow(rowLength, tempRow);
+  
+  while (stepCount > 0) {
+    inputRow.setLength(rowLength);
+
+    // copy data from row to tempRow
+    copy_row(rowLength, tempRow, row);
+
+    __syncthreads();
+
+    // read tempRow, write to row
+    cdf97_kernel_row(rowLength, row, inputRow);
+
+    stepCount--;
+    rowLength >>= 1;
+
+    __syncthreads();
+  }
+}
+
+
+__global__ void cdf97_3d_kernel_allglobal_inverse
+(float *data, float *tempData, int rowLength, int stepCount) {
+  
+  int offset = rowLength * (blockIdx.y + blockIdx.z*gridDim.y);
+  float *row = data + offset;
+  float *tempRow = tempData + offset;
+
+  rowLength >>= (stepCount-1);
+  
+  MirroredArray inputRow(rowLength, tempRow);
+  
+  while (stepCount > 0) {
+    inputRow.setLength(rowLength);
+
+    // copy data to tempData, interleaving 01234567 -> 04152636
+    cdf97_kernel_row_interleave(rowLength, tempRow, row);
+
+    __syncthreads();
+
+    // read tempRow, write to row
+    cdf97_kernel_row_inverse(rowLength, row, inputRow);
+
+    stepCount--;
+    rowLength <<= 1;
+
+    __syncthreads();
+  }
+}
+
+
+void cdf97_3d_cuda(float *data, float *tmpData,
+                   scu_wavelet::int3 &size, scu_wavelet::int3 stepCount,
+                   bool inverse,
+                   CudaTimer *transformTimer, CudaTimer *transposeTimer) {
+
+  // limitation on the number of thread blocks
+  if (!(size <= scu_wavelet::int3(65535,65535,65535))) {
+    fprintf(stderr, "Cubelet too large: max is 65535x65535x65535\n");
+    return;
+  }
+
+  if (inverse) stepCount.rotateBack();
+  if (!is_padded_for_wavelet(size, stepCount)) {
+    fprintf(stderr, "%dx%dx%d data is not properly padded for %d,%d,%d "
+            "transform steps.\n",
+            size.x, size.y, size.z, stepCount.x, stepCount.y, stepCount.z);
+    return;
+  }
+  if (inverse) stepCount.rotateFwd();
+
+  dim3 gridDim;
+  dim3 blockDim(CDF97_3D_BLOCK_SIZE);
+
+  if (!inverse) {
+
+    // X transform
+    gridDim.y = size.y;
+    gridDim.z = size.z;
+    if (transformTimer) transformTimer->start();
+    cdf97_3d_kernel_allglobal<<<gridDim, blockDim>>>
+      (data, tmpData, size.x, stepCount.x);
+    if (transformTimer) transformTimer->end();
+
+    // transpose XYZ -> YZX
+    if (transposeTimer) transposeTimer->start();
+    gpuTranspose3dFwd(tmpData, data, size);
+    if (transposeTimer) transposeTimer->end();
+
+    // data is now in tmpData
+
+    // Y transform
+    gridDim.y = size.y;
+    gridDim.z = size.z;
+    if (transformTimer) transformTimer->start();
+    cdf97_3d_kernel_allglobal<<<gridDim, blockDim>>>
+      (tmpData, data, size.x, stepCount.y);
+    if (transformTimer) transformTimer->end();
+
+    // transpose YZX -> ZXY
+    if (transposeTimer) transposeTimer->start();
+    gpuTranspose3dFwd(data, tmpData, size);
+    if (transposeTimer) transposeTimer->end();
+
+    // data is back in data
+
+    // Z transform
+    gridDim.y = size.y;
+    gridDim.z = size.z;
+    if (transformTimer) transformTimer->start();
+    cdf97_3d_kernel_allglobal<<<gridDim, blockDim>>>
+      (data, tmpData, size.x, stepCount.z);
+    if (transformTimer) transformTimer->end();
+
+  } else { // is inverse
+
+    // inverse Z transform
+    gridDim.y = size.y;
+    gridDim.z = size.z;
+    if (transformTimer) transformTimer->start();
+    cdf97_3d_kernel_allglobal_inverse<<<gridDim, blockDim>>>
+      (data, tmpData, size.x, stepCount.z);
+    if (transformTimer) transformTimer->end();
+
+    // transpose ZXY -> YZX
+    if (transposeTimer) transposeTimer->start();
+    gpuTranspose3dBack(tmpData, data, size);
+    if (transposeTimer) transposeTimer->end();
+
+    // data is in 'tmpData'
+
+    // inverse Y transform
+    gridDim.y = size.y;
+    gridDim.z = size.z;
+    if (transformTimer) transformTimer->start();
+    cdf97_3d_kernel_allglobal_inverse<<<gridDim, blockDim>>>
+      (tmpData, data, size.x, stepCount.y);
+    if (transformTimer) transformTimer->end();
+
+    // transpose YZX -> XYZ
+    if (transposeTimer) transposeTimer->start();
+    gpuTranspose3dBack(data, tmpData, size);
+    if (transposeTimer) transposeTimer->end();
+
+    // data is in 'data'
+
+    // inverse X transform
+    gridDim.y = size.y;
+    gridDim.z = size.z;
+    if (transformTimer) transformTimer->start();
+    cdf97_3d_kernel_allglobal_inverse<<<gridDim, blockDim>>>
+      (data, tmpData, size.x, stepCount.x);
+    if (transformTimer) transformTimer->end();
+
+  }
+  
+
+}
+                   

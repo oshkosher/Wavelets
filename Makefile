@@ -315,12 +315,15 @@ test_compress_gpu.$(OBJ_EXT): test_compress_gpu.cu wavelet_compress.pb.h quant.h
 
 test_compress_common.$(OBJ_EXT): test_compress_common.cc test_compress_common.h quant.h rle.h
 
+wavelet_cuda.$(OBJ_EXT): CUDA/wavelet/wavelet.cu CUDA/wavelet/wavelet.h
+	$(NVCC) -ICUDA/wavelet -c $< -o $@
+
 TEST_COMPRESS_GPU_OBJS=test_compress_gpu.$(OBJ_EXT) \
   test_compress_common.$(OBJ_EXT) \
   dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) huffman.$(OBJ_EXT) \
   data_io.$(OBJ_EXT) transpose_gpu.$(OBJ_EXT) nixtimer.$(OBJ_EXT) \
   wavelet_compress.pb.$(OBJ_EXT) quant_count.$(OBJ_EXT) wavelet.$(OBJ_EXT) \
-  cubelet_file.$(OBJ_EXT) cudalloyds.$(OBJ_EXT)
+  cubelet_file.$(OBJ_EXT) cudalloyds.$(OBJ_EXT) wavelet_cuda.$(OBJ_EXT)
 
 test_compress_gpu: $(TEST_COMPRESS_GPU_OBJS)
 	$(NVCC) $(TEST_COMPRESS_GPU_OBJS) -o $@ $(PROTOBUF_LIB_NVCC)

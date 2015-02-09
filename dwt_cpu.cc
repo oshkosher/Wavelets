@@ -699,63 +699,6 @@ void haar_3d(CubeFloat *data, int3 stepCount, bool inverse,
 }
 
 
-
-
-/*
-  Wrap an array such that if you reference values beyond the ends
-  of the array, the results will be mirrored array values.
-
-  For example, given an array with 7 elements: 0 1 2 3 4 5 6
-  Request array[0..6] and you'll get the usual values array[0..6].
-  array[-1] returns array[1], array[-2] return array[2], etc.
-  array[7] returns array[5], array[8] return array[4], etc.
-*/
-class MirroredArray {
-  int length;  // length of the actual data
-  const float *array;
-
-public:
-  MirroredArray(int length_, const float *array_)
-    : length(length_), array(array_) {}
-
-  float operator[] (int offset) const {
-
-    // negative offset: mirror to a positive
-    if (offset < 0) offset = -offset;
-
-    // past the end: fold it back, repeat if necessary
-    // try using modulo, see if it speeds this up
-    while (offset >= length) {
-      offset = length*2 - offset - 2;
-
-      if (offset < 0) offset = -offset;
-    }
-
-    return array[offset];
-  }
-
-  void setLength(int len) {length = len;}
-};
-
-
-// Like MirroredArray, but simpler. Ask for an invalid index and you get 0.
-class ZeroExtendedArray {
-  float *array;
-  int length;  // length of the actual data
-
-public:
-  ZeroExtendedArray(float *array_, int length_)
-    : array(array_), length(length_) {}
-
-  float operator[] (int offset) const {
-
-    if (offset < 0 || offset >= length) return 0;
-
-    return array[offset];
-  }
-
-  void setLength(int len) {length = len;}
-};
         
 
 /**
