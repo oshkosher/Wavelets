@@ -206,10 +206,9 @@ bool compressFile(const char *inputFile, const char *outputFile,
   CubeletStreamReader cubeletStream;
   double firstStartTime, startTime;
   CudaTimer copyToGPUTimer("Copy to GPU"), waveletTimer("Wavelet transform"),
-    transposeTimer("Transpose"),
-    /* sortTimer("Sort"), */ quantizeTimer("Quantize"), 
+    transposeTimer("Transpose"), quantizeTimer("Quantize"), 
     copyFromGPUTimer("Copy from GPU");
-  // FILE *f = fopen("marker","w"); fprintf(f, "marker\n"); fclose(f);
+
   firstStartTime = NixTimer::time();
 
   // on CPU: read the data into memory, convert to float, pad
@@ -372,20 +371,23 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   // overwrite the data in data1_dev with quantized integers
 
-  quantizeTimer.start();
   switch (param.quantAlg) {
   case QUANT_ALG_UNIFORM:
     param.maxValue = max;
+    quantizeTimer.start();
     quantUniformKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
       (data1_dev, dataCount,
        param.binCount, param.thresholdValue, param.maxValue);
+    quantizeTimer.end();
     break;
 
   case QUANT_ALG_LOG:
     param.maxValue = max;
+    quantizeTimer.start();
     quantLogKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
       (data1_dev, dataCount,
        param.binCount, param.thresholdValue, param.maxValue);
+    quantizeTimer.end();
     break;
 
   case QUANT_ALG_LLOYD:
@@ -396,7 +398,9 @@ bool compressFile(const char *inputFile, const char *outputFile,
     computeLloydQuantizationGPU(nonzeroData_d, nonzeroCount, param.binCount,
                                 minValue, maxValue, param.thresholdValue,
                                 param.binBoundaries, param.binValues);
+    quantizeTimer.start();
     quantCodebookGPU(data1_dev, dataCount, param.binBoundaries, param.binCount);
+    quantizeTimer.end();
     break;
 
   default:
@@ -404,7 +408,6 @@ bool compressFile(const char *inputFile, const char *outputFile,
             (int)param.quantAlg);
     return false;
   }
-  quantizeTimer.end();
 
 #ifdef DO_DETAILED_CHECKS
   if (unquantizedCopy)
@@ -626,7 +629,7 @@ void sortAbsAndFindLimitsGPU(float *dest_d, const float *src_d, int count,
 
   CudaTimer absTimer("Absolute value"), sortTimer("Sort");
   absTimer.start();
-  copyAbsoluteAndMinMaxKernel<<<4,1024>>>(dest_d, src_d, count, minMax_d);
+  copyAbsoluteAndMinMaxKernel<<<8,1024>>>(dest_d, src_d, count, minMax_d);
   absTimer.end();
 
   sortTimer.start();
@@ -1240,10 +1243,10 @@ void computeErrorRatesAfterDequantGPU
   computeErrTimer.end();
 
   CUCHECK(cudaThreadSynchronize());
-  waveletTimer.print();
-  transposeTimer.print();
+  printf("Inverse wavelet transform: %.3f ms (transpose %.3f ms)\n",
+         waveletTimer.time() + transposeTimer.time(),
+         transposeTimer.time());
   computeErrTimer.print();
-  // printf("sumDiff = %f, sumDiffSquared = %f\n", errSums[0], errSums[1]);
   
   // largest unsigned char value
   errAccum.setMaxPossible(255);

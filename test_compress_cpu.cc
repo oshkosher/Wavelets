@@ -144,8 +144,8 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   elapsed = NixTimer::time() - startTime;
   if (!QUIET)
-    printf("Compute threshold = %.10g, min = %g, max = %g: %.2f ms\n",
-           param.thresholdValue, minVal, maxVal, elapsed*1000);
+    printf("min = %f, max = %f, threshold = %.10g: %.2f ms\n", minVal, maxVal,
+           param.thresholdValue, elapsed*1000);
 
   // don't write a data file; just run some experiments testing different
   // quantization settings
