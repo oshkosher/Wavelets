@@ -288,6 +288,9 @@ lloyds.o: Octave/LloydsAlgorithm/src/c++/lloyds.cpp \
 cudalloyds.$(OBJ_EXT): CUDA/lloyds/cudalloyds.cu CUDA/lloyds/cudalloyds.h
 	$(NVCC) -c $<
 
+dwt_gpu.$(OBJ_EXT): dwt_gpu.cu dwt_gpu.h dwt_cpu.h
+	$(NVCC) -c $<
+
 cubelet_file.o: cubelet_file.cc cubelet_file.h wavelet_compress.pb.h
 	$(CC) -c $<
 
