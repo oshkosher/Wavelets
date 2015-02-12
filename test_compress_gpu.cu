@@ -24,6 +24,7 @@
 
 #define QUANTIZE_BLOCK_SIZE 1024
 #define QUANTIZE_BLOCK_COUNT 64
+#define HISTOGRAM_CACHE_SIZE 256
 
 // #define DO_DETAILED_CHECKS
 
@@ -53,6 +54,11 @@ bool waveletTransformGPU(float *data_d, float *tmpData_d,
 void sortAbsAndFindLimitsGPU(float *dest_d, const float *src_d, int count,
                              float *minValue, float *maxValue);
 
+bool quantizeGPU(float *data, int count, WaveletCompressionParam &param,
+                 const float *nonzeroData_dev, int nonzeroCount,
+                 float maxAbsVal, float minValue, float maxValue,
+                 CudaTimer &quantizeTimer);
+
 void computeLloydQuantizationGPU(const float *inputData, int count,
                                  int binCount, float minVal, float maxVal,
                                  float thresholdValue,
@@ -75,6 +81,10 @@ void computeErrorRatesAfterDequantGPU
 // If input_dev is NULL, use (int*)result_dev as the input.
 bool dequantizeGPU(float *result_dev, const int *input_dev,
                    int count, const WaveletCompressionParam &param);
+
+void computeFrequencies(int *&freqCounts_dev, int binCount,
+                        const int *data_dev, int count,
+                        int zeroBin);
 
 void __global__ quantUniformKernel(void *data, int count,
                                    int binCount, float threshold, float max);
@@ -298,10 +308,6 @@ bool compressFile(const char *inputFile, const char *outputFile,
      thrust::transform does not. It requires thrust::device_ptr objects
      (like data1_start). thrust::sort will work with those too.
   */
-  // XXX try out sorting with a transform_iterator
-
-  // make a copy of the data, applying abs() to each value, into data2,
-  // then sort that copy
 
   /*
   AbsFunctor absFunctor;
@@ -319,12 +325,8 @@ bool compressFile(const char *inputFile, const char *outputFile,
   // data1_dev now contains the data, and data2_dev contains the sorted
   // absolute values of the data
 
-  // fetch percentage threshold values from GPU
-
-  // send back the min, minimum nonzero, and maximum
-
   int thresholdOffset;
-  float max = std::max(fabsf(minValue), fabsf(maxValue));
+  float maxAbsVal = std::max(fabsf(minValue), fabsf(maxValue));
 
   // if you omit thrust::less<float>(), it defaults to an integer comparison,
   // and looks for the first value greater than or equal to 1
@@ -342,11 +344,10 @@ bool compressFile(const char *inputFile, const char *outputFile,
     param.thresholdValue = MIN_THRESHOLD_VALUE;
     thresholdOffset = 0;
   } else if (param.thresholdFraction >= 1) {
-    param.thresholdValue = max;
+    param.thresholdValue = maxAbsVal;
     thresholdOffset = dataCount;
   } else {
     thresholdOffset = (int) (param.thresholdFraction * dataCount);
-    // printf("threshold offest = %d\n", thresholdOffset);
     CUCHECK(cudaMemcpy(&param.thresholdValue, data2_dev + thresholdOffset,
                        sizeof(float), cudaMemcpyDeviceToHost));
     if (param.thresholdValue == 0)
@@ -371,43 +372,13 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   // overwrite the data in data1_dev with quantized integers
 
-  switch (param.quantAlg) {
-  case QUANT_ALG_UNIFORM:
-    param.maxValue = max;
-    quantizeTimer.start();
-    quantUniformKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
-      (data1_dev, dataCount,
-       param.binCount, param.thresholdValue, param.maxValue);
-    quantizeTimer.end();
-    break;
+  const float *nonzeroData_dev = data2_dev + thresholdOffset;
+  int nonzeroCount = dataCount - thresholdOffset;
 
-  case QUANT_ALG_LOG:
-    param.maxValue = max;
-    quantizeTimer.start();
-    quantLogKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
-      (data1_dev, dataCount,
-       param.binCount, param.thresholdValue, param.maxValue);
-    quantizeTimer.end();
-    break;
-
-  case QUANT_ALG_LLOYD:
-    const float *nonzeroData_d;
-    int nonzeroCount;
-    nonzeroData_d = data2_dev + thresholdOffset;
-    nonzeroCount = dataCount - thresholdOffset;
-    computeLloydQuantizationGPU(nonzeroData_d, nonzeroCount, param.binCount,
-                                minValue, maxValue, param.thresholdValue,
-                                param.binBoundaries, param.binValues);
-    quantizeTimer.start();
-    quantCodebookGPU(data1_dev, dataCount, param.binBoundaries, param.binCount);
-    quantizeTimer.end();
-    break;
-
-  default:
-    fprintf(stderr, "Quantization algorithm %d not found.\n",
-            (int)param.quantAlg);
+  if (!quantizeGPU(data1_dev, dataCount, param,
+                   nonzeroData_dev, nonzeroCount,
+                   maxAbsVal, minValue, maxValue, quantizeTimer))
     return false;
-  }
 
 #ifdef DO_DETAILED_CHECKS
   if (unquantizedCopy)
@@ -434,7 +405,31 @@ bool compressFile(const char *inputFile, const char *outputFile,
     }
   }
 
-  // copy the data back to the CPU
+  /*
+  // compute the bin number to which zero values map
+  Quantizer *quantizer = createQuantizer(param);
+  int zeroBin = quantizer->quant(0);
+  delete quantizer;
+
+  // compute histogram on the GPU
+  int *freqCounts_dev;
+  computeFrequencies(freqCounts_dev, param.binCount,
+                     (const int*)data1_dev, dataCount, zeroBin);
+  int *freqCounts = new int[param.binCount];
+
+  // copy histogram data from the GPU
+  copyFromGPUTimer.start();
+  CUCHECK(cudaMemcpy(freqCounts, freqCounts_dev, param.binCount * sizeof(int),
+                     cudaMemcpyDeviceToHost));
+  copyFromGPUTimer.end();
+  if (!QUIET) {
+    CUCHECK(cudaThreadSynchronize());
+    copyFromGPUTimer.print();
+  }
+  */
+
+  // copy the data back to the CPU (this can be overlapped with computing
+  // huffman encoding)
   copyFromGPUTimer.start();
   quantizedData.size = deviceSize;
   quantizedData.allocate();
@@ -647,6 +642,46 @@ void sortAbsAndFindLimitsGPU(float *dest_d, const float *src_d, int count,
     absTimer.print();
     sortTimer.print();
   }
+}
+
+
+bool quantizeGPU(float *data_dev, int count, WaveletCompressionParam &param,
+                 const float *nonzeroData_dev, int nonzeroCount,
+                 float maxAbsVal, float minValue, float maxValue,
+                 CudaTimer &quantizeTimer) {
+  switch (param.quantAlg) {
+  case QUANT_ALG_UNIFORM:
+    param.maxValue = maxAbsVal;
+    quantizeTimer.start();
+    quantUniformKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
+      (data_dev, count, param.binCount, param.thresholdValue, param.maxValue);
+    quantizeTimer.end();
+    break;
+
+  case QUANT_ALG_LOG:
+    param.maxValue = maxAbsVal;
+    quantizeTimer.start();
+    quantLogKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
+      (data_dev, count, param.binCount, param.thresholdValue, param.maxValue);
+    quantizeTimer.end();
+    break;
+
+  case QUANT_ALG_LLOYD:
+    computeLloydQuantizationGPU(nonzeroData_dev, nonzeroCount, param.binCount,
+                                minValue, maxValue, param.thresholdValue,
+                                param.binBoundaries, param.binValues);
+    quantizeTimer.start();
+    quantCodebookGPU(data_dev, count, param.binBoundaries, param.binCount);
+    quantizeTimer.end();
+    break;
+
+  default:
+    fprintf(stderr, "Quantization algorithm %d not found.\n",
+            (int)param.quantAlg);
+    return false;
+  }
+
+  return true;
 }
 
 
@@ -1308,4 +1343,141 @@ bool dequantizeGPU(float *result_dev, const int *input_dev,
   delete[] output;
   */
   return true;
+}
+
+
+/**
+   Creating a special case for the zero bin is a huge win.
+   In one test, it reduces the runtime from 848ms to 48.3 ms.
+*/
+__global__ void computeFrequenciesKernel
+(int *freqCounts, int binCount, const int *data, int count, int zeroBin) {
+
+  // compute frequencies for HISTOGRAM_CACHE_SIZE bins at a time.
+  // If binCount > HISTOGRAM_CACHE_SIZE, do multiple passes over the 
+  // data.
+  __shared__ int sharedFreq[HISTOGRAM_CACHE_SIZE];
+  __shared__ int sharedZeroCount;
+
+  if (threadIdx.x == 0) sharedZeroCount = 0;
+    
+  // clear the shared memory
+  for (int i=threadIdx.x; i < HISTOGRAM_CACHE_SIZE; i += blockDim.x) {
+    sharedFreq[i] = 0;
+  }
+
+  __syncthreads();
+
+  int zeroCount = 0;
+
+  // There may be more bins than HISTOGRAM_CACHE_SIZE.
+  // Do multiple passes over the data if necessary.
+  for (int startBin = 0;
+       startBin < binCount;
+       startBin += HISTOGRAM_CACHE_SIZE) {
+
+    for (int i = threadIdx.x + blockIdx.x * blockDim.x;
+         i < count;
+         i += blockDim.x * gridDim.x) {
+
+      int b = data[i];
+
+      // The zero bin will have many updates and experience high contention.
+      // Handle it with a local variable.
+      if (b == zeroBin) {
+
+        // only process the zero bin when in the first pass over the data,
+        // regardless of which pass range its value fits in.
+        if (startBin == 0) {
+          zeroCount++;
+        }
+
+      } else {
+        unsigned bin = (unsigned) (b - startBin);
+        if (bin < HISTOGRAM_CACHE_SIZE) {
+          atomicAdd(&sharedFreq[bin], 1);
+        }
+
+      }
+    }
+
+    __syncthreads();
+
+    // write shared memory cache to global memory
+    for (int i=threadIdx.x;
+         i < HISTOGRAM_CACHE_SIZE && startBin+i < binCount;
+         i += blockDim.x) {
+      if (sharedFreq[i] > 0) {
+        atomicAdd(&freqCounts[startBin + i], sharedFreq[i]);
+        sharedFreq[i] = 0;
+      }
+    }
+
+    // sync so the zeros written to shared memory to clear it are seen
+    __syncthreads();
+
+  }
+
+  // gather the results for zeroCount into shared memory
+  atomicAdd(&sharedZeroCount, zeroCount);
+  __syncthreads();
+
+  // gather the results for zeroCount into global memory
+  if (threadIdx.x == 0) {
+    atomicAdd(&freqCounts[zeroBin], sharedZeroCount);
+  }
+
+}
+
+
+void computeFrequencies(int *&freqCounts_dev, int binCount,
+                        const int *data_dev, int count, int zeroBin) {
+                        
+  CudaTimer timer("Frequency count");
+
+  // 16 thread blocks worked well with the cards I tried.
+  // With the laptop GPU I tried, 512 threads/block gave the best performance,
+  // but 1024 threads/block worked best with the desktop GPU I tried.
+  int blockSize, gridSize = 16;
+
+  int gpuId;
+  cudaDeviceProp prop;
+  CUCHECK(cudaGetDevice(&gpuId));
+  CUCHECK(cudaGetDeviceProperties(&prop, gpuId));
+  blockSize = prop.multiProcessorCount <= 2 ? 512 : 1024;
+
+  timer.start();
+  CUCHECK(cudaMalloc((void**)&freqCounts_dev, binCount * sizeof(int)));
+  CUCHECK(cudaMemset(freqCounts_dev, 0, binCount * sizeof(int)));
+
+  computeFrequenciesKernel<<<gridSize, blockSize>>>
+    (freqCounts_dev, binCount, data_dev, count, zeroBin);
+
+  timer.end();
+  if (!QUIET) {
+    timer.sync();
+    timer.print();
+    fflush(stdout);
+  }
+
+#ifdef DO_DETAILED_CHECKS
+  int *qdata = new int[count];
+  CUCHECK(cudaMemcpy(qdata, data_dev, sizeof(int) * count,
+                     cudaMemcpyDeviceToHost));
+  vector<int> counts;
+  counts.resize(binCount);
+  for (int i=0; i < count; i++) counts[qdata[i]]++;
+  delete[] qdata;
+
+  int *freqCounts = new int[binCount];
+  CUCHECK(cudaMemcpy(freqCounts, freqCounts_dev, sizeof(int) * binCount,
+                     cudaMemcpyDeviceToHost));
+  for (int i=0; i < binCount; i++) {
+    if (counts[i] != freqCounts[i]) {
+      fprintf(stderr, "Mismatch for %d: %d cpu, %d gpu\n", i, counts[i], freqCounts[i]);
+    }
+  }
+  delete[] freqCounts;
+#endif
+         
 }

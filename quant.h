@@ -29,6 +29,12 @@ class Quantizer {
  public:
   virtual void quantizeRow(const float *in, int *out, int count) = 0;
   virtual void dequantizeRow(const int *in, float *out, int count) = 0;
+  int quant(float f) {
+    int result;
+    quantizeRow(&f, &result, 1);
+    return result;
+  }
+
   virtual ~Quantizer() {}
 
   HD static float copysignf(float x, float s) {
