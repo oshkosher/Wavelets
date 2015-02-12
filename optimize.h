@@ -88,7 +88,8 @@ bool optimizeParameters
                testParameters() will just apply the threshold and
                then the inverse wavelet transform.
 
-    quantAlg - QUANT_ALG_LOG, QUANT_ALG_LLOYD, or QUANT_ALG_UNIFORM
+    quantAlg - QUANT_ALG_LOG, QUANT_ALG_LLOYD, QUANT_ALG_UNIFORM,
+               or QUANT_ALG_UNKNOWN if no quantization is to be done.
 
     output parameters:
 
@@ -101,8 +102,9 @@ bool optimizeParameters
 bool testParameters(OptimizationData *optData,
                     float thresholdValue, int binCount,
                     QuantizeAlgorithm quantAlg,
-                    int *outputSize,
-                    float *l1Error, float *l2Error, float *pSNR);
+                    int *outputSizeBytes,
+                    float *l1Error, float *l2Error, float *meanSquaredError,
+                    float *pSNR);
 
 #endif // __OPTIMIZE_H__
 
