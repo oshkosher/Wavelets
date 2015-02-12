@@ -4,6 +4,7 @@
 #include "transpose_gpu.h"
 
 #define TX_BLOCK_SIZE 32
+#define TX_TILE_SIZE 32
 
 
 /* gpuTransposeTiledKernel
@@ -79,6 +80,87 @@ void gpuTransposeSquare(int fullWidth, int transposeSize,
                              stream);
 }
 #endif
+
+
+/*
+  Try using tiles larger than a thread block.
+  This is slower due to large shared memory requirements and
+  lower occupancy.
+*/
+__global__ void gpuTransposeKernelLargeTiles(float *dest, const float *src,
+                                             int width, int height) {
+
+  __shared__ float cache[TX_TILE_SIZE][TX_TILE_SIZE+1];
+
+  int tileTop, tileLeft, tileRow, tileCol, row, col;
+  
+  // get the upper left corner of this tile (same for all threads in this block)
+  tileTop = blockIdx.y * blockDim.y;
+  int endRow = min(TX_TILE_SIZE, height - tileTop);
+
+  while (tileTop < height) {
+
+    tileLeft = blockIdx.x * blockDim.x;
+    int endCol = min(TX_TILE_SIZE, width - tileLeft);
+
+    while (tileLeft < width) {
+  
+      // tileRow is the y-coordinate within the tile
+      tileRow = threadIdx.y;
+  
+      // within a tile, copy multiple elements to the cache
+      while (tileRow < endRow) {
+
+        // tileCol is the x-coordinate within the tile
+        tileCol = threadIdx.x;
+
+        while (tileCol < endCol) {
+          row = tileTop + tileRow;
+          col = tileLeft + tileCol;
+          cache[tileRow][tileCol] = src[row * width + col];
+          tileCol += blockDim.x;
+        }
+
+        tileRow += blockDim.y;
+      }
+
+      // Sync is necessary because the thread that wrote to a shared memory
+      // entry won't always be the one that reads from it.
+      __syncthreads();
+
+      // swap what width and height mean
+      
+      tileCol = threadIdx.y;
+      while (tileCol < endRow) {  // tileLeft + y < width  vs  y < height - tileTop
+        
+        tileRow = threadIdx.x;
+        while (tileRow < endCol) {
+          
+          row = tileLeft + tileCol;
+          col = tileTop + tileRow;
+          dest[row * height + col] = cache[tileRow][tileCol];
+          
+          tileRow += blockDim.x;
+        }
+
+        tileCol += blockDim.y;
+      }
+          
+      /*
+      row = tileLeft + threadIdx.y;
+      col = tileTop + threadIdx.x;
+      if (row < width && col < height) {
+        dest[row * height + col] = cache[threadIdx.x][threadIdx.y];
+      }
+      */
+
+      tileLeft += blockDim.x * gridDim.x;
+    }
+
+    tileTop += blockDim.y * gridDim.y;
+  }
+
+}
 
 
 
