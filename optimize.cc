@@ -18,7 +18,8 @@
                testParameters() will just apply the threshold and
                then the inverse wavelet transform.
 
-    quantAlg - QUANT_ALG_LOG, QUANT_ALG_LLOYD, or QUANT_ALG_UNIFORM
+    quantAlg - QUANT_ALG_LOG, QUANT_ALG_LLOYD, QUANT_ALG_UNIFORM,
+               or QUANT_ALG_UNKNOWN if no quantization is to be done.
 
     output parameters:
 
