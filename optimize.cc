@@ -14,8 +14,8 @@ bool optimizeParameters(OptimizationData *optData,
   for (float thresholdFrac = 0; thresholdFrac < .95; thresholdFrac += 0.1) {
     float thresh = 0;
     if (thresholdFrac > 0) {
-      int offset = (int)(optData->count * thresholdFrac);
-      thresh = optData->sorted[offset];
+      int offset = (int)(optData->count() * thresholdFrac);
+      thresh = optData->getSorted(offset);
     }
     if (!testParameters(optData, thresh, -1, QUANT_ALG_UNKNOWN,
                         &size, &l1, &l2, &mse, &psnr)) return false;
@@ -24,7 +24,7 @@ bool optimizeParameters(OptimizationData *optData,
   }
   
   float frac = .7;
-  *thresholdValue = optData->sorted[(int)(optData->count * frac)];
+  *thresholdValue = optData->getSorted((int)(optData->count() * frac));
 
   printf("\nthresh = %2.0f%%, try different quantization bin counts\n",
          frac * 100);

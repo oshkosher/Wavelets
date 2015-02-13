@@ -3,6 +3,21 @@
 #include "test_compress_common.h"
 #include "test_compress_cpu.h"
 
+float OptimizationData::getSorted(int index) {
+  if (index < 0 || index >= count()) {
+    assert(index >= 0 && index < count());
+    return 0;
+  }
+
+  return sorted[index];
+}
+
+
+int OptimizationData::findSorted(float value) {
+  return std::lower_bound(sorted, sorted+count(), value) - sorted;
+}
+
+
 /** Call this to try out compression parameters thresholdValue and binCount.
     The resulting output file size and some error metrics will be returned.
 
@@ -72,10 +87,12 @@ bool testParameters(OptimizationData *o,
     // quantize and dequantize the data
 
     CubeInt quantizedData;
-    const float *nonzeroData = o->sorted + o->count - o->nonzeroCount;
+    int firstNonzero = o->findSorted(thresholdValue);
+    int nonzeroCount = count - firstNonzero;
+    const float *nonzeroData = o->sorted + firstNonzero;
     if (!quantize(*o->transformedData, quantizedData,
                   o->maxAbsVal, param,
-                  nonzeroData, o->nonzeroCount,
+                  nonzeroData, nonzeroCount,
                   o->minVal, o->maxVal))
       return false;
     
