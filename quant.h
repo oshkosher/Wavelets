@@ -520,10 +520,27 @@ class QuantCodebook {
   }
 
   static HD int quant(float x, int boundaryCount, const float *boundaries) {
-    int i=0;
-    while (i < boundaryCount && x > boundaries[i]) i++;
-    return i;
+
+    int count, step;
+    const float *start = boundaries, *it;
+    count = boundaryCount;
+
+    // binary search, equivalent to std::lower_bound
+    while (count > 0) {
+      it = start;
+      step = count / 2;
+      it += step;
+      if (*it < x) {
+        start = it + 1;
+        count -= step + 1;
+      } else {
+        count = step;
+      }
+    }
+
+    return start - boundaries;
   }
+
 
   float dequant(int x) const {
     assert(x >= 0 && x < (int)codebook.size());
