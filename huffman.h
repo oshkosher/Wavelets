@@ -79,6 +79,13 @@ class Huffman {
     nodeStorage = NULL;
   }
 
+  void init(const int *counts_, int size_) {
+    size = size_;
+    counts.assign(counts_, counts_ + size);
+    computed = false;
+    nodeStorage = NULL;
+  }
+  
   ~Huffman() {
     if (nodeStorage) delete[] nodeStorage;
   }

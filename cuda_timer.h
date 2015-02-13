@@ -58,8 +58,8 @@ class CudaTimer {
   // start timer
   void start(cudaStream_t stream = 0) {
     if (isStarted) {
-      fprintf(stderr, "ERROR: CudaTimer::start() called with timer already "
-              "started.\n");
+      fprintf(stderr, "ERROR: CudaTimer::start() (%s) called with timer "
+              "already started.\n", getName());
       return;
     }
 
@@ -71,8 +71,8 @@ class CudaTimer {
   // end timer
   void end(cudaStream_t stream = 0) {
     if (!isStarted) {
-      fprintf(stderr, "ERROR: CudaTimer::end() called with timer not "
-              "started.\n");
+      fprintf(stderr, "ERROR: CudaTimer::end() (%s) called with timer not "
+              "started.\n", getName());
       return;
     }
 

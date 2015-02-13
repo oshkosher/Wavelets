@@ -2,7 +2,7 @@
 
 
 bool optimizeParameters(OptimizationData *optData,
-                        float *thresholdValue, int *binCount) {
+                        float *thresholdValueOut, int *binCountOut) {
 
   int size;
   float l1, l2, mse, psnr;
@@ -21,20 +21,24 @@ bool optimizeParameters(OptimizationData *optData,
                         &size, &l1, &l2, &mse, &psnr)) return false;
     printf("  %2d%% (%.4f)  %.2f mse, %.2f psnr\n", (int)(thresholdFrac * 100),
            thresh, mse, psnr);
+    fflush(stdout);
   }
-  
+
   float frac = .7;
-  *thresholdValue = optData->getSorted((int)(optData->count() * frac));
+  *thresholdValueOut = optData->getSorted((int)(optData->count() * frac));
 
   printf("\nthresh = %2.0f%%, try different quantization bin counts\n",
          frac * 100);
   for (int binCount=10; binCount <= 2560; binCount *= 2) {
-    if (!testParameters(optData, *thresholdValue, binCount, QUANT_ALG_LOG,
+    if (!testParameters(optData, *thresholdValueOut, binCount, QUANT_ALG_LOG,
                         &size, &l1, &l2, &mse, &psnr)) return false;
     printf("  %2d bins, %d bytes, %.2f mse, %.2f psnr\n", binCount, size, mse, psnr);
+    fflush(stdout);
   }    
 
-  *binCount = 100;
+
+  *thresholdValueOut = optData->getSorted(optData->count() / 2);
+  *binCountOut = 100;
 
   return false;
 }

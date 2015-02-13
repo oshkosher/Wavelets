@@ -329,7 +329,11 @@ TEST_COMPRESS_GPU_OBJS=test_compress_gpu.$(OBJ_EXT) \
   dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) huffman.$(OBJ_EXT) \
   data_io.$(OBJ_EXT) transpose_gpu.$(OBJ_EXT) nixtimer.$(OBJ_EXT) \
   wavelet_compress.pb.$(OBJ_EXT) quant_count.$(OBJ_EXT) wavelet.$(OBJ_EXT) \
-  cubelet_file.$(OBJ_EXT) cudalloyds.$(OBJ_EXT) wavelet_cuda.$(OBJ_EXT)
+  cubelet_file.$(OBJ_EXT) cudalloyds.$(OBJ_EXT) \
+  optimize.$(OBJ_EXT) optimize_gpu.$(OBJ_EXT) quant_gpu.$(OBJ_EXT) \
+  histogram_gpu.$(OBJ_EXT)
+
+#  wavelet_cuda.$(OBJ_EXT)
 
 test_compress_gpu: $(TEST_COMPRESS_GPU_OBJS)
 	$(NVCC) $(TEST_COMPRESS_GPU_OBJS) -o $@ $(PROTOBUF_LIB_NVCC)

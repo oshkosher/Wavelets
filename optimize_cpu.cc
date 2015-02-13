@@ -66,6 +66,7 @@ bool testParameters(OptimizationData *o,
 
   int count = o->transformedData->count();
 
+
   // If binCount is nonpositive, don't quantize and dequantize.
   // Just apply the threshold and reverse the wavelet transform.
   if (binCount <= 0) {
@@ -84,8 +85,9 @@ bool testParameters(OptimizationData *o,
 
   } else {  // binCount > 0
 
-    // quantize and dequantize the data
+    // o->transformedData->print("before quantize");
 
+    // quantize and dequantize the data
     CubeInt quantizedData;
     int firstNonzero = o->findSorted(thresholdValue);
     int nonzeroCount = count - firstNonzero;
@@ -95,6 +97,8 @@ bool testParameters(OptimizationData *o,
                   nonzeroData, nonzeroCount,
                   o->minVal, o->maxVal))
       return false;
+
+    // quantizedData.print("after quantize");
     
     // compute the huffman coding
     Huffman huff;

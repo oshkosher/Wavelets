@@ -526,6 +526,7 @@ class QuantCodebook {
     count = boundaryCount;
 
     // binary search, equivalent to std::lower_bound
+    // borrowed from http://en.cppreference.com/w/cpp/algorithm/lower_bound
     while (count > 0) {
       it = start;
       step = count / 2;

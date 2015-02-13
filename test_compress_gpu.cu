@@ -19,12 +19,9 @@
 #include "cucheck.h"
 #include "cuda_timer.h"
 #include "quant.h"
-#include "cudalloyds.h"
-#include "CUDA/wavelet/wavelet.h"
-
-#define QUANTIZE_BLOCK_SIZE 1024
-#define QUANTIZE_BLOCK_COUNT 64
-#define HISTOGRAM_CACHE_SIZE 256
+#include "quant_gpu.h"
+// #include "cudalloyds.h"
+// #include "CUDA/wavelet/wavelet.h"
 
 // #define DO_DETAILED_CHECKS
 
@@ -54,17 +51,6 @@ bool waveletTransformGPU(float *data_d, float *tmpData_d,
 void sortAbsAndFindLimitsGPU(float *dest_d, const float *src_d, int count,
                              float *minValue, float *maxValue);
 
-bool quantizeGPU(float *data, int count, WaveletCompressionParam &param,
-                 const float *nonzeroData_dev, int nonzeroCount,
-                 float maxAbsVal, float minValue, float maxValue,
-                 CudaTimer &quantizeTimer);
-
-void computeLloydQuantizationGPU(const float *inputData, int count,
-                                 int binCount, float minVal, float maxVal,
-                                 float thresholdValue,
-                                 std::vector<float> &quantBinBoundaries,
-                                 std::vector<float> &quantBinValues);
-
 bool computeErrorRatesGPU(int *quantizedData_dev,
                           scu_wavelet::int3 size,
                           float *tempData_dev,
@@ -77,33 +63,6 @@ void computeErrorRatesAfterDequantGPU
  const WaveletCompressionParam &param,
  const unsigned char *inputData_dev, ErrorAccumulator &errAccum);
 
-
-// If input_dev is NULL, use (int*)result_dev as the input.
-bool dequantizeGPU(float *result_dev, const int *input_dev,
-                   int count, const WaveletCompressionParam &param);
-
-void computeFrequencies(int *&freqCounts_dev, int binCount,
-                        const int *data_dev, int count,
-                        int zeroBin);
-
-void __global__ quantUniformKernel(void *data, int count,
-                                   int binCount, float threshold, float max);
-void __global__ quantLogKernel(void *data, int count,
-                               int binCount, float threshold, float max);
-void __global__ quantCodebookKernel(void *data, int count, 
-                                    const float *boundaries, int boundaryCount);
-void quantCodebookGPU(void *data_dev, int dataCount,
-                      const vector<float> &boundaries, int binCount);
-
-void __global__ dequantUniformKernel(float *output, const int *input, int count,
-                                     int binCount, float threshold, float max);
-void __global__ dequantLogKernel(float *data, const int *input, int count,
-                                 int binCount, float threshold, float max);
-void __global__ dequantCodebookKernel(float *output, const int *input,
-                                      int count,
-                                      const float *binValues, int binCount);
-void dequantCodebookGPU(float *result_dev, const int *input_dev, int count,
-                        const vector<float> &binValues);
 
 inline bool isClose(float a, float b) {
   float diff = fabsf(a-b);
@@ -119,32 +78,24 @@ int compareArrays(const float *a, const float *b, int count);
 int compareArrays(const int *a, const int *b, int count);
 
 // debug output
-void printArray(float *array, int width, int height, int depth,
+void printArray(const float *array, int width, int height, int depth,
                 const char *name = NULL);
-void printArray(int *array, int width, int height, int depth,
+void printArray(const int *array, int width, int height, int depth,
                 const char *name = NULL);
-void printDeviceArray(float *array_dev, int width, int height, int depth,
+void printDeviceArray(const float *array_dev, int width, int height, int depth,
                       const char *name = NULL);
-void printDeviceArray(float *array_dev, scu_wavelet::int3 size,
+void printDeviceArray(const float *array_dev, scu_wavelet::int3 size,
                       const char *name = NULL);
+void printDeviceArray(const int *array_dev, int width, int height, int depth,
+                      const char *name = NULL);
+void printDeviceArray(const int *array_dev, scu_wavelet::int3 size,
+                      const char *name = NULL);
+
 
 // struct AbsFunctor : public thrust::unary_function<float,float> {
 struct AbsFunctor {
   __host__ __device__ float operator() (float x) const {
     return fabsf(x);
-  }
-};
-
-struct QuantUniformFunctor {
-  QuantUniform uni;
-
-  __host__ __device__ QuantUniformFunctor(int binCount, float threshold,
-                                          float maxVal) {
-    uni.init(binCount, threshold, maxVal);
-  }
-
-  __host__ __device__ int operator() (float x) const {
-    return uni.quant(x);
   }
 };
   
@@ -242,7 +193,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   // if the input data is bytes, we can compute its error rate later.
   // copy it to the GPU so we can do that
   if (inputData.datatype == WAVELET_DATA_UINT8) {
-    CUCHECK(cudaMalloc((void**)&inputData_dev, dataCount));
+    CUCHECK(cudaMalloc((void**)&inputData_dev, inputData.count()));
   }
 
   if (!QUIET) {
@@ -255,7 +206,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   CUCHECK(cudaMemcpy(data1_dev, data.data(), dataCountBytes,
                      cudaMemcpyHostToDevice));
   if (inputData_dev)
-    CUCHECK(cudaMemcpy(inputData_dev, inputData.data_, dataCount,
+    CUCHECK(cudaMemcpy(inputData_dev, inputData.data_, inputData.count(),
                        cudaMemcpyHostToDevice));
   copyToGPUTimer.end();
 
@@ -375,7 +326,32 @@ bool compressFile(const char *inputFile, const char *outputFile,
   const float *nonzeroData_dev = data2_dev + thresholdOffset;
   int nonzeroCount = dataCount - thresholdOffset;
 
-  if (!quantizeGPU(data1_dev, dataCount, param,
+  if (opt.doOptimize) {
+    assert(inputData.datatype == WAVELET_DATA_UINT8);
+    
+    // Replace the data pointers in inputData and data (which point to
+    // data on the host) with pointers to copies of the data on the GPU.
+    void *tmpInputDataHost = inputData.data_;
+    inputData.data_ = inputData_dev;
+
+    CubeFloat deviceData;
+    deviceData.setType();
+    deviceData.size = deviceData.totalSize = deviceSize;
+    deviceData.data_ = data1_dev;
+
+    OptimizationData optData((CubeByte*)&inputData, &deviceData, data2_dev,
+                             minValue, maxValue, maxAbsVal,
+                             param.transformSteps,
+                             param.waveletAlg);
+    bool result = optimizeParameters(&optData, &param.thresholdValue,
+                                     &param.binCount);
+
+    // put the pointers back
+    inputData.data_ = tmpInputDataHost;
+    if (!result) return true;
+  }
+
+  if (!quantizeGPU((int*)data1_dev, data1_dev, dataCount, param,
                    nonzeroData_dev, nonzeroCount,
                    maxAbsVal, minValue, maxValue, quantizeTimer))
     return false;
@@ -413,8 +389,8 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   // compute histogram on the GPU
   int *freqCounts_dev;
-  computeFrequencies(freqCounts_dev, param.binCount,
-                     (const int*)data1_dev, dataCount, zeroBin);
+  computeFrequenciesGPU(freqCounts_dev, param.binCount,
+                        (const int*)data1_dev, dataCount, zeroBin);
   int *freqCounts = new int[param.binCount];
 
   // copy histogram data from the GPU
@@ -643,219 +619,6 @@ void sortAbsAndFindLimitsGPU(float *dest_d, const float *src_d, int count,
     sortTimer.print();
   }
 }
-
-
-bool quantizeGPU(float *data_dev, int count, WaveletCompressionParam &param,
-                 const float *nonzeroData_dev, int nonzeroCount,
-                 float maxAbsVal, float minValue, float maxValue,
-                 CudaTimer &quantizeTimer) {
-  switch (param.quantAlg) {
-  case QUANT_ALG_UNIFORM:
-    param.maxValue = maxAbsVal;
-    quantizeTimer.start();
-    quantUniformKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
-      (data_dev, count, param.binCount, param.thresholdValue, param.maxValue);
-    quantizeTimer.end();
-    break;
-
-  case QUANT_ALG_LOG:
-    param.maxValue = maxAbsVal;
-    quantizeTimer.start();
-    quantLogKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
-      (data_dev, count, param.binCount, param.thresholdValue, param.maxValue);
-    quantizeTimer.end();
-    break;
-
-  case QUANT_ALG_LLOYD:
-    computeLloydQuantizationGPU(nonzeroData_dev, nonzeroCount, param.binCount,
-                                minValue, maxValue, param.thresholdValue,
-                                param.binBoundaries, param.binValues);
-    quantizeTimer.start();
-    quantCodebookGPU(data_dev, count, param.binBoundaries, param.binCount);
-    quantizeTimer.end();
-    break;
-
-  default:
-    fprintf(stderr, "Quantization algorithm %d not found.\n",
-            (int)param.quantAlg);
-    return false;
-  }
-
-  return true;
-}
-
-
-template<class Q>
-void __device__ quantKernel(const Q &quanter, void *data, int count) {
-  const float *dataFloat = (const float*) data;
-  int *dataInt = (int*) data;
-
-  int idx = blockIdx.x*blockDim.x + threadIdx.x;
-  while (idx < count) {
-    float in = dataFloat[idx];
-    dataInt[idx] = quanter.quant(in);
-    // printf("[%6d] (%d,%d) %f -> %d\n", idx, blockIdx.x, threadIdx.x, in, dataInt[idx]);
-    idx += blockDim.x * gridDim.x;
-  }
-}
-
-
-void __global__ quantLogKernel(void *data, int count,
-                               int binCount, float threshold, float max) {
-  __shared__ QuantLog quanter;
-
-  if (threadIdx.x == 0) {
-    quanter.init(binCount, threshold, max);
-    // printf("GPU %.10g->%d\n", -0.009803920984, quanter.quant(-0.009803920984));
-  }
-
-  __syncthreads();
-
-  quantKernel(quanter, data, count);
-}
-
-
-void __global__ quantUniformKernel(void *data, int count,
-                                   int binCount, float threshold, float max) {
-  __shared__ QuantUniform quanter;
-
-  if (threadIdx.x == 0) {
-    quanter.init(binCount, threshold, max);
-  }
-
-  __syncthreads();
-
-  quantKernel(quanter, data, count);
-}
-
-class QuantCodebookDev {
-  int boundaryCount;
-  const float *boundaries;
-public:
-  __device__ void init(int c, const float *b) {
-    boundaryCount = c;
-    boundaries = b;
-  }
-
-  __device__ int quant(float x) const {
-    return QuantCodebook::quant(x, boundaryCount, boundaries);
-  }
-};
-
-void __global__ quantCodebookKernel(void *data, int count, 
-                                    const float *boundaries,
-                                    int boundaryCount) {
-  QuantCodebookDev quanter;
-  quanter.init(boundaryCount, boundaries);
-  
-  quantKernel(quanter, data, count);
-}
-
-
-void quantCodebookGPU(void *data_dev, int dataCount,
-                      const vector<float> &boundaries, int binCount) {
-
-  // copy the boundaries array to the GPU
-  float *boundaries_dev;
-  size_t boundariesBytes = sizeof(float)*(binCount-1);
-  CUCHECK(cudaMalloc((void**)&boundaries_dev, boundariesBytes));
-  CUCHECK(cudaMemcpy(boundaries_dev, boundaries.data(), boundariesBytes,
-                     cudaMemcpyHostToDevice));
-
-  quantCodebookKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
-    (data_dev, dataCount, boundaries_dev, binCount-1);
-
-  CUCHECK(cudaFree(boundaries_dev));
-}
-
-
-template<class Q>
-void __device__ dequantKernel(const Q &quanter, float *output,
-                              const int *input, int count) {
-
-  int idx = blockIdx.x*blockDim.x + threadIdx.x;
-  while (idx < count) {
-    int in = input[idx];
-    output[idx] = quanter.dequant(in);
-    // printf("dequant %6d: %d %.2g\n", idx, in, output[idx]);
-    idx += blockDim.x * gridDim.x;
-  }
-}
-
-
-void __global__ dequantUniformKernel(float *output, const int *input, int count,
-                                     int binCount, float threshold, float max) {
-  __shared__ QuantUniform quanter;
-
-  if (threadIdx.x == 0) {
-    quanter.init(binCount, threshold, max);
-  }
-
-  __syncthreads();
-
-  dequantKernel(quanter, output, input, count);
-}
-
-
-void __global__ dequantLogKernel(float *output, const int *input, int count,
-                                 int binCount, float threshold, float max) {
-  __shared__ QuantLog quanter;
-  /*
-  QuantLog quanter;
-  quanter.init(binCount, threshold, max);
-  */
-
-  if (threadIdx.x == 0) {
-    quanter.init(binCount, threshold, max);
-    // printf("GPU %.10g->%d\n", -0.009803920984, quanter.quant(-0.009803920984));
-  }
-
-  __syncthreads();
-
-
-  dequantKernel(quanter, output, input, count);
-}
-
-
-class DequantCodebookDev {
-  const float *binValues;
-  int binCount;
-public:
-  __device__ void init(const float *binValues_, int binCount_) {
-    binValues = binValues_;
-    binCount = binCount_;
-  }
-
-  __device__ float dequant(int i) const {
-    assert(i >= 0 && i < binCount);
-    return binValues[i];
-  }
-};
-
-
-void __global__ dequantCodebookKernel(float *output, const int *input,
-                                      int count,
-                                      const float *binValues, int binCount) {
-  DequantCodebookDev dequanter;
-  dequanter.init(binValues, binCount);
-
-  dequantKernel(dequanter, output, input, count);
-}
-
-
-void dequantCodebookGPU(float *result_dev, const int *input_dev, int count,
-                        const vector<float> &binValues) {
-  float *binValues_dev;
-  size_t binValuesBytes = binValues.size() * sizeof(float);
-  CUCHECK(cudaMalloc((void**)&binValues_dev, binValuesBytes));
-  CUCHECK(cudaMemcpy(binValues_dev, binValues.data(), binValuesBytes,
-                     cudaMemcpyHostToDevice));
-
-  dequantCodebookKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
-    (result_dev, input_dev, count, binValues_dev, (int)binValues.size());
-
-  CUCHECK(cudaFree(binValues_dev));
-}
   
 
 
@@ -885,7 +648,7 @@ int compareArrays(const int *a, const int *b, int count) {
 }
 
 
-void printArray(float *array, int width, int height, int depth, 
+void printArray(const float *array, int width, int height, int depth, 
                 const char *name) {
   if (name) printf("%s\n", name);
   for (int level=0; level < depth; level++) {
@@ -902,7 +665,7 @@ void printArray(float *array, int width, int height, int depth,
 }
 
 
-void printArray(int *array, int width, int height, int depth, 
+void printArray(const int *array, int width, int height, int depth, 
                 const char *name) {
   if (name) printf("%s\n", name);
   for (int level=0; level < depth; level++) {
@@ -919,16 +682,33 @@ void printArray(int *array, int width, int height, int depth,
 }
 
 
-void printDeviceArray(float *array_dev, scu_wavelet::int3 size,
+void printDeviceArray(const float *array_dev, scu_wavelet::int3 size,
                       const char *name) {
   printDeviceArray(array_dev, size.x, size.y, size.z, name);
 }
 
-void printDeviceArray(float *array_dev, int width, int height, int depth, 
+void printDeviceArray(const float *array_dev, int width, int height, int depth, 
                       const char *name) {
 
   float *array = new float[width*height*depth];
   CUCHECK(cudaMemcpy(array, array_dev, sizeof(float)*width*height*depth,
+                     cudaMemcpyDeviceToHost));
+
+  printArray(array, width, height, depth, name);
+
+  delete[] array;
+}
+
+void printDeviceArray(const int *array_dev, scu_wavelet::int3 size,
+                      const char *name) {
+  printDeviceArray(array_dev, size.x, size.y, size.z, name);
+}
+
+void printDeviceArray(const int *array_dev, int width, int height, int depth, 
+                      const char *name) {
+
+  int *array = new int[width*height*depth];
+  CUCHECK(cudaMemcpy(array, array_dev, sizeof(int)*width*height*depth,
                      cudaMemcpyDeviceToHost));
 
   printArray(array, width, height, depth, name);
@@ -1092,57 +872,6 @@ bool check3Quantized(const int *quantizedData_dev, int count,
 }
 
 
-void computeLloydQuantizationGPU(const float *inputData, int count,
-                                 int binCount, float minVal, float maxVal,
-                                 float thresholdValue,
-                                 std::vector<float> &quantBinBoundaries,
-                                 std::vector<float> &quantBinValues) {
-  
-  // Make 'codebookSize' entries on either size of 0
-  int codebookSize = (binCount-1) / 2;
-
-  quantBinBoundaries.clear();
-  quantBinValues.clear();
-
-  // inputData is sorted, use it to get minVal and maxVal
-  // Skip the last entry in inputData[] because it is often much larger than
-  // the rest and skews the results
-  float maxAbsVal;
-  CUCHECK(cudaMemcpy(&maxAbsVal, inputData+count-2, sizeof(float),
-                     cudaMemcpyDeviceToHost));
-  assert(maxAbsVal > 0);
-
-  vector<float> codebook;
-  initialLloydCodebook(codebook, codebookSize, thresholdValue, maxAbsVal);
-
-  /*
-  printf("Before Lloyd\n");
-  for (int i=0; i < codebookSize; i++) printf("%d) %f\n", i, codebook[i]);
-  */
-
-  // fine-tune the codebook and bin boundaries using Lloyd's algorithm.
-  // This also applies the quantization to each value, writing the values
-  // to quantizedData[].
-  int lloydIters = 0;
-  CudaTimer lloydTimer;
-  lloydTimer.start();
-  cudaLloyd(inputData, count-1, codebook.data(), (int)codebook.size(),
-            DEFAULT_LLOYD_STOP_CRITERIA, true, &lloydIters);
-  lloydTimer.end();
-  CUCHECK(cudaThreadSynchronize());
-  if (!QUIET)
-    printf("GPU lloyd %d iterations, %.3f ms\n", lloydIters, lloydTimer.time());
-  
-  /*  
-  printf("After Lloyd\n");
-  for (int i=0; i < codebookSize; i++) printf("%d) %f\n", i, codebook[i]);
-  */
-
-  setBinsFromCodebook(quantBinValues, quantBinBoundaries, binCount,
-                      codebook, thresholdValue, minVal, maxVal);
-}
-
-
 // Size is transformed.
 bool computeErrorRatesGPU(int *quantizedData_dev, scu_wavelet::int3 size,
                           float *tempData_dev,
@@ -1277,11 +1006,13 @@ void computeErrorRatesAfterDequantGPU
   CUCHECK(cudaFree(errSums_dev));
   computeErrTimer.end();
 
-  CUCHECK(cudaThreadSynchronize());
-  printf("Inverse wavelet transform: %.3f ms (transpose %.3f ms)\n",
-         waveletTimer.time() + transposeTimer.time(),
-         transposeTimer.time());
-  computeErrTimer.print();
+  if (!QUIET) {
+    CUCHECK(cudaThreadSynchronize());
+    printf("Inverse wavelet transform: %.3f ms (transpose %.3f ms)\n",
+           waveletTimer.time() + transposeTimer.time(),
+           transposeTimer.time());
+    computeErrTimer.print();
+  }
   
   // largest unsigned char value
   errAccum.setMaxPossible(255);
@@ -1289,195 +1020,4 @@ void computeErrorRatesAfterDequantGPU
   errAccum.setSumDiffSquared(errSums[1]);
   errAccum.setCount(param.originalSize.count());
 
-}
-
-
-
-// change data_dev from int[] to float[] in place
-bool dequantizeGPU(float *result_dev, const int *input_dev,
-                   int count, const WaveletCompressionParam &param) {
-
-  CudaTimer timer("Dequantize");
-
-  if (input_dev == NULL)
-    input_dev = (const int*) result_dev;
-  
-  timer.start();
-  switch (param.quantAlg) {
-  case QUANT_ALG_UNIFORM:
-    dequantUniformKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
-      (result_dev, input_dev, count,
-       param.binCount, param.thresholdValue, param.maxValue);
-    break;
-
-  case QUANT_ALG_LOG:
-    dequantLogKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
-      (result_dev, input_dev, count,
-       param.binCount, param.thresholdValue, param.maxValue);
-    break;
-
-  case QUANT_ALG_LLOYD:
-    dequantCodebookGPU(result_dev, input_dev, count, param.binValues);
-    break;
-
-  default:
-    fprintf(stderr, "Quantization algorithm %d not found.\n",
-            (int)param.quantAlg);
-    return false;
-  }
-  timer.end();
-  timer.sync();
-  timer.print();
-
-  // copy the data to the CPU and print it all
-  /*
-  int *input = new int[count];
-  float *output = new float[count];
-  CUCHECK(cudaMemcpy(input, input_dev, count*sizeof(int),
-                     cudaMemcpyDeviceToHost));
-  CUCHECK(cudaMemcpy(output, result_dev, count*sizeof(float),
-                     cudaMemcpyDeviceToHost));
-  for (int i=0; i < count; i++)
-    printf("%d) %d -> %f\n", i, input[i], output[i]);
-  delete[] input;
-  delete[] output;
-  */
-  return true;
-}
-
-
-/**
-   Creating a special case for the zero bin is a huge win.
-   In one test, it reduces the runtime from 848ms to 48.3 ms.
-*/
-__global__ void computeFrequenciesKernel
-(int *freqCounts, int binCount, const int *data, int count, int zeroBin) {
-
-  // compute frequencies for HISTOGRAM_CACHE_SIZE bins at a time.
-  // If binCount > HISTOGRAM_CACHE_SIZE, do multiple passes over the 
-  // data.
-  __shared__ int sharedFreq[HISTOGRAM_CACHE_SIZE];
-  __shared__ int sharedZeroCount;
-
-  if (threadIdx.x == 0) sharedZeroCount = 0;
-    
-  // clear the shared memory
-  for (int i=threadIdx.x; i < HISTOGRAM_CACHE_SIZE; i += blockDim.x) {
-    sharedFreq[i] = 0;
-  }
-
-  __syncthreads();
-
-  int zeroCount = 0;
-
-  // There may be more bins than HISTOGRAM_CACHE_SIZE.
-  // Do multiple passes over the data if necessary.
-  for (int startBin = 0;
-       startBin < binCount;
-       startBin += HISTOGRAM_CACHE_SIZE) {
-
-    for (int i = threadIdx.x + blockIdx.x * blockDim.x;
-         i < count;
-         i += blockDim.x * gridDim.x) {
-
-      int b = data[i];
-
-      // The zero bin will have many updates and experience high contention.
-      // Handle it with a local variable.
-      if (b == zeroBin) {
-
-        // only process the zero bin when in the first pass over the data,
-        // regardless of which pass range its value fits in.
-        if (startBin == 0) {
-          zeroCount++;
-        }
-
-      } else {
-        unsigned bin = (unsigned) (b - startBin);
-        if (bin < HISTOGRAM_CACHE_SIZE) {
-          atomicAdd(&sharedFreq[bin], 1);
-        }
-
-      }
-    }
-
-    __syncthreads();
-
-    // write shared memory cache to global memory
-    for (int i=threadIdx.x;
-         i < HISTOGRAM_CACHE_SIZE && startBin+i < binCount;
-         i += blockDim.x) {
-      if (sharedFreq[i] > 0) {
-        atomicAdd(&freqCounts[startBin + i], sharedFreq[i]);
-        sharedFreq[i] = 0;
-      }
-    }
-
-    // sync so the zeros written to shared memory to clear it are seen
-    __syncthreads();
-
-  }
-
-  // gather the results for zeroCount into shared memory
-  atomicAdd(&sharedZeroCount, zeroCount);
-  __syncthreads();
-
-  // gather the results for zeroCount into global memory
-  if (threadIdx.x == 0) {
-    atomicAdd(&freqCounts[zeroBin], sharedZeroCount);
-  }
-
-}
-
-
-void computeFrequencies(int *&freqCounts_dev, int binCount,
-                        const int *data_dev, int count, int zeroBin) {
-                        
-  CudaTimer timer("Frequency count");
-
-  // 16 thread blocks worked well with the cards I tried.
-  // With the laptop GPU I tried, 512 threads/block gave the best performance,
-  // but 1024 threads/block worked best with the desktop GPU I tried.
-  int blockSize, gridSize = 16;
-
-  int gpuId;
-  cudaDeviceProp prop;
-  CUCHECK(cudaGetDevice(&gpuId));
-  CUCHECK(cudaGetDeviceProperties(&prop, gpuId));
-  blockSize = prop.multiProcessorCount <= 2 ? 512 : 1024;
-
-  timer.start();
-  CUCHECK(cudaMalloc((void**)&freqCounts_dev, binCount * sizeof(int)));
-  CUCHECK(cudaMemset(freqCounts_dev, 0, binCount * sizeof(int)));
-
-  computeFrequenciesKernel<<<gridSize, blockSize>>>
-    (freqCounts_dev, binCount, data_dev, count, zeroBin);
-
-  timer.end();
-  if (!QUIET) {
-    timer.sync();
-    timer.print();
-    fflush(stdout);
-  }
-
-#ifdef DO_DETAILED_CHECKS
-  int *qdata = new int[count];
-  CUCHECK(cudaMemcpy(qdata, data_dev, sizeof(int) * count,
-                     cudaMemcpyDeviceToHost));
-  vector<int> counts;
-  counts.resize(binCount);
-  for (int i=0; i < count; i++) counts[qdata[i]]++;
-  delete[] qdata;
-
-  int *freqCounts = new int[binCount];
-  CUCHECK(cudaMemcpy(freqCounts, freqCounts_dev, sizeof(int) * binCount,
-                     cudaMemcpyDeviceToHost));
-  for (int i=0; i < binCount; i++) {
-    if (counts[i] != freqCounts[i]) {
-      fprintf(stderr, "Mismatch for %d: %d cpu, %d gpu\n", i, counts[i], freqCounts[i]);
-    }
-  }
-  delete[] freqCounts;
-#endif
-         
 }

@@ -259,8 +259,23 @@ int main_quick_test() {
 }
 
 
+void try_binary_search() {
+
+  const float boundaries[] = {.1, .2, .5, 1, 2, 2, 2, 10};
+  const int count = sizeof boundaries / sizeof(float);
+  printf("0: %d\n", QuantCodebook::quant(0, count, boundaries));
+  printf(".2: %d\n", QuantCodebook::quant(.2f, count, boundaries));
+  printf(".5: %d\n", QuantCodebook::quant(.5f, count, boundaries));
+  printf("1: %d\n", QuantCodebook::quant(1, count, boundaries));
+  printf("2: %d\n", QuantCodebook::quant(2, count, boundaries));
+  printf("10: %d\n", QuantCodebook::quant(10, count, boundaries));
+  printf("20: %d\n", QuantCodebook::quant(20, count, boundaries));
+}
+
+
 int main() {
-  main_quick_test();
+  // main_quick_test();
+  try_binary_search();
   
   return 0;
 }
