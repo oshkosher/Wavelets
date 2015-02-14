@@ -1,0 +1,47 @@
+Minutes of Weekly Meeting of the Wavelet Group
+
+Date: Wednesday, February 11th, 2015
+
+Time:  From about Noon to 1 PM
+
+Present: All connected remotely. David Concha, Anupam Goyal, Drazen Fabris, Ed Karrels, Bonnie Smithson, Sergio Zarantonello
+
+Presentations:  None
+
+Discussions:
+
+1. Anupam tried to run Ed’s programs for testing on Amazon but got memory problems.  Then, Ed created data with smaller dimensions, which Anupam could run successfully on Amazon. 
+
+2. Performance numbers from Ed’s test were discussed that compare runs on GPU with runs on CPU.
+
+3. Log algorithm is not as optimal but is faster than Lloyd’s.  Lloyd’s takes still quite some time on the GPU despite the speedup.
+
+4. Serge received an acknowledgement of his initial slides from the conference organizers. 
+
+5. We should see if a bigger GPU should be used for the conference.  Bonnie has a 3.5 capability GPU.
+
+6. Hill climbing approach mentioned earlier is a rudimentary approach.
+
+7. Ed informed about his admissions to University of Chicago, University of California at Santa Barbara, and others.
+
+Future Work:
+
+1. Serge plans to have the next version of slides ready by next Wednesday (February 18th).  Though he expects to be travelling on that day, he plans to send these to Bonnie.
+
+2. Bonnie can transform DICOM images to raw format, for testing.
+
+3. Anupam should extract a movie clip with help of Craig that is quick, a few seconds.
+
+4. Ed has not yet set up statistics for Huffman Code’s.
+
+5. Serge can implement in Matlab a method the uses both logarithmic algorithm and Lloyd’s.
+
+6. Serge and Bonnie plan to work together on error control, and on sequentially using logarithmic and Lloyd’s algorithms.
+
+7. Serge plans to ask for passes to attend the conference for Anupam, Bonnie, and Drazen.
+
+8. Anupam should obtain the publications which he made a list of for survey paper and then email these to the group.
+
+9. For the slides, Bonnie would handle putting together pictures and emails of project contributors.
+
+10. After the conference on March 20th, the group should spend time together, may be by having dinner together.
