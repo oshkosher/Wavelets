@@ -2,7 +2,9 @@
 #include "quant_gpu.h"
 #include "cudalloyds.h"
 #include "test_compress_common.h"
-
+#include <thrust/device_vector.h>
+#include <thrust/transform.h>
+#include "test_compress_gpu.h"
 
 #define QUANTIZE_BLOCK_SIZE 1024
 #define QUANTIZE_BLOCK_COUNT 64
@@ -10,6 +12,34 @@
 #define MAX_CODEBOOK_SIZE 2048
 
 // __constant__ float constCodebookArray[MAX_CODEBOOK_SIZE];
+
+struct QuantLogFunctor {
+  QuantLog uni;
+
+  __host__ __device__ QuantLogFunctor(int binCount, float threshold,
+                                      float maxVal) {
+    uni.init(binCount, threshold, maxVal);
+  }
+
+  __host__ __device__ int operator() (float x) const {
+    return uni.quant(x);
+  }
+};
+
+
+struct DequantLogFunctor {
+  QuantLog uni;
+
+  __host__ __device__ DequantLogFunctor(int binCount, float threshold,
+                                        float maxVal) {
+    uni.init(binCount, threshold, maxVal);
+  }
+
+  __host__ __device__ float operator() (int x) const {
+    return uni.dequant(x);
+  }
+};
+
 
 struct QuantUniformFunctor {
   QuantUniform uni;
@@ -25,39 +55,110 @@ struct QuantUniformFunctor {
 };
 
 
+struct DequantUniformFunctor {
+  QuantUniform uni;
+
+  __host__ __device__ DequantUniformFunctor(int binCount, float threshold,
+                                            float maxVal) {
+    uni.init(binCount, threshold, maxVal);
+  }
+
+  __host__ __device__ float operator() (int x) const {
+    return uni.dequant(x);
+  }
+};
+
+
+struct QuantCodebookFunctor {
+  int boundaryCount;
+  const float *boundaries_dev;
+
+  static float *copyVectorToGPU(const vector<float> &v) {
+    float *v_dev;
+    size_t bytes = v.size()*sizeof(float);
+    CUCHECK(cudaMalloc((void**)&v_dev, bytes));
+    CUCHECK(cudaMemcpy(v_dev, v.data(), bytes, cudaMemcpyHostToDevice));
+    return v_dev;
+  }
+
+  __host__ __device__ QuantCodebookFunctor(int boundaryCount_,
+                                          const float *boundaries_dev_) {
+    boundaryCount = boundaryCount_;
+    boundaries_dev = boundaries_dev_;
+  }
+
+  __host__ __device__ int operator() (float x) const {
+    return QuantCodebook::quant(x, boundaryCount, boundaries_dev);
+  }
+};
+
+
+struct DequantCodebookFunctor {
+  int binCount;
+  const float *binValues;
+
+  __host__ __device__ DequantCodebookFunctor(int binCount_,
+                                             const float *binValues_) {
+    binCount = binCount_;
+    binValues = binValues_;
+  }
+
+  __host__ __device__ float operator() (int x) const {
+    unsigned ux = x;
+    if (ux >= binCount) {
+      return 0.0f;
+    } else {
+      return binValues[ux];
+    }
+  }
+};
+
+
 bool quantizeGPU(int *outputData, const float *inputData, int count,
                  WaveletCompressionParam &param,
                  const float *nonzeroData_dev, int nonzeroCount,
                  float maxAbsVal, float minValue, float maxValue,
                  CudaTimer &quantizeTimer) {
+  thrust::device_ptr<const float> inputStart(inputData), 
+    inputEnd(inputData+count);
+  thrust::device_ptr<int> outputStart(outputData);
+
   switch (param.quantAlg) {
   case QUANT_ALG_UNIFORM:
-    param.maxValue = maxAbsVal;
-    quantizeTimer.start();
-    quantUniformKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
-      (outputData, inputData, count, param.binCount, param.thresholdValue,
-       param.maxValue);
-    quantizeTimer.end();
-    break;
+    {
+      param.maxValue = maxAbsVal;
+      quantizeTimer.start();
+      QuantUniformFunctor q(param.binCount, param.thresholdValue,
+                            param.maxValue);
+      thrust::transform(inputStart, inputEnd, outputStart, q);
+      quantizeTimer.end();
+      break;
+    }
 
   case QUANT_ALG_LOG:
-    param.maxValue = maxAbsVal;
-    quantizeTimer.start();
-    quantLogKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
-      (outputData, inputData, count, param.binCount, param.thresholdValue,
-       param.maxValue);
-    quantizeTimer.end();
-    break;
+    {
+      param.maxValue = maxAbsVal;
+      quantizeTimer.start();
+      QuantLogFunctor q(param.binCount, param.thresholdValue, param.maxValue);
+      thrust::transform(inputStart, inputEnd, outputStart, q);
+      quantizeTimer.end();
+      break;
+    }
 
   case QUANT_ALG_LLOYD:
-    computeLloydQuantizationGPU(nonzeroData_dev, nonzeroCount, param.binCount,
-                                minValue, maxValue, param.thresholdValue,
-                                param.binBoundaries, param.binValues);
-    quantizeTimer.start();
-    quantCodebookGPU(outputData, inputData, count, param.binBoundaries,
-                     param.binCount);
-    quantizeTimer.end();
-    break;
+    {
+      computeLloydQuantizationGPU(nonzeroData_dev, nonzeroCount, param.binCount,
+                                  minValue, maxValue, param.thresholdValue,
+                                  param.binBoundaries, param.binValues);
+      quantizeTimer.start();
+      float *boundaries_dev =
+        QuantCodebookFunctor::copyVectorToGPU(param.binBoundaries);
+      QuantCodebookFunctor q(param.binBoundaries.size(), boundaries_dev);
+      thrust::transform(inputStart, inputEnd, outputStart, q);
+      CUCHECK(cudaFree(boundaries_dev));
+      quantizeTimer.end();
+      break;
+    }
 
   default:
     fprintf(stderr, "Quantization algorithm %d not found.\n",
@@ -66,208 +167,6 @@ bool quantizeGPU(int *outputData, const float *inputData, int count,
   }
 
   return true;
-}
-
-
-template<class Q>
-void __device__ quantKernel(const Q &quanter, int *output, const float *input,
-                            int count) {
-
-  int idx = blockIdx.x*blockDim.x + threadIdx.x;
-  while (idx < count) {
-    float in = input[idx];
-    output[idx] = quanter.quant(in);
-    /*
-    printf("[%5d of %d] %d,%d: %f -> %d\n",
-           idx, count, blockIdx.x, threadIdx.x, in, output[idx]);
-    */
-    idx += blockDim.x * gridDim.x;
-  }
-}
-
-
-void __global__ quantLogKernel(int *output, const float *input, int count,
-                               int binCount, float threshold, float max) {
-  __shared__ QuantLog quanter;
-
-  if (threadIdx.x == 0) {
-    quanter.init(binCount, threshold, max);
-    // printf("GPU %.10g->%d\n", -0.009803920984, quanter.quant(-0.009803920984));
-  }
-
-  __syncthreads();
-
-  quantKernel(quanter, output, input, count);
-}
-
-
-void __global__ quantUniformKernel(int *output, const float *input, int count,
-                                   int binCount, float threshold, float max) {
-  __shared__ QuantUniform quanter;
-
-  if (threadIdx.x == 0) {
-    quanter.init(binCount, threshold, max);
-  }
-
-  __syncthreads();
-
-  quantKernel(quanter, output, input, count);
-}
-
-class QuantCodebookDev {
-  int boundaryCount;
-  const float *boundaries;
-public:
-  __device__ void init(int c, const float *b) {
-    boundaryCount = c;
-    boundaries = b;
-  }
-
-  __device__ int quant(float x) const {
-    return QuantCodebook::quant(x, boundaryCount, boundaries);
-  }
-};
-
-/*
-class QuantCodebookConstDev {
-  int boundaryCount;
-
-public:
-  __device__ void init(int c) {
-    boundaryCount = c;
-  }
-
-  __device__ int quant(float x) const {
-    return QuantCodebook::quant(x, boundaryCount, constCodebookArray);
-  }
-};
-*/
-
-void __global__ quantCodebookKernel(int *output, const float *input, int count, 
-                                    const float *boundaries,
-                                    int boundaryCount) {
-  QuantCodebookDev quanter;
-  quanter.init(boundaryCount, boundaries);
-  quantKernel(quanter, output, input, count);
-}
-
-
-void quantCodebookGPU(int *output, const float *input, int dataCount,
-                      const vector<float> &boundaries, int binCount) {
-
-  // copy the boundaries array to the GPU
-  size_t boundariesBytes = sizeof(float)*(binCount-1);
-  float *boundaries_dev = NULL;
-  CUCHECK(cudaMalloc((void**)&boundaries_dev, boundariesBytes));
-  CUCHECK(cudaMemcpy(boundaries_dev, boundaries.data(), boundariesBytes,
-                     cudaMemcpyHostToDevice));
-
-  /*
-  if (binCount > MAX_CODEBOOK_SIZE) {
-    CUCHECK(cudaMalloc((void**)&boundaries_dev, boundariesBytes));
-    CUCHECK(cudaMemcpy(boundaries_dev, boundaries.data(), boundariesBytes,
-                       cudaMemcpyHostToDevice));
-  } else {
-    // this actually turned out slower
-    CUCHECK(cudaMemcpyToSymbol(constCodebookArray, boundaries.data(),
-                               boundariesBytes, 0, cudaMemcpyHostToDevice));
-  }
-  */
-
-  quantCodebookKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
-    (output, input, dataCount, boundaries_dev, binCount-1);
-
-  if (boundaries_dev)
-    CUCHECK(cudaFree(boundaries_dev));
-}
-
-
-template<class Q>
-void __device__ dequantKernel(const Q &quanter, float *output,
-                              const int *input, int count) {
-
-  int idx = blockIdx.x*blockDim.x + threadIdx.x;
-  while (idx < count) {
-    int in = input[idx];
-    output[idx] = quanter.dequant(in);
-    // printf("dequant %6d: %d %.2g\n", idx, in, output[idx]);
-    idx += blockDim.x * gridDim.x;
-  }
-}
-
-
-void __global__ dequantUniformKernel(float *output, const int *input, int count,
-                                     int binCount, float threshold, float max) {
-  __shared__ QuantUniform quanter;
-
-  if (threadIdx.x == 0) {
-    quanter.init(binCount, threshold, max);
-  }
-
-  __syncthreads();
-
-  dequantKernel(quanter, output, input, count);
-}
-
-
-void __global__ dequantLogKernel(float *output, const int *input, int count,
-                                 int binCount, float threshold, float max) {
-  __shared__ QuantLog quanter;
-  /*
-  QuantLog quanter;
-  quanter.init(binCount, threshold, max);
-  */
-
-  if (threadIdx.x == 0) {
-    quanter.init(binCount, threshold, max);
-    // printf("GPU %.10g->%d\n", -0.009803920984, quanter.quant(-0.009803920984));
-  }
-
-  __syncthreads();
-
-
-  dequantKernel(quanter, output, input, count);
-}
-
-
-class DequantCodebookDev {
-  const float *binValues;
-  int binCount;
-public:
-  __device__ void init(const float *binValues_, int binCount_) {
-    binValues = binValues_;
-    binCount = binCount_;
-  }
-
-  __device__ float dequant(int i) const {
-    assert(i >= 0 && i < binCount);
-    return binValues[i];
-  }
-};
-
-
-void __global__ dequantCodebookKernel(float *output, const int *input,
-                                      int count,
-                                      const float *binValues, int binCount) {
-  DequantCodebookDev dequanter;
-  dequanter.init(binValues, binCount);
-
-  dequantKernel(dequanter, output, input, count);
-}
-
-
-void dequantCodebookGPU(float *result_dev, const int *input_dev, int count,
-                        const vector<float> &binValues) {
-  float *binValues_dev;
-  size_t binValuesBytes = binValues.size() * sizeof(float);
-  CUCHECK(cudaMalloc((void**)&binValues_dev, binValuesBytes));
-  CUCHECK(cudaMemcpy(binValues_dev, binValues.data(), binValuesBytes,
-                     cudaMemcpyHostToDevice));
-
-  dequantCodebookKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
-    (result_dev, input_dev, count, binValues_dev, (int)binValues.size());
-
-  CUCHECK(cudaFree(binValues_dev));
 }
 
 
@@ -323,31 +222,43 @@ void computeLloydQuantizationGPU(const float *inputData, int count,
 
 
 // change data_dev from int[] to float[] in place
-bool dequantizeGPU(float *result_dev, const int *input_dev,
+bool dequantizeGPU(float *outputData, const int *inputData,
                    int count, const WaveletCompressionParam &param) {
 
   CudaTimer timer("Dequantize");
+  thrust::device_ptr<const int> inputStart(inputData), 
+    inputEnd(inputData+count);
+  thrust::device_ptr<float> outputStart(outputData);
 
-  if (input_dev == NULL)
-    input_dev = (const int*) result_dev;
+
+  if (inputData == NULL)
+    inputData = (const int*) outputData;
   
   timer.start();
   switch (param.quantAlg) {
   case QUANT_ALG_UNIFORM:
-    dequantUniformKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
-      (result_dev, input_dev, count,
-       param.binCount, param.thresholdValue, param.maxValue);
-    break;
-
+    {
+      DequantUniformFunctor q(param.binCount, param.thresholdValue,
+                              param.maxValue);
+      thrust::transform(inputStart, inputEnd, outputStart, q);
+      break;
+    }
+    
   case QUANT_ALG_LOG:
-    dequantLogKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
-      (result_dev, input_dev, count,
-       param.binCount, param.thresholdValue, param.maxValue);
-    break;
+    {
+      DequantLogFunctor q(param.binCount, param.thresholdValue, param.maxValue);
+      thrust::transform(inputStart, inputEnd, outputStart, q);
+      break;
+    }
 
   case QUANT_ALG_LLOYD:
-    dequantCodebookGPU(result_dev, input_dev, count, param.binValues);
-    break;
+    {
+      float *values_dev =
+        QuantCodebookFunctor::copyVectorToGPU(param.binValues);
+      DequantCodebookFunctor q(param.binCount, values_dev);
+      thrust::transform(inputStart, inputEnd, outputStart, q);
+      break;
+    }
 
   default:
     fprintf(stderr, "Quantization algorithm %d not found.\n",
@@ -364,9 +275,9 @@ bool dequantizeGPU(float *result_dev, const int *input_dev,
   /*
   int *input = new int[count];
   float *output = new float[count];
-  CUCHECK(cudaMemcpy(input, input_dev, count*sizeof(int),
+  CUCHECK(cudaMemcpy(input, inputData, count*sizeof(int),
                      cudaMemcpyDeviceToHost));
-  CUCHECK(cudaMemcpy(output, result_dev, count*sizeof(float),
+  CUCHECK(cudaMemcpy(output, outputData, count*sizeof(float),
                      cudaMemcpyDeviceToHost));
   for (int i=0; i < count; i++)
     printf("%d) %d -> %f\n", i, input[i], output[i]);

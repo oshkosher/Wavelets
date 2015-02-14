@@ -20,6 +20,8 @@
 #include "cuda_timer.h"
 #include "quant.h"
 #include "quant_gpu.h"
+#include "test_compress_gpu.h"
+
 // #include "cudalloyds.h"
 // #include "CUDA/wavelet/wavelet.h"
 
@@ -72,24 +74,6 @@ inline bool isClose(float a, float b) {
 inline bool isClose(int a, int b) {
   return abs(a-b) <= 1;
 }
-
-// return the number of mismatches
-int compareArrays(const float *a, const float *b, int count);
-int compareArrays(const int *a, const int *b, int count);
-
-// debug output
-void printArray(const float *array, int width, int height, int depth,
-                const char *name = NULL);
-void printArray(const int *array, int width, int height, int depth,
-                const char *name = NULL);
-void printDeviceArray(const float *array_dev, int width, int height, int depth,
-                      const char *name = NULL);
-void printDeviceArray(const float *array_dev, scu_wavelet::int3 size,
-                      const char *name = NULL);
-void printDeviceArray(const int *array_dev, int width, int height, int depth,
-                      const char *name = NULL);
-void printDeviceArray(const int *array_dev, scu_wavelet::int3 size,
-                      const char *name = NULL);
 
 
 // struct AbsFunctor : public thrust::unary_function<float,float> {
