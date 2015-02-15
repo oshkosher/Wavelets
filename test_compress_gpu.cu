@@ -21,6 +21,7 @@
 #include "quant.h"
 #include "quant_gpu.h"
 #include "test_compress_gpu.h"
+#include "histogram_gpu.h"
 
 // #include "cudalloyds.h"
 // #include "CUDA/wavelet/wavelet.h"
@@ -365,28 +366,14 @@ bool compressFile(const char *inputFile, const char *outputFile,
     }
   }
 
-  /*
   // compute the bin number to which zero values map
   Quantizer *quantizer = createQuantizer(param);
   int zeroBin = quantizer->quant(0);
   delete quantizer;
 
   // compute histogram on the GPU
-  int *freqCounts_dev;
-  computeFrequenciesGPU(freqCounts_dev, param.binCount,
-                        (const int*)data1_dev, dataCount, zeroBin);
-  int *freqCounts = new int[param.binCount];
-
-  // copy histogram data from the GPU
-  copyFromGPUTimer.start();
-  CUCHECK(cudaMemcpy(freqCounts, freqCounts_dev, param.binCount * sizeof(int),
-                     cudaMemcpyDeviceToHost));
-  copyFromGPUTimer.end();
-  if (!QUIET) {
-    CUCHECK(cudaThreadSynchronize());
-    copyFromGPUTimer.print();
-  }
-  */
+  int *freqCounts = computeFrequenciesGPU
+    (param.binCount, (const int*)data1_dev, dataCount, zeroBin, false);
 
   // copy the data back to the CPU (this can be overlapped with computing
   // huffman encoding)
@@ -408,10 +395,13 @@ bool compressFile(const char *inputFile, const char *outputFile,
   startTime = NixTimer::time();
   quantizedData.param = param;
   CubeletStreamWriter cubeletWriter;
+  int outputSizeUnused;
   if (!cubeletWriter.open(outputFile)) return false;
-  if (!writeQuantData(cubeletWriter, &quantizedData, opt))
+  if (!writeQuantData(cubeletWriter, &quantizedData, opt, &outputSizeUnused,
+                      freqCounts))
     return false;
   cubeletWriter.close();
+  delete[] freqCounts;
   
   if (!QUIET) {
     printf("Write data file: %.2f ms\n", (NixTimer::time() - startTime)*1000);

@@ -317,7 +317,8 @@ TEST_COMPRESS_CPU_OBJS=test_compress_cpu.o wavelet.o \
 test_compress_cpu: $(TEST_COMPRESS_CPU_OBJS)
 	$(CC) $(TEST_COMPRESS_CPU_OBJS) -o $@ $(LIBS) $(PROTOBUF_LIB)
 
-test_compress_gpu.$(OBJ_EXT): test_compress_gpu.cu wavelet_compress.pb.h quant.h
+test_compress_gpu.$(OBJ_EXT): test_compress_gpu.cu test_compress_gpu.h \
+  wavelet_compress.pb.h quant.h
 
 test_compress_common.$(OBJ_EXT): test_compress_common.cc test_compress_common.h quant.h rle.h
 

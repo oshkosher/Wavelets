@@ -109,8 +109,8 @@ __global__ void computeFrequenciesKernel
 }
 
 
-void computeFrequenciesGPU(int *&freqCounts_dev, int binCount,
-                           const int *data_dev, int count, int zeroBin) {
+int *computeFrequenciesGPU(int binCount, const int *data_dev, int count,
+                           int zeroBin, bool onDevice) {
                         
   CudaTimer timer("Frequency count");
 
@@ -126,6 +126,7 @@ void computeFrequenciesGPU(int *&freqCounts_dev, int binCount,
   blockSize = prop.multiProcessorCount <= 2 ? 512 : 1024;
 
   timer.start();
+  int *freqCounts_dev;
   CUCHECK(cudaMalloc((void**)&freqCounts_dev, binCount * sizeof(int)));
   CUCHECK(cudaMemset(freqCounts_dev, 0, binCount * sizeof(int)));
 
@@ -159,5 +160,15 @@ void computeFrequenciesGPU(int *&freqCounts_dev, int binCount,
   }
   delete[] freqCounts;
 #endif
-         
+
+  if (onDevice) {
+    return freqCounts_dev;
+  } else {
+    int *freqCounts = new int[binCount];
+    CUCHECK(cudaMemcpy(freqCounts, freqCounts_dev, sizeof(int) * binCount,
+                       cudaMemcpyDeviceToHost));
+    CUCHECK(cudaFree(freqCounts_dev));
+    return freqCounts;
+  }
+
 }

@@ -204,9 +204,11 @@ bool readQuantData(CubeletStreamReader &cubeletStream, CubeInt *data);
 
 // Write 'cube' to a cubelet stream.
 // If sizeBytes is not NULL, store the size of the output data in it.
+// if binCounts is not NULL, it contains an array listing the frequencies
+// of each values.
 bool writeQuantData(CubeletStreamWriter &cubeletStream,
                     CubeInt *cube, Options &opt,
-                    int *sizeBytes = NULL);
+                    int *sizeBytes = NULL, int *binCounts = NULL);
 
 Quantizer *createQuantizer(const WaveletCompressionParam &param);
 

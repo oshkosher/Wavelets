@@ -4,25 +4,15 @@
 #include "cucheck.h"
 #include "optimize.h"
 #include "test_compress_common.h"
+#include "test_compress_gpu.h"
 #include "cuda_timer.h"
 #include "quant_gpu.h"
 #include "nixtimer.h"
 #include "histogram_gpu.h"
 #include "huffman.h"
 
-// from test_compress_gpu.cu
-void computeErrorRatesAfterDequantGPU
-(float *data_dev, scu_wavelet::int3 size, float *tempData_dev,
- const WaveletCompressionParam &param,
- const unsigned char *inputData_dev, ErrorAccumulator &errAccum);
 
-
-void printDeviceArray(const float *array_dev, scu_wavelet::int3,
-                      const char *name = NULL);
-void printDeviceArray(const int *array_dev, scu_wavelet::int3,
-                      const char *name = NULL);
-
-
+// return a value from 'sorted'
 float OptimizationData::getSorted(int index) {
   if (index < 0 || index >= count()) {
     assert(index >= 0 && index < count());
@@ -37,6 +27,7 @@ float OptimizationData::getSorted(int index) {
 }
 
 
+// Look up the index of an item in 'sorted'
 int OptimizationData::findSorted(float value) {
   thrust::device_ptr<const float> start(sorted), end(sorted+count());
 
@@ -133,11 +124,9 @@ bool testParameters(OptimizationData *o,
     int zeroBin = quantizer->quant(0);
     delete quantizer;
     
-    int *freqCounts_dev, *freqCounts;
-    histTimer.start();
-    computeFrequenciesGPU(freqCounts_dev, binCount,
-                          (int*)inverseWaveletInput_dev, count, zeroBin);
-    histTimer.end();
+    int *freqCounts;
+    freqCounts = computeFrequenciesGPU
+      (binCount, (int*)inverseWaveletInput_dev, count, zeroBin, false);
 
     if (!dequantizeGPU(inverseWaveletInput_dev,
                        (const int*)inverseWaveletInput_dev, count, param))
@@ -145,11 +134,6 @@ bool testParameters(OptimizationData *o,
 
     // compute the huffman coding
     Huffman huff;
-    freqCounts = new int[binCount];
-    histCopyTimer.start();
-    CUCHECK(cudaMemcpy(freqCounts, freqCounts_dev, binCount * sizeof(int),
-                       cudaMemcpyDeviceToHost));
-    histCopyTimer.end();
     double startHuffTime = NixTimer::time();
     huff.init(freqCounts, binCount);
     huff.computeHuffmanCoding();
@@ -160,9 +144,9 @@ bool testParameters(OptimizationData *o,
     if (!QUIET) {
       histCopyTimer.sync();
       quantTimer.print();
-      histTimer.print();
-      dequantTimer.print();
-      histCopyTimer.print();
+      // histTimer.print();
+      // dequantTimer.print();
+      // histCopyTimer.print();
       
       printf("Huffman coding: %.3f ms\n",
              (NixTimer::time() - startHuffTime)*1000);
@@ -170,8 +154,6 @@ bool testParameters(OptimizationData *o,
     }
     
     delete[] freqCounts;
-    CUCHECK(cudaFree(freqCounts_dev));
-
   }
 
   // compare to original

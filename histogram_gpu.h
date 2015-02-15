@@ -4,9 +4,10 @@
 /**
    Compute frequency counts for values in an input array of integers.
 
-   freqCounts_dev - an array of length 'binCount' will be allocated on
-     the GPU, and the address will be assigned to this variable.
-     The results will be in this array.
+   If onDevice is true, allocate the array on the device. The callers
+   is responsible for freeing it with cudaFree().
+   If onDevice is false, copy the data to the host. The callers
+   is responsible for freeing it with delete[].
 
    binCount - number of bins
 
@@ -18,8 +19,8 @@
      The code optimizes for this bin by keeping its counter local to
      each thread, which greatly reduces contention.
 */
-void computeFrequenciesGPU(int *&freqCounts_dev, int binCount,
-                           const int *data_dev, int count, int zeroBin);
+int *computeFrequenciesGPU(int binCount, const int *data_dev, int count,
+                           int zeroBin, bool onDevice = true);
 
 
 #endif // __HISTOGRAM_GPU_H__

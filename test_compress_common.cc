@@ -28,9 +28,11 @@ using namespace scu_wavelet;
 // global variable that disables status output
 bool QUIET = false;
 
-// read&write just the data part of the file to&from f.intData
-// using Huffman encoding
-static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet);
+// Read&write just the data part of the file to&from f.intData
+// using Huffman encoding. If binCounts is not NULL, use it for the
+// frequency counts.
+static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet,
+                        int *binCounts = NULL);
 
 static bool writeQuantDataHuffman(Huffman &huff, vector<uint32_t> *outData,
                                   const CubeInt *data, bool quiet);
@@ -182,13 +184,13 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
 */
 bool writeQuantData(CubeletStreamWriter &cubeletStream,
                     CubeInt *cube, Options &opt,
-                    int *sizeBytes) {
+                    int *sizeBytes, int *binCounts) {
   
   if (sizeBytes) *sizeBytes = 0;
 
   // initialize the huffman encoding
   Huffman huff;
-  initHuffman(huff, cube, opt.quiet);
+  initHuffman(huff, cube, opt.quiet, binCounts);
   if (opt.printHuffmanEncoding) huff.printEncoding();
 
   vector<uint32_t> encodedData;
@@ -805,21 +807,28 @@ public:
   }
 };
 
-static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet) {
+static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet,
+                        int *binCounts) {
 
   double startTime = NixTimer::time();
 
-  // number of possible values
-  huff.init(cube->param.binCount);
+  if (binCounts) {
+    huff.init(binCounts, cube->param.binCount);
+  } else {
+    // number of possible values
+    huff.init(cube->param.binCount);
 
-  // train the huffman encoder
-  TraverseForHuffman init(huff);
-  cube->visit<TraverseForHuffman>(init);
+    // train the huffman encoder
+    TraverseForHuffman init(huff);
+    cube->visit<TraverseForHuffman>(init);
+  }
 
   huff.computeHuffmanCoding();
   double elapsed = NixTimer::time() - startTime;
-  if (!quiet)
+  if (!quiet) {
     printf("Huffman build table %.3f ms\n", elapsed*1000);
+    fflush(stdout);
+  }
 }
 
 

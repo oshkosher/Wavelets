@@ -207,7 +207,7 @@ void computeLloydQuantizationGPU(const float *inputData, int count,
   cudaLloyd(inputData, count-1, codebook.data(), (int)codebook.size(),
             DEFAULT_LLOYD_STOP_CRITERIA, true, &lloydIters);
   lloydTimer.end();
-  CUCHECK(cudaThreadSynchronize());
+  lloydTimer.sync();
   if (!QUIET)
     printf("GPU lloyd %d iterations, %.3f ms\n", lloydIters, lloydTimer.time());
   
