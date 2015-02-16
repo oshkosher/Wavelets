@@ -474,6 +474,7 @@ bool waveletTransform(CubeFloat &data, const WaveletCompressionParam &param,
   if (param.transformSteps == int3(0,0,0)) return true;
   
   double startTime = NixTimer::time();
+  int depth = data.size.z;
 
   if (verbose) data.print("Before wavelet transform");
 
@@ -522,12 +523,20 @@ bool waveletTransform(CubeFloat &data, const WaveletCompressionParam &param,
 
   double elapsedMs = (NixTimer::time() - startTime) * 1000;
 
-  if (!QUIET)
-    printf("%s%s wavelet transform (%d,%d,%d steps): %.2f ms\n", 
-           waveletAlgToName(param.waveletAlg),
-           isInverse ? " inverse" : "",
-           param.transformSteps.x, param.transformSteps.y,
-           param.transformSteps.z, elapsedMs);
+  if (!QUIET) {
+    if (param.do2DTransform) {
+      printf("%s%s wavelet transform (%d * %d,%d steps): %.2f ms\n", 
+             waveletAlgToName(param.waveletAlg),
+             isInverse ? " inverse" : "", depth,
+             param.transformSteps.x, param.transformSteps.y, elapsedMs);
+    } else {
+      printf("%s%s wavelet transform (%d,%d,%d steps): %.2f ms\n", 
+             waveletAlgToName(param.waveletAlg),
+             isInverse ? " inverse" : "",
+             param.transformSteps.x, param.transformSteps.y,
+             param.transformSteps.z, elapsedMs);
+    }
+  }
 
   return true;
 }

@@ -529,9 +529,9 @@ static bool haar_2d_tmpl(T *data, int width, int height,
     else {  // inverse == true
       transpose_rect(data, width, height);
 
-      for (int row=0; row < height; row++) {
-        haar_inv_internal(width, p, stepCountY);
-        p += width;
+      for (int row=0; row < width; row++) {
+        haar_inv_internal(height, p, stepCountY);
+        p += height;
       }
     }
     
@@ -826,10 +826,11 @@ static bool cdf97_2d_tmpl(T *data, int width, int height,
     return false;
   }
 
+  T *tempRow = new T[std::max(width,height)];
+
   for (int i=0; i < 2; i++) {
 
     p = data;
-    T *tempRow = new T[width];
     
     if (!inverse) {
       for (int row=0; row < height; row++) {
@@ -842,16 +843,17 @@ static bool cdf97_2d_tmpl(T *data, int width, int height,
     else {  // inverse == true
       transpose_rect(data, width, height);
 
-      for (int row=0; row < height; row++) {
-        cdf97_inverse_tmpl(width, p, stepCountX, tempRow);
-        p += width;
+      for (int row=0; row < width; row++) {
+        cdf97_inverse_tmpl(height, p, stepCountY, tempRow);
+        p += height;
       }
     }
     
     std::swap(width, height);
     std::swap(stepCountX, stepCountY);
-    delete[] tempRow;
   }
+
+  delete[] tempRow;
 
   return true;
 }
