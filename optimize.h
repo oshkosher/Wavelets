@@ -35,17 +35,22 @@ class OptimizationData {
 
   // Wavelet algorithm used, WAVELET_CDF97 by default.
   const WaveletAlgorithm waveletAlg;
+
+  // if 3-d data, whether the wavelet transform was done as one 3-d tranform
+  // or multiple 2-d transforms.
+  const bool do2DTransform;
   
   OptimizationData(const CubeByte *originalData_,
                    const CubeFloat *transformedData_,
                    const float *sorted_,
-                   float minVal_, float maxVal_, float maxAbsVal_,
-                   scu_wavelet::int3 transformSteps_,
-                   WaveletAlgorithm waveletAlg_)
+                   float minVal_, float maxVal_, float maxAbsVal_)
     :  sorted(sorted_), originalData(originalData_),
     transformedData(transformedData_),
     minVal(minVal_), maxVal(maxVal_), maxAbsVal(maxAbsVal_),
-    transformSteps(transformSteps_), waveletAlg(waveletAlg_) {}
+    transformSteps(transformedData_->param.transformSteps),
+    waveletAlg(transformedData_->param.waveletAlg),
+    do2DTransform(transformedData_->param.do2DTransform) {}
+
 
   // returns the number of elements in the input data.
   int count() {return transformedData->count();}

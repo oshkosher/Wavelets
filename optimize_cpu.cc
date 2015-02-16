@@ -50,12 +50,10 @@ bool testParameters(OptimizationData *o,
                     int *outputSizeBytes,
                     float *l1Error, float *l2Error, float *mse, float *pSNR) {
 
-  WaveletCompressionParam param;
+  WaveletCompressionParam param = o->transformedData->param;
   param.binCount = binCount;
   param.quantAlg = quantAlg;
   param.thresholdValue = thresholdValue;
-  param.waveletAlg = o->waveletAlg;
-  param.transformSteps = o->transformSteps;
 
   CubeFloat inverseWaveletInput;
   inverseWaveletInput.size = o->transformedData->size;

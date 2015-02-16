@@ -157,6 +157,11 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   firstStartTime = NixTimer::time();
 
+  if (param.do2DTransform) {
+    fprintf(stderr, "-2d option not implemented for test_compress_gpu yet.\n");
+    return false;
+  }
+  
   // on CPU: read the data into memory, convert to float, pad
   // optional: convert to float on the GPU
   // optional: pad on the GPU
@@ -323,11 +328,10 @@ bool compressFile(const char *inputFile, const char *outputFile,
     deviceData.setType();
     deviceData.size = deviceData.totalSize = deviceSize;
     deviceData.data_ = data1_dev;
+    deviceData.param = param;
 
     OptimizationData optData((CubeByte*)&inputData, &deviceData, data2_dev,
-                             minValue, maxValue, maxAbsVal,
-                             param.transformSteps,
-                             param.waveletAlg);
+                             minValue, maxValue, maxAbsVal);
     bool result = optimizeParameters(&optData, &param.thresholdValue,
                                      &param.binCount);
 

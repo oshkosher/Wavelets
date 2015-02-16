@@ -121,10 +121,9 @@ bool compressFile(const char *inputFile, const char *outputFile,
   // call the parameter optimization routine
   if (opt.doOptimize) {
     assert(inputData.datatype == WAVELET_DATA_UINT8);
+    data.param = param;
     OptimizationData optData((CubeByte*)&inputData, &data, 
-                             sortedAbsData,
-                             minVal, maxVal, maxAbsVal, param.transformSteps,
-                             param.waveletAlg);
+                             sortedAbsData, minVal, maxVal, maxAbsVal);
     if (!optimizeParameters(&optData, &param.thresholdValue, &param.binCount))
       return true;
   }
