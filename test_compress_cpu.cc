@@ -87,11 +87,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
     data.param = param;
 
     // if the data is 1xHxD, transpose it to HxDx1
-    bool isTransposed = false;
-    if (data.width() == 1) {
-      data.transpose3dFwd();
-      isTransposed = true;
-    }
+    if (!param.do2DTransform) data.transpose3dFwd();
     if (!writer.open(filename) ||
         !writer.addCubelet(&data) ||
         !writer.close()) {
@@ -101,8 +97,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
       if (!QUIET)
         printf("Write intermediate data file \"%s\"\n", filename);
     }
-    if (isTransposed)
-      data.transpose3dBack();
+    if (!param.do2DTransform) data.transpose3dBack();
   }
 
 

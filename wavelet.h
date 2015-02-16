@@ -50,7 +50,6 @@ typedef enum {
 #define DEFAULT_QUANTIZE_BINS 256
 #define DEFAULT_WAVELET WAVELET_CDF97
 #define DEFAULT_QUANTIZE_ALGORITHM QUANT_ALG_LOG
-#define DEFAULT_WAVELET_TRANSPOSE_STANDARD true
 #define DEFAULT_PADDING_METHOD REFLECT
 
 // convert between quantization algorithms and their names as string
@@ -205,10 +204,10 @@ class WaveletCompressionParam {
 
   WaveletAlgorithm waveletAlg;
 
-  // if true, then do all wavelet steps in the x direction before doing all
-  //          steps in the y direction
-  // if false, do one x step, then one y step, and repeat
-  bool isWaveletTransposeStandard;
+  // -2d command line option
+  // Rather than performing a wavelet transform in 3 dimensions,
+  // do a 2d wavelet transform on each layer of the data.
+  bool do2DTransform;
 
   // Fraction of the data that was rounded down to zero before
   // quantizing.  This is not needed to decompress the data, but it
@@ -248,7 +247,7 @@ class WaveletCompressionParam {
     transformSteps = int3(DEFAULT_WAVELET_STEPS, DEFAULT_WAVELET_STEPS,
                           DEFAULT_WAVELET_STEPS);
     waveletAlg = DEFAULT_WAVELET;
-    isWaveletTransposeStandard = DEFAULT_WAVELET_TRANSPOSE_STANDARD;
+    do2DTransform = false;
     thresholdFraction = DEFAULT_THRESHOLD_FRACTION;
     thresholdValue = 0;
     maxValue = 0;
@@ -606,6 +605,7 @@ class CubeNum : public Cube {
 	      const NUM *s = src + width * (majorY+y) + majorX+x;
 	      NUM *d = dest + height * (majorX+x) + majorY+y;
 
+              // XXX this will cause problems with doubles
 	      transpose4x4_SSE(s, d, width, height);
 	    }
 	  }

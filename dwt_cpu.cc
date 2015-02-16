@@ -53,12 +53,8 @@ static void haar_internal
   (int length, T data[], int stepCount, T *temp = NULL);
 
 template<typename T>
-static void haar_inv
+static void haar_inv_internal
 (int length, T data[], int stepCount, T *temp = NULL);
-
-
-template<typename T>
-static float haar_inv_2d(int size, T *data, int stepCount, bool standard);
 
 
 // return the number of high-order zero bits in a 32 bit integer
@@ -123,7 +119,7 @@ void haar_tmpl(int length, T data[],
     stepCount = maxSteps;
 
   if (inverse)
-    haar_inv(length, data, stepCount);
+    haar_inv_internal(length, data, stepCount);
   else
     haar_internal(length, data, stepCount);
 }
@@ -175,7 +171,8 @@ static void haar_internal(int length, T data[], int stepCount, T *tempGiven) {
 
 
 template<typename T>
-static void haar_inv(int length, T data[], int stepCount, T *tempGiven) {
+static void haar_inv_internal(int length, T data[], int stepCount,
+                              T *tempGiven) {
   T *temp;
   if (tempGiven) {
     temp = tempGiven;
@@ -454,138 +451,108 @@ void transpose_square_submatrix(int total_size, int submatrix_size,
 }
 
 
+// transpose the upper-left part of a matrix
+// if the matrix is square and the upper-left part is square,
+// do just the upper left in place. Otherwise, do a full transpose.
+template<class T>
+void transpose_upper_left(T *data, int txWidth, int txHeight,
+                          int fullWidth, int fullHeight) {
+
+  if (txWidth == txHeight && fullWidth == fullHeight) {
+    transpose_square_submatrix(fullWidth, txWidth, data);
+  } else {
+    transpose_rect(data, fullWidth, fullHeight);
+  }
+}
+
+void transpose_rect(float *dest, const float *src, int width, int height) {
+  CubeNum<float>::transpose2dInternal(src, dest, width, height);
+}
+
+
+void transpose_rect(double *dest, const double *src, int width, int height) {
+  for (int row=0; row < height; row++) {
+    for (int col=0; col < width; col++) {
+      dest[col*height + row] = src[row*width + col];
+    }
+  }
+}
+
+template<class NUM>
+void transpose_rect(NUM *matrix, int width, int height) {
+  NUM *tmp = new NUM[width*height];
+  transpose_rect(tmp, matrix, width, height);
+  memcpy(matrix, tmp, width*height*sizeof(float));
+  delete[] tmp;
+}
+
+
 /*
   Run Haar discrete wavelet transform on the given matrix.
   Do inverse transform iff 'inverse' is true.
-  Returns the number of milliseconds elapsed.
 */
 template<typename T>
-static float haar_2d_tmpl(int size, T *data, bool inverse, int stepCount,
-                          bool standardTranspose = false) {
+static bool haar_2d_tmpl(T *data, int width, int height, 
+                         bool inverse = false,
+                         int stepCountX = -1, int stepCountY = -1) {
 
-  // check that stepCount is valid
-  int maxSteps = dwtMaximumSteps(size);
-  if (stepCount < 1 || stepCount > maxSteps)
-    stepCount = maxSteps;
+  // pointer for iterating through rows
+  T *p;
 
-  if (inverse)
-    return haar_inv_2d(size, data, stepCount, standardTranspose);
+  // check that stepCount{X,Y} are valid
+  int maxSteps = dwtMaximumSteps(width);
+  if (stepCountX < 1 || stepCountX > maxSteps)
+    stepCountX = maxSteps;
+  maxSteps = dwtMaximumSteps(height);
+  if (stepCountY < 1 || stepCountY > maxSteps)
+    stepCountY = maxSteps;
 
-  double startSec = NixTimer::time();
-
-  if (standardTranspose) {
-
-    for (int i = 0; i < 2; i++) {
-
-      int stepLength = size;
-      for (int step = 0; step < stepCount; step++) {
-
-        // transform rows
-        T *p = data;
-        for (int row=0; row < size; row++) {
-          haar_internal(stepLength, p, 1);
-          p += size;
-        }
-
-        stepLength >>= 1;
-      }
-
-      transpose_square(size, data);
-    }
-
-  } else {
-
-    int stepLength = size;
-    for (int step = 0; step < stepCount; step++) {
-
-      // transform rows
-      T *p = data;
-      for (int row=0; row < stepLength; row++) {
-        haar_internal(stepLength, p, 1);
-        p += size;
-      }
-
-      transpose_square_submatrix(size, stepLength, data);
-
-      // transform columns
-      p = data;
-      for (int col=0; col < stepLength; col++) {
-        haar_internal(stepLength, p, 1);
-        p += size;
-      }
-
-      transpose_square_submatrix(size, stepLength, data);
-
-      stepLength >>= 1;
-    }
-
+  if (!is_padded_for_wavelet(width, stepCountX) ||
+      !is_padded_for_wavelet(height, stepCountY)) {
+    fprintf(stderr, "size %dx%d is not properly padded for %d,%d steps\n",
+            width, height, stepCountX, stepCountY);
+    return false;
   }
 
-  return (float) (1000 * (NixTimer::time() - startSec));
-}
+  for (int i=0; i < 2; i++) {
 
-float haar_2d(int size, float *data, bool inverse,
-              int stepCount, bool standardTranspose) {
-  return haar_2d_tmpl(size, data, inverse, stepCount, standardTranspose);
-}
-
-float haar_2d(int size, double *data, bool inverse,
-              int stepCount, bool standardTranspose) {
-  return haar_2d_tmpl(size, data, inverse, stepCount, standardTranspose);
-}
-
-
-template<typename T>
-static float haar_inv_2d(int size, T *data,
-                         int stepCount, bool standard) {
-
-  double startSec = NixTimer::time();
-
-  if (standard) {
-
-    for (int i=0; i < 2; i++) {
-
-      transpose_square(size, data);
-
-      for (int step = stepCount; step >= 1; step--) {
-        int stepLength = size >> (step-1);
-
-        // transform columns
-        T *p = data;
-        for (int row=0; row < size; row++) {
-          haar_inv(stepLength, p, 1);
-          p += size;
-        }
-
-      }
-    }
-
-  } else {
-
-    for (int step = stepCount; step >= 1; step--) {
-      int stepLength = size >> (step-1);
+    p = data;
     
-      transpose_square_submatrix(size, stepLength, data);
-
-      // transform columns
-      T *p = data;
-      for (int row=0; row < stepLength; row++) {
-        haar_inv(stepLength, p, 1);
-        p += size;
+    if (!inverse) {
+      for (int row=0; row < height; row++) {
+        haar_internal(width, p, stepCountX);
+        p += width;
       }
+      transpose_rect(data, width, height);
+    }
+    
+    else {  // inverse == true
+      transpose_rect(data, width, height);
 
-      transpose_square_submatrix(size, stepLength, data);
-
-      // transform rows
-      p = data;
-      for (int col=0; col < stepLength; col++) {
-        haar_inv(stepLength, p, 1);
-        p += size;
+      for (int row=0; row < height; row++) {
+        haar_inv_internal(width, p, stepCountY);
+        p += width;
       }
     }
+    
+    std::swap(width, height);
+    std::swap(stepCountX, stepCountY);
   }
 
-  return (float) (1000 * (NixTimer::time() - startSec));
+  return true;
+}
+
+bool haar_2d(float *data, int width, int height, 
+             bool inverse, int stepCountX, int stepCountY) {
+             
+  return haar_2d_tmpl(data, width, height, inverse, stepCountX, stepCountY);
+}
+
+
+bool haar_2d(double *data, int width, int height, 
+             bool inverse, int stepCountX, int stepCountY) {
+             
+  return haar_2d_tmpl(data, width, height, inverse, stepCountX, stepCountY);
 }
 
 
@@ -634,7 +601,7 @@ public:
   }
 
   void visitRow(NUM *row, int len, int y, int z) {
-    haar_inv(len, row, steps, temp);
+    haar_inv_internal(len, row, steps, temp);
   }
 };
 
@@ -650,55 +617,31 @@ void haar_inv_3d_one_axis(CubeNum<NUM> *data, int stepCount) {
 
 
 
-void haar_3d(CubeFloat *data, int3 stepCount, bool inverse,
-             bool standardTranspose) {
+void haar_3d(CubeFloat *data, int3 stepCount, bool inverse) {
 
   if (!inverse) {
     
-    if (standardTranspose) {
+    // forward standard: x steps, transpose, y steps, transpose, z steps
 
-      // forward standard: x steps, transpose, y steps, transpose, z steps
-
-      haar_3d_one_axis(data, stepCount.x);
-      data->transpose3dFwd();  // xyz -> yzx
-      haar_3d_one_axis(data, stepCount.y);
-      data->transpose3dFwd();
-      haar_3d_one_axis(data, stepCount.z);
-
-    } else {
-
-      // forward nonstandard: x step, transpose, y step, transpose, z step,
-      // extract (1/2)^3 partial cube
-      //   x, transpose, y, transpose, z, transpose, paste into full
-      // extract (1/4)^3 partial cube
-      //   ...
-
-      fprintf(stderr, "nonstandard 3d Haar transform not implemented yet\n");
-    
-    }
+    haar_3d_one_axis(data, stepCount.x);
+    data->transpose3dFwd();  // xyz -> yzx
+    haar_3d_one_axis(data, stepCount.y);
+    data->transpose3dFwd();
+    haar_3d_one_axis(data, stepCount.z);
 
   } else {
 
-    if (standardTranspose) {
-
-      // backwards standard: z inverse steps, reverse transpose,
-      // y inverse steps, reverse transpose, x inverse steps
-      haar_inv_3d_one_axis(data, stepCount.z);
-      data->transpose3dBack();
-      haar_inv_3d_one_axis(data, stepCount.y);
-      data->transpose3dBack();
-      haar_inv_3d_one_axis(data, stepCount.x);
+    // backwards standard: z inverse steps, reverse transpose,
+    // y inverse steps, reverse transpose, x inverse steps
+    haar_inv_3d_one_axis(data, stepCount.z);
+    data->transpose3dBack();
+    haar_inv_3d_one_axis(data, stepCount.y);
+    data->transpose3dBack();
+    haar_inv_3d_one_axis(data, stepCount.x);
    
-    } else {
-
-      fprintf(stderr, "nonstandard 3d Haar transform not implemented yet\n");
-
-    }
   }
 
 }
-
-
 
 
 /*
@@ -710,15 +653,16 @@ void haar_3d(CubeFloat *data, int3 stepCount, bool inverse,
   array[-1] returns array[1], array[-2] return array[2], etc.
   array[7] returns array[5], array[8] return array[4], etc.
 */
+template<class T>
 class MirroredArray {
   int length;  // length of the actual data
-  const float *array;
+  const T *array;
 
 public:
-  MirroredArray(int length_, const float *array_)
+  MirroredArray(int length_, const T *array_)
     : length(length_), array(array_) {}
 
-  float operator[] (int offset) const {
+  T operator[] (int offset) const {
 
     // negative offset: mirror to a positive
     if (offset < 0) offset = -offset;
@@ -739,15 +683,16 @@ public:
 
 
 // Like MirroredArray, but simpler. Ask for an invalid index and you get 0.
+template<class T>
 class ZeroExtendedArray {
-  float *array;
+  T *array;
   int length;  // length of the actual data
 
 public:
-  ZeroExtendedArray(float *array_, int length_)
+  ZeroExtendedArray(T *array_, int length_)
     : array(array_), length(length_) {}
 
-  float operator[] (int offset) const {
+  T operator[] (int offset) const {
 
     if (offset < 0 || offset >= length) return 0;
 
@@ -787,20 +732,21 @@ public:
 
     After one transform: 7.00224, 3.52709, 6.82547, 2.87912, 7.34827, 7.39307, 6.14146, 6.57857, 2.33178, -0.122068, -0.136087, -1.33848, 5.86312, 3.64358, -4.18374, -2.92383
 */
-void cdf97(int length, float *data, int stepCount, float *tempGiven) {
+template<class NUM>
+void cdf97_tmpl(int length, NUM *data, int stepCount, NUM *tempGiven) {
 
   // check that the given array is sufficiently padded
   assert(length == dwt_padded_length(length, stepCount, false));
 
-  float *temp;
+  NUM *temp;
   if (tempGiven) {
     temp = tempGiven;
   } else {
-    temp = new float[length];
+    temp = new NUM[length];
   }
 
   // encapsulate the array, automatically mirror indices past the ends
-  MirroredArray array(length, data);
+  MirroredArray<NUM> array(length, data);
 
   int stepLength = length;
   for (int stepNo=0; stepNo < stepCount; stepNo++, stepLength /= 2) {
@@ -812,7 +758,7 @@ void cdf97(int length, float *data, int stepCount, float *tempGiven) {
 
       // Apply the low pass filter convolution.
       // It's symmetric, so apply coefficient N to array[i+N] and array[i-N].
-      float sum = CDF97_ANALYSIS_LOWPASS_FILTER[0] * array[arrayIdx];
+      NUM sum = CDF97_ANALYSIS_LOWPASS_FILTER[0] * array[arrayIdx];
       for (int filterIdx = 1; filterIdx <= 4; filterIdx++) {
         sum += CDF97_ANALYSIS_LOWPASS_FILTER[filterIdx]
           * (array[arrayIdx + filterIdx] + array[arrayIdx - filterIdx]);
@@ -832,7 +778,7 @@ void cdf97(int length, float *data, int stepCount, float *tempGiven) {
     }
 
     // overwrite outputData with the results
-    memcpy(data, temp, sizeof(float) * stepLength);
+    memcpy(data, temp, sizeof(NUM) * stepLength);
 
     /*
     printf("After step %d\n", (stepNo+1));
@@ -845,6 +791,11 @@ void cdf97(int length, float *data, int stepCount, float *tempGiven) {
   if (!tempGiven) delete[] temp;
 }
 
+void cdf97(int length, float *data, int stepCount, float *tempGiven) {
+  cdf97_tmpl(length, data, stepCount, tempGiven);
+}
+
+
 /*
   Start with 7.00224, 3.52709, 6.82547, 2.87912, 7.34827, 7.39307, 6.14146, 6.57857,     2.33178, -0.122068, -0.136087, -1.33848, 5.86312, 3.64358, -4.18374, -2.92383
 
@@ -855,18 +806,19 @@ void cdf97(int length, float *data, int stepCount, float *tempGiven) {
 
   odds = same, but -0.852, 0.418, 0.110, -0.0645, -0.0378
 */
-void cdf97_inverse(int length, float *data, int stepCount, float *tempGiven) {
+template<class NUM>
+void cdf97_inverse_tmpl(int length, NUM *data, int stepCount, NUM *tempGiven) {
   assert(length == dwt_padded_length(length, stepCount, false));
 
-  float *temp;
+  NUM *temp;
   if (tempGiven) {
     temp = tempGiven;
   } else {
-    temp = new float[length];
+    temp = new NUM[length];
   }
 
   // encapsulate the array, automatically mirror indices past the ends
-  MirroredArray array(length, temp);
+  MirroredArray<NUM> array(length, temp);
   
   int stepLength = length >> (stepCount-1);
   for (int stepNo=0; stepNo < stepCount; stepNo++, stepLength *= 2) {
@@ -897,6 +849,80 @@ void cdf97_inverse(int length, float *data, int stepCount, float *tempGiven) {
   }
 
   if (!tempGiven) delete[] temp;
+}
+
+void cdf97_inverse(int length, float *data, int stepCount, float *tempGiven) {
+  cdf97_inverse_tmpl(length, data, stepCount, tempGiven);
+}
+
+
+/*
+  Run Haar discrete wavelet transform on the given matrix.
+  Do inverse transform iff 'inverse' is true.
+*/
+template<typename T>
+static bool cdf97_2d_tmpl(T *data, int width, int height, 
+                          bool inverse = false,
+                          int stepCountX = -1, int stepCountY = -1) {
+
+  // pointer for iterating through rows
+  T *p;
+
+  // check that stepCount{X,Y} are valid
+  int maxSteps = dwtMaximumSteps(width);
+  if (stepCountX < 1 || stepCountX > maxSteps)
+    stepCountX = maxSteps;
+  maxSteps = dwtMaximumSteps(height);
+  if (stepCountY < 1 || stepCountY > maxSteps)
+    stepCountY = maxSteps;
+
+  if (!is_padded_for_wavelet(width, stepCountX) ||
+      !is_padded_for_wavelet(height, stepCountY)) {
+    fprintf(stderr, "size %dx%d is not properly padded for %d,%d steps\n",
+            width, height, stepCountX, stepCountY);
+    return false;
+  }
+
+  for (int i=0; i < 2; i++) {
+
+    p = data;
+    T *tempRow = new T[width];
+    
+    if (!inverse) {
+      for (int row=0; row < height; row++) {
+        cdf97_tmpl(width, p, stepCountX, tempRow);
+        p += width;
+      }
+      transpose_rect(data, width, height);
+    }
+    
+    else {  // inverse == true
+      transpose_rect(data, width, height);
+
+      for (int row=0; row < height; row++) {
+        cdf97_inverse_tmpl(width, p, stepCountX, tempRow);
+        p += width;
+      }
+    }
+    
+    std::swap(width, height);
+    std::swap(stepCountX, stepCountY);
+    delete[] tempRow;
+  }
+
+  return true;
+}
+
+
+bool cdf97_2d(float *data, int width, int height, 
+              bool inverse, int stepCountX, int stepCountY) {
+  return cdf97_2d_tmpl(data, width, height, inverse, stepCountX, stepCountY);
+}
+
+
+bool cdf97_2d(double *data, int width, int height, 
+              bool inverse, int stepCountX, int stepCountY) {
+  return cdf97_2d_tmpl(data, width, height, inverse, stepCountX, stepCountY);
 }
 
 
@@ -966,67 +992,46 @@ void cdf97_inv_3d_one_axis(CubeNum<NUM> *data, int stepCount) {
 
 // 3-d CDF 9.7
 void cdf97_3d(CubeFloat *data, scu_wavelet::int3 stepCount, bool inverse,
-              bool standardTranspose, bool quiet) {
+              bool quiet) {
 
   double xform1=0, xform2=0;
 
   if (!inverse) {
-    
-    if (standardTranspose) {
 
-      // forward standard: x steps, transpose, y steps, transpose, z steps
+    // forward standard: x steps, transpose, y steps, transpose, z steps
 
-      cdf97_3d_one_axis(data, stepCount.x);
+    cdf97_3d_one_axis(data, stepCount.x);
 
-      double startXform = NixTimer::time();
-      data->transpose3dFwd();  // xyz -> yzx
-      xform1 = NixTimer::time() - startXform;
+    double startXform = NixTimer::time();
+    data->transpose3dFwd();  // xyz -> yzx
+    xform1 = NixTimer::time() - startXform;
 
-      cdf97_3d_one_axis(data, stepCount.y);
+    cdf97_3d_one_axis(data, stepCount.y);
 
-      startXform = NixTimer::time();
-      data->transpose3dFwd();  // yzx -> zxy
-      xform2 = NixTimer::time() - startXform;
+    startXform = NixTimer::time();
+    data->transpose3dFwd();  // yzx -> zxy
+    xform2 = NixTimer::time() - startXform;
 
-      cdf97_3d_one_axis(data, stepCount.z);
-
-    } else {
-
-      // forward nonstandard: x step, transpose, y step, transpose, z step,
-      // extract (1/2)^3 partial cube
-      //   x, transpose, y, transpose, z, transpose, paste into full
-      // extract (1/4)^3 partial cube
-      //   ...
-
-      fprintf(stderr, "nonstandard 3d CDF97 transform not implemented yet\n");
-    
-    }
+    cdf97_3d_one_axis(data, stepCount.z);
 
   } else {
 
-    if (standardTranspose) {
+    // backwards standard: z inverse steps, reverse transpose,
+    // y inverse steps, reverse transpose, x inverse steps
+    cdf97_inv_3d_one_axis(data, stepCount.z);
 
-      // backwards standard: z inverse steps, reverse transpose,
-      // y inverse steps, reverse transpose, x inverse steps
-      cdf97_inv_3d_one_axis(data, stepCount.z);
+    double startXform = NixTimer::time();
+    data->transpose3dBack();  // zxy -> yzx
+    xform1 = NixTimer::time() - startXform;
 
-      double startXform = NixTimer::time();
-      data->transpose3dBack();  // zxy -> yzx
-      xform1 = NixTimer::time() - startXform;
+    cdf97_inv_3d_one_axis(data, stepCount.y);
 
-      cdf97_inv_3d_one_axis(data, stepCount.y);
+    startXform = NixTimer::time();
+    data->transpose3dBack();  // yzx -> xyz
+    xform2 = NixTimer::time() - startXform;
 
-      startXform = NixTimer::time();
-      data->transpose3dBack();  // yzx -> xyz
-      xform2 = NixTimer::time() - startXform;
+    cdf97_inv_3d_one_axis(data, stepCount.x);
 
-      cdf97_inv_3d_one_axis(data, stepCount.x);
-   
-    } else {
-
-      fprintf(stderr, "nonstandard 3d CDF97 transform not implemented yet\n");
-
-    }
   }
 
   // add silly check to disable without the compiler complaining about

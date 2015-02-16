@@ -231,7 +231,7 @@ void Cube::copyFromCubeletBuffer(const CubeletBuffer *buf) {
        p.wavelet_transform_steps_y(),
        p.wavelet_transform_steps_z());
     param.waveletAlg = protoIdToWaveletAlg(p.wavelet_algorithm());
-    param.isWaveletTransposeStandard = p.standard_transpose();
+    param.do2DTransform = p.transform_2d();
     param.thresholdFraction = p.threshold_fraction();
     param.thresholdValue = p.threshold_value();
     param.binCount = p.quant_bin_count();
@@ -288,7 +288,7 @@ void Cube::copyToCubeletBuffer(CubeletBuffer *buf) const {
     p->set_wavelet_transform_steps_z(param.transformSteps.z);
 
     p->set_wavelet_algorithm(waveletAlgToProtoId(param.waveletAlg));
-    p->set_standard_transpose(param.isWaveletTransposeStandard);
+    p->set_transform_2d(param.do2DTransform);
     p->set_threshold_fraction(param.thresholdFraction);
     p->set_threshold_value(param.thresholdValue);
     p->set_quant_bin_count(param.binCount);

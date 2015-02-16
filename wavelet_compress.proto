@@ -15,11 +15,6 @@ message WaveletCompressedImage {
   }
   required WaveletAlgorithm wavelet_algorithm = 4;
 
-  // standard or nonstandard transform
-  // standard: do all transform steps, then transpose
-  // nonstandard: do one transform step, transpose, repeat
-  optional bool standard_transpose = 5 [default = false];
-
   // This proportion of the original data that was replaced with zero.
   // It will be a value between 0 and 1.
   // (this value is not needed when reconstructing the data)
@@ -77,10 +72,9 @@ message CompressionParametersBuffer {
   }
   required WaveletAlgorithm wavelet_algorithm = 4 [default = CDF97];
 
-  // standard or nonstandard transform
-  // standard: do all transform steps, then transpose
-  // nonstandard: do one transform step, transpose, repeat
-  optional bool standard_transpose = 5 [default = true];
+  // Rather than performing a wavelet transform in 3 dimensions,
+  // do a 2d wavelet transform on each layer of the data.
+  optional bool transform_2d = 18 [default = false];
 
   // This proportion of the original data that was replaced with zero.
   // It will be a value between 0 and 1.

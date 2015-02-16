@@ -39,7 +39,6 @@ bool testParameters(OptimizationData *o,
   param.quantAlg = quantAlg;
   param.thresholdValue = thresholdValue;
   param.waveletAlg = o->waveletAlg;
-  param.isWaveletTransposeStandard = true;
   param.transformSteps = o->transformSteps;
 
   CubeFloat inverseWaveletInput;

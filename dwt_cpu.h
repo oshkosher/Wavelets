@@ -35,6 +35,13 @@ void transpose_square(int size, double data[]);
 void transpose_square_submatrix(int total_size, int submatrix_size,
                                 float data[]);
 
+template<class NUM>
+void transpose_rect(NUM *dest, const NUM *src, int width, int height);
+
+template<class NUM>
+void transpose_rect(NUM *matrix, int width, int height);
+
+
 // print a matrix (for debugging purposes)
 void print_matrix(int width, int height, float *data);
 
@@ -46,19 +53,24 @@ void haar(int length, float data[], bool inverse = false,
 void haar(int length, double data[], bool inverse = false,
           int stepCount = -1);
 
-// Haar wavelet transform. on a 2-d square of data
+// Haar wavelet transform. on a 2-d rectangle of data.
 // Returns the time the operation took in milliseconds.
-float haar_2d(int size, float *data,
-              bool inverse = false, int stepCount = -1,
-              bool standardTranspose = false);
+// Returns true on success, false if the data is not properly padded.
+bool haar_2d(float *data, int width, int height, bool inverse = false,
+             int stepCountX = -1, int stepCountY = -1);
 
-float haar_2d(int size, double *data,
-              bool inverse = false, int stepCount = -1,
-              bool standardTranspose = false);
+bool haar_2d(double *data, int width, int height, bool inverse = false,
+             int stepCountX = -1, int stepCountY = -1);
+
+bool cdf97_2d(float *data, int width, int height, bool inverse = false,
+              int stepCountX = -1, int stepCountY = -1);
+
+bool cdf97_2d(double *data, int width, int height, bool inverse = false,
+              int stepCountX = -1, int stepCountY = -1);
 
 // 3-d Haar
 void haar_3d(CubeFloat *data, scu_wavelet::int3 stepCount,
-             bool inverse = false, bool standardTranspose = false);
+             bool inverse = false);
 
 typedef enum {
   ZERO_FILL,  // fill pad elements with zero
@@ -102,7 +114,6 @@ void cdf97_inverse(int length, float *data, int stepCount, float *tempGiven = NU
 
 // 3-d CDF 9.7
 void cdf97_3d(CubeFloat *data, scu_wavelet::int3 stepCount,
-              bool inverse = false, bool standardTranspose = true,
-              bool quiet = false);
+              bool inverse = false, bool quiet = false);
 
 #endif // __DWT_CPU_H__

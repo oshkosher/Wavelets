@@ -53,8 +53,8 @@ void printHelp() {
          "           this will automatically find the threshold and bin count\n"
          "    -bq <filename> : before quantizing, save a copy of the data this file\n"
          "    -enc : print the bit encoding of each value\n"
-         "    -nonstd : use nonstandard wavelet transpose order\n"
          "    -err : compute error metrics (slow, disabled by default)\n"
+         "    -2d : rather than 3d transform, do 2d transform at each layer\n"
          "    -q : be quiet; suppess all output\n"
          "    -v : be verbose; print the data after each step\n"
          "\n",
@@ -142,12 +142,12 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
       opt.doOptimize = true;
     }
 
-    else if (!strcmp(arg, "-enc")) {
-      opt.printHuffmanEncoding = true;
+    else if (!strcmp(arg, "-2d")) {
+      opt.param.do2DTransform = true;
     }
 
-    else if (!strcmp(arg, "-nonstd")) {
-      opt.param.isWaveletTransposeStandard = false;
+    else if (!strcmp(arg, "-enc")) {
+      opt.printHuffmanEncoding = true;
     }
 
     else if (!strcmp(arg, "-q")) {
@@ -475,21 +475,46 @@ bool waveletTransform(CubeFloat &data, const WaveletCompressionParam &param,
 
   if (verbose) data.print("Before wavelet transform");
 
-  if (param.waveletAlg == WAVELET_CDF97) {
-    cdf97_3d(&data, param.transformSteps, isInverse, 
-             param.isWaveletTransposeStandard);
+  if (!param.do2DTransform) {
+
+    if (param.waveletAlg == WAVELET_CDF97) {
+      cdf97_3d(&data, param.transformSteps, isInverse);
+    }
+
+    else if (param.waveletAlg == WAVELET_HAAR) {
+      haar_3d(&data, param.transformSteps, isInverse);
+    }
+
+    else {
+      fprintf(stderr, "Unknown wavelet: %s\n",
+              waveletAlgToName(param.waveletAlg));
+      return false;
+    }
+
+  } else { // do2DTransform
+
+    if (param.waveletAlg == WAVELET_CDF97) {
+      for (int z = 0; z < data.size.z; z++) {
+        cdf97_2d(data.pointer(0, 0, z), data.size.x, data.size.y, isInverse,
+                 param.transformSteps.x, param.transformSteps.y);
+      }
+    }
+
+    else if (param.waveletAlg == WAVELET_HAAR) {
+      for (int z = 0; z < data.size.z; z++) {
+        haar_2d(data.pointer(0, 0, z), data.size.x, data.size.y, isInverse,
+                param.transformSteps.x, param.transformSteps.y);
+      }
+    }
+
+    else {
+      fprintf(stderr, "Unknown wavelet: %s\n",
+              waveletAlgToName(param.waveletAlg));
+      return false;
+    }
+
   }
 
-  else if (param.waveletAlg == WAVELET_HAAR) {
-    haar_3d(&data, param.transformSteps, isInverse, 
-            param.isWaveletTransposeStandard);
-  }
-
-  else {
-    fprintf(stderr, "Unknown wavelet: %s\n",
-            waveletAlgToName(param.waveletAlg));
-    return false;
-  }
 
   if (verbose) data.print("After wavelet transform");
 
