@@ -65,12 +65,12 @@ int main2() {
   haar_inv(len, data);
   */
 
-  haar_2d(len, data, false, 1);
+  haar_2d(data, len, len, false, 1);
   print_matrix(len, len, data);
 
   printf("\n");
 
-  haar_2d(len, data, true, 1);
+  haar_2d(data, len, len, true, 1);
   print_matrix(len, len, data);
 
   return 0;
@@ -116,9 +116,9 @@ int main_full(int argc, char **argv) {
   }
 
   if (stepCount < 0) 
-    haar_2d(size, data, true, -stepCount);
+    haar_2d(data, size, size, true, -stepCount);
   else
-    haar_2d(size, data, false, stepCount);
+    haar_2d(data, size, size, false, stepCount);
   
   // printMatrix(width, height, data);
   printf("Writing...\n");

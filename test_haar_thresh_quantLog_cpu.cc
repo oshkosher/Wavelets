@@ -64,9 +64,9 @@ int main_full(int argc, char **argv) {
   }
 
   if (stepCount < 0) 
-    haar_2d(size, data, true, -stepCount);
+    haar_2d(data, size, size, true, -stepCount);
   else
-    haar_2d(size, data, false, stepCount);
+    haar_2d(data, size, size, false, stepCount);
 
 	if (writeDataFile(output1File, data, size, size, true))      // Write the reconstructed image!
 	
@@ -82,7 +82,7 @@ int main_full(int argc, char **argv) {
 
     quant_log_cpu(size, data, bits, threshold, maxVal);            // Apply threshold and uniform quantization
 	dquant_log_cpu(size, data, bits, threshold, maxVal);      // reverse quantization
-	haar_2d(size, data, true, abs(stepCount));	           // Take the inverse transform
+	haar_2d(data, size, size, true, abs(stepCount));	           // Take the inverse transform
   // printMatrix(width, height, data);
   printf("Writing...\n");
   fflush(stdout);

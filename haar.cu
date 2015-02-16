@@ -153,7 +153,7 @@ int main(int argc, char **argv) {
 
   // run the CPU version of the algorithm
   printf("CPU: "); fflush(stdout);
-  elapsed = haar_2d(size, data_cpu, inverse, stepCount);
+  elapsed = haar_2d(data_cpu, size, size, inverse, stepCount);
   printf("%.3f ms\n", elapsed);
 
   // run the GPU version of the algorithm

@@ -548,7 +548,7 @@ __device__ void pad_row_mirrored(int length, float *row, int padLen) {
       offset = length-padLen;
     }
 
-    MirroredArray mirrored(length, row);
+    MirroredArray<float> mirrored(length, row);
     int i = threadIdx.x * factor + offset;
     row[i] = mirrored[i];
   }

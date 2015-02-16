@@ -64,7 +64,7 @@ stepCount = abs(stepCount);  // We are using pos in the forward direction and ne
   }
 
 
-   haar_2d(size, data, false, stepCount);
+  haar_2d(data, size, size, false, stepCount);
 
    float maxVal, minVal;
    int nonzeroCount;
@@ -72,7 +72,7 @@ stepCount = abs(stepCount);  // We are using pos in the forward direction and ne
                                 &maxVal, &minVal);  // Calculate the threshold
     quant_unif_cpu(size, data, bits, threshold, maxVal);            // Apply threshold and uniform quantization
     //dquant_unif_cpu(size, data, bits, threshold, maxVal);      // reverse quantization
-    haar_2d(size, data, true, stepCount);	           // Take the inverse transform
+    haar_2d(data, size, size, true, stepCount);	           // Take the inverse transform
   // printMatrix(width, height, data);
   printf("Writing...\n");
   fflush(stdout);
