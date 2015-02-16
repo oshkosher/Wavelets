@@ -19,9 +19,12 @@
 #include "cucheck.h"
 #include "cuda_timer.h"
 #include "quant.h"
+#include "quant_gpu.h"
+#include "test_compress_gpu.h"
+#include "histogram_gpu.h"
 
-#define QUANTIZE_BLOCK_SIZE 1024
-#define QUANTIZE_BLOCK_COUNT 8
+// #include "cudalloyds.h"
+// #include "CUDA/wavelet/wavelet.h"
 
 // #define DO_DETAILED_CHECKS
 
@@ -30,7 +33,8 @@ bool decompressFile(const char *inputFile, const char *outputFile,
 		    Options &opt);
 
 bool check1WaveletTransform(const float *data_dev, const CubeFloat *dataBefore,
-                            const WaveletCompressionParam &param);
+                            const WaveletCompressionParam &param,
+                            bool verbose);
 
 bool check2Sorted(const float *data_dev, const float *orig_data_dev,
                   int dataCount);
@@ -38,7 +42,17 @@ bool check2Sorted(const float *data_dev, const float *orig_data_dev,
 bool check3Quantized(const int *quantizedData_dev, int dataCount,
                      const float *unquantizedData_dev,
                      const WaveletCompressionParam &param,
-                     float thresholdValue, float max);
+                     scu_wavelet::int3 size,
+                     float thresholdValue, float max, bool verbose);
+
+bool waveletTransformGPU(float *data_d, float *tmpData_d,
+                         scu_wavelet::int3 &size, 
+                         const WaveletCompressionParam &param,
+                         bool isInverse, CudaTimer *waveletTimer,
+                         CudaTimer *transposeTimer);
+
+void sortAbsAndFindLimitsGPU(float *dest_d, const float *src_d, int count,
+                             float *minValue, float *maxValue);
 
 bool computeErrorRatesGPU(int *quantizedData_dev,
                           scu_wavelet::int3 size,
@@ -53,58 +67,20 @@ void computeErrorRatesAfterDequantGPU
  const unsigned char *inputData_dev, ErrorAccumulator &errAccum);
 
 
-// If input_dev is NULL, use (int*)result_dev as the input.
-bool dequantizeGPU(float *result_dev, const int *input_dev,
-                   int count, const WaveletCompressionParam &param);
-
-void __global__ quantUniformKernel(void *data, int count,
-                                   int binCount, float threshold, float max);
-void __global__ quantLogKernel(void *data, int count,
-                               int binCount, float threshold, float max);
-
-void __global__ dequantUniformKernel(float *output, const int *input, int count,
-                                     int binCount, float threshold, float max);
-void __global__ dequantLogKernel(float *data, const int *input, int count,
-                                 int binCount, float threshold, float max);
-
 inline bool isClose(float a, float b) {
   float diff = fabsf(a-b);
-  return ((a==0) ? diff : diff/a) < 0.00001;
+  return ((a==0 || b==0) ? diff : diff/a) < 0.001;
 }
 
 inline bool isClose(int a, int b) {
   return abs(a-b) <= 1;
 }
 
-// return the number of mismatches
-int compareArrays(const float *a, const float *b, int count);
-int compareArrays(const int *a, const int *b, int count);
-
-// debug output
-void printArray(float *array, int width, int height, int depth,
-                const char *name);
-void printDeviceArray(float *array_dev, int width, int height, int depth,
-                      const char *name = NULL);
-void printDeviceArray(float *array_dev, scu_wavelet::int3 size,
-                      const char *name = NULL);
 
 // struct AbsFunctor : public thrust::unary_function<float,float> {
 struct AbsFunctor {
   __host__ __device__ float operator() (float x) const {
     return fabsf(x);
-  }
-};
-
-struct QuantUniformFunctor {
-  QuantUniform uni;
-
-  __host__ __device__ QuantUniformFunctor(int binCount, float threshold,
-                                          float maxVal) {
-    uni.init(binCount, threshold, maxVal);
-  }
-
-  __host__ __device__ int operator() (float x) const {
-    return uni.quant(x);
   }
 };
   
@@ -176,10 +152,9 @@ bool compressFile(const char *inputFile, const char *outputFile,
   CubeletStreamReader cubeletStream;
   double firstStartTime, startTime;
   CudaTimer copyToGPUTimer("Copy to GPU"), waveletTimer("Wavelet transform"),
-    transposeTimer("Transpose"),
-    sortTimer("Sort"), quantizeTimer("Quantize"), 
+    transposeTimer("Transpose"), quantizeTimer("Quantize"), 
     copyFromGPUTimer("Copy from GPU");
-  // FILE *f = fopen("marker","w"); fprintf(f, "marker\n"); fclose(f);
+
   firstStartTime = NixTimer::time();
 
   // on CPU: read the data into memory, convert to float, pad
@@ -203,7 +178,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   // if the input data is bytes, we can compute its error rate later.
   // copy it to the GPU so we can do that
   if (inputData.datatype == WAVELET_DATA_UINT8) {
-    CUCHECK(cudaMalloc((void**)&inputData_dev, dataCount));
+    CUCHECK(cudaMalloc((void**)&inputData_dev, inputData.count()));
   }
 
   if (!QUIET) {
@@ -216,7 +191,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   CUCHECK(cudaMemcpy(data1_dev, data.data(), dataCountBytes,
                      cudaMemcpyHostToDevice));
   if (inputData_dev)
-    CUCHECK(cudaMemcpy(inputData_dev, inputData.data_, dataCount,
+    CUCHECK(cudaMemcpy(inputData_dev, inputData.data_, inputData.count(),
                        cudaMemcpyHostToDevice));
   copyToGPUTimer.end();
 
@@ -224,23 +199,37 @@ bool compressFile(const char *inputFile, const char *outputFile,
   scu_wavelet::int3 deviceSize = data.size;
 
   // Wavelet transform
-  haar_3d_cuda(data1_dev, data2_dev, deviceSize, param.transformSteps,
-               false, param.isWaveletTransposeStandard, &waveletTimer,
-               &transposeTimer);
+  if (opt.verbose) printDeviceArray(data1_dev, deviceSize.x, deviceSize.y,
+                                    deviceSize.z, "Before fwd");
+  waveletTransformGPU(data1_dev, data2_dev, deviceSize, param, false,
+                      &waveletTimer, &transposeTimer);
+  if (opt.verbose) printDeviceArray(data1_dev, deviceSize.x, deviceSize.y,
+                                    deviceSize.z, "After fwd");
 
-  // this is needed to get the final timer value
-  CUCHECK(cudaThreadSynchronize());
+  if (!QUIET) {
+    // sync to get the timer values
+    CUCHECK(cudaThreadSynchronize());
+    copyToGPUTimer.print();
+    printf("Wavelet transform: %.3f ms (transpose %.3f ms)\n",
+           waveletTimer.time() + transposeTimer.time(),
+           transposeTimer.time());
+  }
 
   // just for testing--copy the data back to the CPU to see if it's correct
 #ifdef DO_DETAILED_CHECKS
-  check1WaveletTransform(data1_dev, &data, param);
+  check1WaveletTransform(data1_dev, &data, param, opt.verbose);
 #endif
 
-  // sort absolute values
+  // sort the absolute values and compute the positive and negative values
+  // with the greatest magnitude
+  // input is data1_dev, sorted output is data2_dev
+  float minValue, maxValue;
+  sortAbsAndFindLimitsGPU(data2_dev, data1_dev, dataCount,
+                          &minValue, &maxValue);
 
   // copy the data to data2_dev to be sorted
-  CUCHECK(cudaMemcpy(data2_dev, data1_dev, dataCountBytes,
-                     cudaMemcpyDeviceToDevice));
+  // CUCHECK(cudaMemcpy(data2_dev, data1_dev, dataCountBytes,
+  // cudaMemcpyDeviceToDevice));
 
   // sort the absolute values on the GPU
   thrust::device_ptr<float>
@@ -255,63 +244,57 @@ bool compressFile(const char *inputFile, const char *outputFile,
      thrust::transform does not. It requires thrust::device_ptr objects
      (like data1_start). thrust::sort will work with those too.
   */
-  // XXX try out sorting with a transform_iterator
 
-  // make a copy of the data, applying abs() to each value, into data2,
-  // then sort that copy
-
+  /*
   AbsFunctor absFunctor;
   sortTimer.start();
   thrust::transform(data1_start, data1_end, data2_start, absFunctor);
   thrust::sort(data2_start, data2_start + dataCount);
   sortTimer.end();
-  CUCHECK(cudaThreadSynchronize());
+  */
 
 #ifdef DO_DETAILED_CHECKS
+  CUCHECK(cudaThreadSynchronize());
   check2Sorted(data2_dev, data1_dev, dataCount);
 #endif
 
   // data1_dev now contains the data, and data2_dev contains the sorted
   // absolute values of the data
 
-  // fetch percentage threshold values from GPU
-
-  // send back the min, minimum nonzero, and maximum
-
-  float minNonzero, max;
-  CUCHECK(cudaMemcpy(&max, data2_dev+dataCount-1, sizeof(float),
-                     cudaMemcpyDeviceToHost));
-
+  int thresholdOffset;
+  float maxAbsVal = std::max(fabsf(minValue), fabsf(maxValue));
 
   // if you omit thrust::less<float>(), it defaults to an integer comparison,
   // and looks for the first value greater than or equal to 1
+  /*
+  float minNonzero;
   size_t minNonzeroOffset = 
     thrust::upper_bound(data2_start, data2_end, 0, thrust::less<float>())
     - data2_start;
   CUCHECK(cudaMemcpy(&minNonzero, data2_dev + minNonzeroOffset,
                      sizeof(float), cudaMemcpyDeviceToHost));
+  */
 
   // get the threshold value
   if (param.thresholdFraction <= 0) {
-    // param.thresholdValue = minNonzero;
     param.thresholdValue = MIN_THRESHOLD_VALUE;
+    thresholdOffset = 0;
   } else if (param.thresholdFraction >= 1) {
-    param.thresholdValue = max;
+    param.thresholdValue = maxAbsVal;
+    thresholdOffset = dataCount;
   } else {
-    int thresholdOffset = (int) (param.thresholdFraction * dataCount);
-    // printf("threshold offest = %d\n", thresholdOffset);
-    if (thresholdOffset <= minNonzeroOffset) {
+    thresholdOffset = (int) (param.thresholdFraction * dataCount);
+    CUCHECK(cudaMemcpy(&param.thresholdValue, data2_dev + thresholdOffset,
+                       sizeof(float), cudaMemcpyDeviceToHost));
+    if (param.thresholdValue == 0)
       param.thresholdValue = MIN_THRESHOLD_VALUE;
-      // param.thresholdValue = minNonzero;
-    } else {
-      CUCHECK(cudaMemcpy(&param.thresholdValue, data2_dev + thresholdOffset,
-                         sizeof(float), cudaMemcpyDeviceToHost));
-    }
   }
 
-  printf("max = %f, minNonzero = %.7g, threshold = %.10g\n", max,
-         minNonzero, param.thresholdValue);
-  fflush(stdout);
+  if (!QUIET) {
+    printf("min = %f, max = %f, threshold = %.10g\n",
+           minValue, maxValue, param.thresholdValue);
+    fflush(stdout);
+  }
 
   // choose threshold and bin count on CPU
 
@@ -325,47 +308,52 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   // overwrite the data in data1_dev with quantized integers
 
-  quantizeTimer.start();
-  switch (param.quantAlg) {
-  case QUANT_ALG_UNIFORM:
-    param.maxValue = max;
-    quantUniformKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
-      (data1_dev, dataCount,
-       param.binCount, param.thresholdValue, param.maxValue);
-    break;
+  const float *nonzeroData_dev = data2_dev + thresholdOffset;
+  int nonzeroCount = dataCount - thresholdOffset;
 
-  case QUANT_ALG_LOG:
-    param.maxValue = max;
-    quantLogKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
-      (data1_dev, dataCount,
-       param.binCount, param.thresholdValue, param.maxValue);
-    break;
+  if (opt.doOptimize) {
+    assert(inputData.datatype == WAVELET_DATA_UINT8);
+    
+    // Replace the data pointers in inputData and data (which point to
+    // data on the host) with pointers to copies of the data on the GPU.
+    void *tmpInputDataHost = inputData.data_;
+    inputData.data_ = inputData_dev;
 
-  case QUANT_ALG_LLOYD:
-    fprintf(stderr, "Lloyd's algorithm not integrated yet.\n");
-    return false;
-  default:
-    fprintf(stderr, "Quantization algorithm %d not found.\n",
-            (int)param.quantAlg);
-    return false;
+    CubeFloat deviceData;
+    deviceData.setType();
+    deviceData.size = deviceData.totalSize = deviceSize;
+    deviceData.data_ = data1_dev;
+
+    OptimizationData optData((CubeByte*)&inputData, &deviceData, data2_dev,
+                             minValue, maxValue, maxAbsVal,
+                             param.transformSteps,
+                             param.waveletAlg);
+    bool result = optimizeParameters(&optData, &param.thresholdValue,
+                                     &param.binCount);
+
+    // put the pointers back
+    inputData.data_ = tmpInputDataHost;
+    if (!result) return true;
   }
-  quantizeTimer.end();
+
+  if (!quantizeGPU((int*)data1_dev, data1_dev, dataCount, param,
+                   nonzeroData_dev, nonzeroCount,
+                   maxAbsVal, minValue, maxValue, quantizeTimer))
+    return false;
 
 #ifdef DO_DETAILED_CHECKS
   if (unquantizedCopy)
     check3Quantized((int*)data1_dev, dataCount, unquantizedCopy,
-                    param, param.thresholdValue, max);
+                    param, deviceSize, param.thresholdValue, max, opt.verbose);
 #endif
 
   // this is needed to get the final timer value
   CUCHECK(cudaThreadSynchronize());
 
-  copyToGPUTimer.print();
-  waveletTimer.print();
-  transposeTimer.print();
-  sortTimer.print();
-  quantizeTimer.print();
-  fflush(stdout);
+  if (!QUIET) {
+    quantizeTimer.print();
+    fflush(stdout);
+  }
 
   // compute error rates
   if (opt.doComputeError) {
@@ -378,15 +366,27 @@ bool compressFile(const char *inputFile, const char *outputFile,
     }
   }
 
-  // copy the data back to the CPU
+  // compute the bin number to which zero values map
+  Quantizer *quantizer = createQuantizer(param);
+  int zeroBin = quantizer->quant(0);
+  delete quantizer;
+
+  // compute histogram on the GPU
+  int *freqCounts = computeFrequenciesGPU
+    (param.binCount, (const int*)data1_dev, dataCount, zeroBin, false);
+
+  // copy the data back to the CPU (this can be overlapped with computing
+  // huffman encoding)
   copyFromGPUTimer.start();
   quantizedData.size = deviceSize;
   quantizedData.allocate();
   CUCHECK(cudaMemcpy(quantizedData.data(), data1_dev, dataCountBytes,
                      cudaMemcpyDeviceToHost));
   copyFromGPUTimer.end();
-  CUCHECK(cudaThreadSynchronize());
-  copyFromGPUTimer.print();
+  if (!QUIET) {
+    CUCHECK(cudaThreadSynchronize());
+    copyFromGPUTimer.print();
+  }
 
   // Huffman code and output
 
@@ -395,10 +395,13 @@ bool compressFile(const char *inputFile, const char *outputFile,
   startTime = NixTimer::time();
   quantizedData.param = param;
   CubeletStreamWriter cubeletWriter;
+  int outputSizeUnused;
   if (!cubeletWriter.open(outputFile)) return false;
-  if (!writeQuantData(cubeletWriter, &quantizedData, opt))
+  if (!writeQuantData(cubeletWriter, &quantizedData, opt, &outputSizeUnused,
+                      freqCounts))
     return false;
   cubeletWriter.close();
+  delete[] freqCounts;
   
   if (!QUIET) {
     printf("Write data file: %.2f ms\n", (NixTimer::time() - startTime)*1000);
@@ -477,99 +480,127 @@ bool decompressFile(const char *inputFile, const char *outputFile,
 }
 
 
-template<class Q>
-void __device__ quantKernel(const Q &quanter, void *data, int count) {
-  const float *dataFloat = (const float*) data;
-  int *dataInt = (int*) data;
+bool waveletTransformGPU(float *data_d, float *tmpData_d,
+                         scu_wavelet::int3 &size, 
+                         const WaveletCompressionParam &param,
+                         bool isInverse, CudaTimer *waveletTimer,
+                         CudaTimer *transposeTimer) {
+  switch (param.waveletAlg) {
+  case WAVELET_HAAR:
+    haar_3d_cuda(data_d, tmpData_d, size, param.transformSteps,
+                 isInverse, waveletTimer, transposeTimer);
+    return true;
 
-  dataFloat += blockIdx.x * blockDim.x;
-  dataInt += blockIdx.x * blockDim.x;
+  case WAVELET_CDF97:
+    cdf97_3d_cuda(data_d, tmpData_d, size, param.transformSteps,
+                  isInverse, waveletTimer, transposeTimer);
+    return true;
+    /*
+    {
+      float filter[9] = {
+        .037828455506995,
+        -.02384946501938,
+        -.110624404418420,
+        .377402855612650,
+        .85269867900940,
+        .377402855612650,
+        -.110624404418420,
+        -.02384946501938,
+        .037828455506995
+      };
+      if (waveletTimer) waveletTimer->start();
+      setUpFilter(filter);
+      wavelet_cuda_3d_fwd(data_d, size.x, size.y, size.z,
+                          param.transformSteps.x, param.transformSteps.y,
+                          param.transformSteps.z, true);
+      if (waveletTimer) waveletTimer->end();
+    }
+    return true;
+    */
+
+
+  default:
+    fprintf(stderr, "Unrecognized wavelet id %d.\n", param.waveletAlg);
+    return false;
+  }
+}
+
+
+__global__ void copyAbsoluteAndMinMaxKernel(float *dest, const float *src,
+                                            int count, float minMax[2]) {
+
+  __shared__ float minShared, maxShared;
+  float min = src[0];
+  float max = min;
+
+  if (threadIdx.x == 0) {
+    minShared = maxShared = min;
+  }
   
-  int idx = threadIdx.x;
+  __syncthreads();
+
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
   while (idx < count) {
-    dataInt[idx] = quanter.quant(dataFloat[idx]);
+    float in = src[idx];
+    if (in < min) min = in;
+    if (in > max) max = in;
+    
+    dest[idx] = fabsf(in);
+
     idx += blockDim.x * gridDim.x;
   }
+
+  WaveletAtomic::min(&minShared, min);
+  WaveletAtomic::max(&maxShared, max);
+
+  __syncthreads();
+
+  if (threadIdx.x == 0) {
+    WaveletAtomic::min(&minMax[0], minShared);
+    WaveletAtomic::max(&minMax[1], maxShared);
+  }
 }
-
-
-template<class Q>
-void __device__ dequantKernel(const Q &quanter, float *output,
-                              const int *input, int count) {
-
-  output += blockIdx.x * blockDim.x;
-  input += blockIdx.x * blockDim.x;
   
-  int idx = threadIdx.x;
-  while (idx < count) {
-    output[idx] = quanter.dequant(input[idx]);
-    idx += blockDim.x * gridDim.x;
+
+void sortAbsAndFindLimitsGPU(float *dest_d, const float *src_d, int count,
+                             float *minValue, float *maxValue) {
+  
+  float *minMax_d;
+  CUCHECK(cudaMalloc((void**)&minMax_d, sizeof(float)*2));
+  CUCHECK(cudaMemcpy(minMax_d, src_d, sizeof(float),
+                     cudaMemcpyDeviceToDevice));
+  CUCHECK(cudaMemcpy(minMax_d+1, src_d, sizeof(float),
+                     cudaMemcpyDeviceToDevice));
+
+  CudaTimer absTimer("Absolute value"), sortTimer("Sort");
+  absTimer.start();
+  copyAbsoluteAndMinMaxKernel<<<8,1024>>>(dest_d, src_d, count, minMax_d);
+  absTimer.end();
+
+  sortTimer.start();
+  thrust::sort(thrust::device, dest_d, dest_d + count);
+  sortTimer.end();
+
+  float minMax[2];
+  CUCHECK(cudaMemcpy(minMax, minMax_d, sizeof(float)*2,
+                     cudaMemcpyDeviceToHost));
+  *minValue = minMax[0];
+  *maxValue = minMax[1];
+  CUCHECK(cudaFree(minMax_d));
+
+  if (!QUIET) {
+    absTimer.print();
+    sortTimer.print();
   }
 }
-
-
-void __global__ quantLogKernel(void *data, int count,
-                               int binCount, float threshold, float max) {
-  __shared__ QuantLog quanter;
-
-  if (threadIdx.x == 0) {
-    quanter.init(binCount, threshold, max);
-    // printf("GPU %.10g->%d\n", -0.009803920984, quanter.quant(-0.009803920984));
-  }
-
-  __syncthreads();
-
-  quantKernel(quanter, data, count);
-}
-
-
-void __global__ quantUniformKernel(void *data, int count,
-                                   int binCount, float threshold, float max) {
-  __shared__ QuantUniform quanter;
-
-  if (threadIdx.x == 0) {
-    quanter.init(binCount, threshold, max);
-  }
-
-  __syncthreads();
-
-  quantKernel(quanter, data, count);
-}
-
-
-void __global__ dequantUniformKernel(float *output, const int *input, int count,
-                                     int binCount, float threshold, float max) {
-  __shared__ QuantUniform quanter;
-
-  if (threadIdx.x == 0) {
-    quanter.init(binCount, threshold, max);
-  }
-
-  __syncthreads();
-
-  dequantKernel(quanter, output, input, count);
-}
-
-
-void __global__ dequantLogKernel(float *output, const int *input, int count,
-                                 int binCount, float threshold, float max) {
-  __shared__ QuantLog quanter;
-
-  if (threadIdx.x == 0) {
-    quanter.init(binCount, threshold, max);
-    // printf("GPU %.10g->%d\n", -0.009803920984, quanter.quant(-0.009803920984));
-  }
-
-  __syncthreads();
-
-  dequantKernel(quanter, output, input, count);
-}
+  
 
 
 // return the number of mismatches
 int compareArrays(const float *a, const float *b, int count) {
   int mismatches = 0;
   for (int i=0; i < count; i++) {
+    // printf("[%6d] %g %g\n", i, a[i], b[i]);
     if (!isClose(a[i], b[i])) {
       mismatches++;
       // printf("mismatch at %d: %g  %g\n", i, a[i], b[i]);
@@ -591,7 +622,7 @@ int compareArrays(const int *a, const int *b, int count) {
 }
 
 
-void printArray(float *array, int width, int height, int depth, 
+void printArray(const float *array, int width, int height, int depth, 
                 const char *name) {
   if (name) printf("%s\n", name);
   for (int level=0; level < depth; level++) {
@@ -608,12 +639,29 @@ void printArray(float *array, int width, int height, int depth,
 }
 
 
-void printDeviceArray(float *array_dev, scu_wavelet::int3 size,
+void printArray(const int *array, int width, int height, int depth, 
+                const char *name) {
+  if (name) printf("%s\n", name);
+  for (int level=0; level < depth; level++) {
+    printf("z=%d\n", level);
+    for (int row=0; row < height; row++) {
+      for (int col=0; col < width; col++) {
+        printf("%5d ", array[(level*height + row)*width + col]);
+      }
+      putchar('\n');
+    }
+    putchar('\n');
+  }
+  putchar('\n');
+}
+
+
+void printDeviceArray(const float *array_dev, scu_wavelet::int3 size,
                       const char *name) {
   printDeviceArray(array_dev, size.x, size.y, size.z, name);
 }
 
-void printDeviceArray(float *array_dev, int width, int height, int depth, 
+void printDeviceArray(const float *array_dev, int width, int height, int depth, 
                       const char *name) {
 
   float *array = new float[width*height*depth];
@@ -625,9 +673,27 @@ void printDeviceArray(float *array_dev, int width, int height, int depth,
   delete[] array;
 }
 
+void printDeviceArray(const int *array_dev, scu_wavelet::int3 size,
+                      const char *name) {
+  printDeviceArray(array_dev, size.x, size.y, size.z, name);
+}
+
+void printDeviceArray(const int *array_dev, int width, int height, int depth, 
+                      const char *name) {
+
+  int *array = new int[width*height*depth];
+  CUCHECK(cudaMemcpy(array, array_dev, sizeof(int)*width*height*depth,
+                     cudaMemcpyDeviceToHost));
+
+  printArray(array, width, height, depth, name);
+
+  delete[] array;
+}
+
 
 bool check1WaveletTransform(const float *data_dev, const CubeFloat *dataBefore,
-                            const WaveletCompressionParam &param) {
+                            const WaveletCompressionParam &param,
+                            bool verbose) {
   
   // transform the data on the CPU
   CubeFloat result;
@@ -636,20 +702,16 @@ bool check1WaveletTransform(const float *data_dev, const CubeFloat *dataBefore,
   result.copyFrom(*dataBefore);
   int count = dataBefore->count();
 
-  /*
-  printf("Before.\n");
-  for (int i=0; i < dataBefore->size.x; i++) {
-    printf("%d)\t%.4g\n", i, result.get(i,0,0));
-  }
-  */
+  // dataBefore->print("Before");
 
   // printArray(result.data(), result.size.x, result.size.y, result.size.z, "Before");
              
   
   // writeDataFile("check1a.data", data, width, height, true);
-  haar_3d(&result, param.transformSteps, false,
-          param.isWaveletTransposeStandard);
+  // haar_3d(&result, param.transformSteps, false,
+  // param.isWaveletTransposeStandard);
   // writeDataFile("check1b.data", data, width, height, true);
+  waveletTransform(result, param, false, verbose);
 
   // copy the data from the GPU to the CPU
   float *dataTransformedByGPU = new float[count];
@@ -658,15 +720,23 @@ bool check1WaveletTransform(const float *data_dev, const CubeFloat *dataBefore,
   // writeDataFile("check1c.data", dataTransformedByGPU, width, height, true);
 
   // printArray(result.data(), result.size.x, result.size.y, result.size.z, "After CPU");
-  // printArray(dataTransformedByGPU, result.size.x, result.size.y, result.size.z, "After GPU");
 
+  if (verbose)
+    printArray(dataTransformedByGPU, result.size.x, result.size.y,
+               result.size.z, "After GPU");
+
+  // printf("CPU.\n");
+  // dataBefore->print();
   /*
-  printf("CPU.\n");
   for (int i=0; i < dataBefore->size.x; i++) {
     printf("%d)\t%.4g\n", i, result.get(i,0,0));
   }
+  */
 
-  printf("GPU.\n");
+  // printArray(dataTransformedByGPU, result.size.x, result.size.y, result.size.z, "GPU.");
+             
+             
+  /*
   for (int i=0; i < dataBefore->size.x; i++) {
     printf("%d)\t%.4g\n", i, dataTransformedByGPU[i]);
   }
@@ -728,7 +798,8 @@ bool check2Sorted(const float *data_dev, const float *orig_data_dev,
 bool check3Quantized(const int *quantizedData_dev, int count,
                      const float *unquantizedData_dev,
                      const WaveletCompressionParam &param,
-                     float thresholdValue, float max) {
+                     scu_wavelet::int3 size,
+                     float thresholdValue, float max, bool verbose) {
 
   float *unquantized = new float[count];
   CUCHECK(cudaMemcpy(unquantized, unquantizedData_dev, count * sizeof(float),
@@ -737,17 +808,26 @@ bool check3Quantized(const int *quantizedData_dev, int count,
   int *gpuQuant = new int[count];
   CUCHECK(cudaMemcpy(gpuQuant, quantizedData_dev, count * sizeof(int),
                      cudaMemcpyDeviceToHost));
-  
+
   Quantizer *quanter = createQuantizer(param);
   int *cpuQuant = new int[count];
   quanter->quantizeRow(unquantized, cpuQuant, count);
 
+  // print dense quantized data
+  if (verbose) {
+    printArray(cpuQuant, size.x, size.y, size.z, "CPU quantized");
+    printArray(gpuQuant, size.x, size.y, size.z, "GPU quantized");
+  }
+
   int mismatches = compareArrays(cpuQuant, gpuQuant, count);
   int notEqual = 0;
   for (int i=0; i < count; i++) {
+    // if (verbose) printf("[%d] %.10g  %d %d\n", i, unquantized[i], cpuQuant[i], gpuQuant[i]);
+                        
     if (cpuQuant[i] != gpuQuant[i]) {
       notEqual++;
-      // printf("[%d] %.10g  %d %d\n", i, unquantized[i], cpuQuant[i], gpuQuant[i]);
+      if (verbose)
+        printf("[%d] %.10g cpu %d gpu %d\n", i, unquantized[i], cpuQuant[i], gpuQuant[i]);
     }
   }
 
@@ -780,6 +860,8 @@ bool computeErrorRatesGPU(int *quantizedData_dev, scu_wavelet::int3 size,
 
   // dequantize quantizedData_dev into data_dev
   if (!dequantizeGPU(data_dev, quantizedData_dev, count, param)) return false;
+
+  // printDeviceArray(data_dev, size.x, size.y, size.z, "Dequantized");
 
   ErrorAccumulator errAccum;
 
@@ -873,11 +955,10 @@ void computeErrorRatesAfterDequantGPU
   CudaTimer waveletTimer("Inverse wavelet"),
     transposeTimer("Inverse transpose"),
     computeErrTimer("Compute error");
+
   // printDeviceArray(data_dev, size, "before inverse transform");
-  haar_3d_cuda(data_dev, tempData_dev, size, param.transformSteps,
-               true, param.isWaveletTransposeStandard, &waveletTimer,
-               &transposeTimer);
-  
+  waveletTransformGPU(data_dev, tempData_dev, size, param, true,
+                      &waveletTimer, &transposeTimer);
   // printDeviceArray(data_dev, size, "after inverse transform");
 
   float *errSums_dev;
@@ -899,11 +980,13 @@ void computeErrorRatesAfterDequantGPU
   CUCHECK(cudaFree(errSums_dev));
   computeErrTimer.end();
 
-  CUCHECK(cudaThreadSynchronize());
-  waveletTimer.print();
-  transposeTimer.print();
-  computeErrTimer.print();
-  printf("sumDiff = %f, sumDiffSquared = %f\n", errSums[0], errSums[1]);
+  if (!QUIET) {
+    CUCHECK(cudaThreadSynchronize());
+    printf("Inverse wavelet transform: %.3f ms (transpose %.3f ms)\n",
+           waveletTimer.time() + transposeTimer.time(),
+           transposeTimer.time());
+    computeErrTimer.print();
+  }
   
   // largest unsigned char value
   errAccum.setMaxPossible(255);
@@ -911,51 +994,4 @@ void computeErrorRatesAfterDequantGPU
   errAccum.setSumDiffSquared(errSums[1]);
   errAccum.setCount(param.originalSize.count());
 
-}
-
-
-
-// change data_dev from int[] to float[] in place
-bool dequantizeGPU(float *result_dev, const int *input_dev,
-                   int count, const WaveletCompressionParam &param) {
-
-  if (input_dev == NULL)
-    input_dev = (const int*) result_dev;
-  
-  switch (param.quantAlg) {
-  case QUANT_ALG_UNIFORM:
-    dequantUniformKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
-      (result_dev, input_dev, count,
-       param.binCount, param.thresholdValue, param.maxValue);
-    break;
-
-  case QUANT_ALG_LOG:
-    dequantLogKernel<<<QUANTIZE_BLOCK_COUNT,QUANTIZE_BLOCK_SIZE>>>
-      (result_dev, input_dev, count,
-       param.binCount, param.thresholdValue, param.maxValue);
-    break;
-
-  case QUANT_ALG_LLOYD:
-    fprintf(stderr, "Lloyd's algorithm not integrated yet.\n");
-    return false;
-  default:
-    fprintf(stderr, "Quantization algorithm %d not found.\n",
-            (int)param.quantAlg);
-    return false;
-  }
-
-  // copy the data to the CPU and print it all
-  /*
-  int *input = new int[count];
-  float *output = new float[count];
-  CUCHECK(cudaMemcpy(input, input_dev, count*sizeof(int),
-                     cudaMemcpyDeviceToHost));
-  CUCHECK(cudaMemcpy(output, result_dev, count*sizeof(float),
-                     cudaMemcpyDeviceToHost));
-  for (int i=0; i < count; i++)
-    printf("%d) %d -> %f\n", i, input[i], output[i]);
-  delete[] input;
-  delete[] output;
-  */
-  return true;
 }

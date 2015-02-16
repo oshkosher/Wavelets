@@ -28,9 +28,11 @@ using namespace scu_wavelet;
 // global variable that disables status output
 bool QUIET = false;
 
-// read&write just the data part of the file to&from f.intData
-// using Huffman encoding
-static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet);
+// Read&write just the data part of the file to&from f.intData
+// using Huffman encoding. If binCounts is not NULL, use it for the
+// frequency counts.
+static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet,
+                        int *binCounts = NULL);
 
 static bool writeQuantDataHuffman(Huffman &huff, vector<uint32_t> *outData,
                                   const CubeInt *data, bool quiet);
@@ -182,13 +184,13 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
 */
 bool writeQuantData(CubeletStreamWriter &cubeletStream,
                     CubeInt *cube, Options &opt,
-                    int *sizeBytes) {
+                    int *sizeBytes, int *binCounts) {
   
   if (sizeBytes) *sizeBytes = 0;
 
   // initialize the huffman encoding
   Huffman huff;
-  initHuffman(huff, cube, opt.quiet);
+  initHuffman(huff, cube, opt.quiet, binCounts);
   if (opt.printHuffmanEncoding) huff.printEncoding();
 
   vector<uint32_t> encodedData;
@@ -564,12 +566,7 @@ void computeErrorRates(const CubeInt *quantizedData,
   if (!dequantize(*quantizedData, restoredData, param)) return;
 
   // print dequantized data
-  /*  
-  for (int i=0; i < restoredData.size.count(); i++) {
-    printf("%d) %d -> %f\n", i, quantizedData->get(i,0,0),
-           restoredData.get(i,0,0));
-  }
-  */
+  // restoredData.print("Dequantized");
 
   ErrorAccumulator errAccum;
 
@@ -677,6 +674,108 @@ void translateCubeDataToOriginal(CubeFloat *src, Cube *dest, bool verbose) {
 }
 
 
+void initialLloydCodebook(std::vector<float> &codebook, int codebookSize,
+                          float minAbsVal, float maxAbsVal) {
+  codebook.resize(codebookSize);
+
+  assert(minAbsVal > 0);
+  assert(maxAbsVal > minAbsVal);
+
+  /* use log quantization to create an initial codebook
+     f(minAbsVal) = 0, f(maxAbsVal) = codebookSize
+     f(x) = b*log(a*x)
+
+       b*log(a*min) = 0  b*log(a*max) = binCount
+       log(a*min) = 0    b = codebookSize / log(a*max)
+       a*min = 1
+       a = 1/min
+
+     y = b*log(a*x)
+     y/b = log(a*x)
+     e^(y/b) = a*x
+     e^(y/b) / a = x
+
+       1/a = min, logScale = 1/b = log(max/min) / codebookSize
+
+     min * e^(y*logScale) = x
+  */
+
+  // printf("min=%f, max=%f\n", minAbsVal, maxAbsVal);
+  float logScale = logf(maxAbsVal / minAbsVal) / codebookSize;
+  for (int i=0; i < codebookSize; i++) {
+    codebook[i] = minAbsVal * expf(i * logScale);
+    // printf("InitCB %d: %f\n", i, binValues[i]);
+  }
+}
+
+
+// Given a codebook with with n/2 entries just for the positive data,
+// fill in all the bin values and boundaries between each pair of values.
+void setBinsFromCodebook(std::vector<float> &binValues,
+                         std::vector<float> &binBoundaries,
+                         int binCount,
+                         std::vector<float> &codebook,
+                         float thresholdValue, float minVal, float maxVal) {
+  int codebookSize = (int) codebook.size();
+
+  // sanity-check, make sure codebook is ordered
+  for (int i=0; i < codebookSize-1; i++) {
+    if (codebook[i] > codebook[i+1]) {
+      fprintf(stderr, "ERROR: codebook[%d] > codebook[%d]  (%f > %f)\n",
+              i, i+1, binValues[i], binValues[i+1]);
+    }
+  }
+
+  binValues.clear();
+  binBoundaries.clear();
+
+  // if binCount is even and abs(minVal) > maxVal, add minVal as the
+  // first codebook entry
+  if ((binCount & 1)==0 && fabsf(minVal) > maxVal) {
+    binValues.push_back(minVal);
+    binBoundaries.push_back( (minVal + -codebook[codebookSize-1])/2 );
+  }
+
+  // negative bins
+  binValues.push_back(-codebook[codebookSize-1]);
+
+  for (int i=codebookSize-2; i >= 0; i--) {
+    binBoundaries.push_back( (-codebook[i] + -codebook[i+1]) / 2 );
+    binValues.push_back(-codebook[i]);
+  }
+
+  // zero bin
+  binBoundaries.push_back(-thresholdValue);
+  binValues.push_back(0);
+  binBoundaries.push_back(thresholdValue);
+
+  // positive bins
+  for (int i=0; i < codebookSize-1; i++) {
+    binValues.push_back(codebook[i]);
+    binBoundaries.push_back( (codebook[i] + codebook[i+1]) / 2 );
+  }    
+  binValues.push_back(codebook[codebookSize-1]);
+
+  // top bin
+  if ((binCount & 1)==0 && maxVal >= fabsf(minVal) ) {
+    binValues.push_back(maxVal);
+    binBoundaries.push_back( (maxVal + codebook[codebookSize-1])/2 );
+  }
+
+  assert(binBoundaries.size() + 1 == binValues.size());
+  assert((int)binValues.size() == binCount);
+
+  // print all the value and boundaries
+  /*
+  for (size_t i=0; i < binBoundaries.size(); i++) {
+    printf("[%4d] %f\n  %f\n", (int)i, binValues[i], binBoundaries[i]);
+  }
+  printf("[%4d] %f\n", (int)binValues.size()-1, binValues[binValues.size()-1]);
+  */
+  
+}
+
+
 // Read compressed, quantized data from a cublet stream.
 bool readQuantData(CubeletStreamReader &cubeletStream, CubeInt *cube) {
 
@@ -733,21 +832,28 @@ public:
   }
 };
 
-static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet) {
+static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet,
+                        int *binCounts) {
 
   double startTime = NixTimer::time();
 
-  // number of possible values
-  huff.init(cube->param.binCount);
+  if (binCounts) {
+    huff.init(binCounts, cube->param.binCount);
+  } else {
+    // number of possible values
+    huff.init(cube->param.binCount);
 
-  // train the huffman encoder
-  TraverseForHuffman init(huff);
-  cube->visit<TraverseForHuffman>(init);
+    // train the huffman encoder
+    TraverseForHuffman init(huff);
+    cube->visit<TraverseForHuffman>(init);
+  }
 
   huff.computeHuffmanCoding();
   double elapsed = NixTimer::time() - startTime;
-  if (!quiet)
+  if (!quiet) {
     printf("Huffman build table %.3f ms\n", elapsed*1000);
+    fflush(stdout);
+  }
 }
 
 
@@ -787,7 +893,7 @@ Quantizer *createQuantizer(const WaveletCompressionParam &param) {
   case QUANT_ALG_UNIFORM:
     return new QuantizerUniform(param.binCount, param.thresholdValue, param.maxValue);
   case QUANT_ALG_LLOYD:
-    return new QuantizerCodebook(param.binValues);
+    return new QuantizerCodebook(param.binValues, param.binBoundaries);
   default:
     fprintf(stderr, "Unknown quantization algorithm id: %d\n",
             (int)param.quantAlg);

@@ -2,6 +2,29 @@
 #define __DWT_CPU_H__
 
 #include "wavelet.h"
+#include "cucheck.h"
+
+#define CDF97_ANALYSIS_LOWPASS_FILTER_0  .85269867900940f
+#define CDF97_ANALYSIS_LOWPASS_FILTER_1  .377402855612650f
+#define CDF97_ANALYSIS_LOWPASS_FILTER_2 -.110624404418420f
+#define CDF97_ANALYSIS_LOWPASS_FILTER_3 -.02384946501938f
+#define CDF97_ANALYSIS_LOWPASS_FILTER_4  .037828455506995f
+
+#define CDF97_ANALYSIS_HIGHPASS_FILTER_0 -.788485616405660f
+#define CDF97_ANALYSIS_HIGHPASS_FILTER_1  .418092273222210f
+#define CDF97_ANALYSIS_HIGHPASS_FILTER_2  .040689417609558f
+#define CDF97_ANALYSIS_HIGHPASS_FILTER_3 -.064538882628938f
+
+#define CDF97_SYNTHESIS_LOWPASS_FILTER_0  .788485616405660f
+#define CDF97_SYNTHESIS_LOWPASS_FILTER_1  .377402855612650f
+#define CDF97_SYNTHESIS_LOWPASS_FILTER_2 -.040689417609558f
+#define CDF97_SYNTHESIS_LOWPASS_FILTER_3 -.02384946501938f
+
+#define CDF97_SYNTHESIS_HIGHPASS_FILTER_0 -.85269867900940f
+#define CDF97_SYNTHESIS_HIGHPASS_FILTER_1  .418092273222210f
+#define CDF97_SYNTHESIS_HIGHPASS_FILTER_2  .110624404418420f
+#define CDF97_SYNTHESIS_HIGHPASS_FILTER_3 -.064538882628938f
+#define CDF97_SYNTHESIS_HIGHPASS_FILTER_4 -.037828455506995f
 
 /*
   Simple implementation of a discrete wavelet transform using the CPU.
@@ -115,5 +138,66 @@ void cdf97_inverse(int length, float *data, int stepCount, float *tempGiven = NU
 // 3-d CDF 9.7
 void cdf97_3d(CubeFloat *data, scu_wavelet::int3 stepCount,
               bool inverse = false, bool quiet = false);
+
+
+
+/*
+  Wrap an array such that if you reference values beyond the ends
+  of the array, the results will be mirrored array values.
+
+  For example, given an array with 7 elements: 0 1 2 3 4 5 6
+  Request array[0..6] and you'll get the usual values array[0..6].
+  array[-1] returns array[1], array[-2] return array[2], etc.
+  array[7] returns array[5], array[8] return array[4], etc.
+*/
+template<class T>
+class MirroredArray {
+  int length;  // length of the actual data
+  const T *array;
+
+public:
+  HD MirroredArray(int length_, const T *array_)
+    : length(length_), array(array_) {}
+
+  HD T operator[] (int offset) const {
+
+    // negative offset: mirror to a positive
+    if (offset < 0) offset = -offset;
+
+    // past the end: fold it back, repeat if necessary
+    // try using modulo, see if it speeds this up
+    while (offset >= length) {
+      offset = length*2 - offset - 2;
+
+      if (offset < 0) offset = -offset;
+    }
+
+    return array[offset];
+  }
+
+  HD void setLength(int len) {length = len;}
+};
+
+
+// Like MirroredArray, but simpler. Ask for an invalid index and you get 0.
+template<class T>
+class ZeroExtendedArray {
+  T *array;
+  int length;  // length of the actual data
+
+public:
+  HD ZeroExtendedArray(T *array_, int length_)
+    : array(array_), length(length_) {}
+
+  HD T operator[] (int offset) const {
+
+    if (offset < 0 || offset >= length) return 0;
+
+    return array[offset];
+  }
+
+  HD void setLength(int len) {length = len;}
+};
+
 
 #endif // __DWT_CPU_H__

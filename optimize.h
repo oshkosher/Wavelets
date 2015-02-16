@@ -3,7 +3,13 @@
 
 #include "wavelet.h"
 
-struct OptimizationData {
+class OptimizationData {
+  friend bool testParameters
+    (OptimizationData *o, float thresholdValue, int binCount,
+     QuantizeAlgorithm quantAlg, int *outputSizeBytes,
+     float *l1Error, float *l2Error, float *mse, float *pSNR);
+  
+  const float *sorted;  // sorted absolute values, length is equal to count()
 
   // original cubelet data, 3-d array of unsigned char
   const CubeByte *originalData;
@@ -11,11 +17,9 @@ struct OptimizationData {
   // cubelet data after wavelet transform, 3-d array of floats
   const CubeFloat *transformedData;
 
-  const int count;  // # of values in sorted[]
+  // const int nonzeroCount;  // # of values in sorted[] that are nonzero
 
-  const float *sorted;  // sorted absolute values
-
-  const int nonzeroCount;  // # of values in sorted[] that are nonzero
+ public:
 
   const float minVal;  // minimum value in the data (will be negative)
 
@@ -31,16 +35,35 @@ struct OptimizationData {
 
   // Wavelet algorithm used, WAVELET_CDF97 by default.
   const WaveletAlgorithm waveletAlg;
+  
+  OptimizationData(const CubeByte *originalData_,
+                   const CubeFloat *transformedData_,
+                   const float *sorted_,
+                   float minVal_, float maxVal_, float maxAbsVal_,
+                   scu_wavelet::int3 transformSteps_,
+                   WaveletAlgorithm waveletAlg_)
+    :  sorted(sorted_), originalData(originalData_),
+    transformedData(transformedData_),
+    minVal(minVal_), maxVal(maxVal_), maxAbsVal(maxAbsVal_),
+    transformSteps(transformSteps_), waveletAlg(waveletAlg_) {}
 
+  // returns the number of elements in the input data.
+  int count() {return transformedData->count();}
 
-  OptimizationData(const CubeByte *od, const CubeFloat *td,
-                   int n, const float *sd, int nzn,
-                   float min, float max, float amax,
-                   scu_wavelet::int3 xfs, WaveletAlgorithm wa)
-  : originalData(od), transformedData(td), count(n), sorted(sd),
-    nonzeroCount(nzn), 
-    minVal(min), maxVal(max), maxAbsVal(amax),
-    transformSteps(xfs), waveletAlg(wa) {}
+  /**
+     Return a value from the 'sorted' array, which has length 'count()'.
+     This is a function because if the sorted array is on the GPU,
+     the element will need to be copied from the GPU.
+     Fails an assertion and return 0 if index is out of bounds.
+  */
+  float getSorted(int index);
+
+  /**
+    Return the index of the first value in 'sorted' that is greater than
+    or equal to 'value'. Returns count() if 'value' is larger than every
+    value in 'sorted'.
+  */
+  int findSorted(float value);
 };
                     
 
@@ -49,9 +72,9 @@ struct OptimizationData {
    
    This will be called by test_compress_cpu after the data is loaded
    and run through a wavelet transform. All the data is in "optData".
-   See the definition of "struct OptimizationData" above. Consider the
-   data read-only, but there is data in it that may be useful, particularly
-   the "sorted" array.
+   You can read any of the public fields directly, but to access the
+   'sorted' array ue the getSorted() and findSorted() accessor functions,
+   because the sorted array might be on the GPU.
 
    This code in this function should call testParameters() to try out
    different settings for thresholdValue and binCount. When it is
@@ -59,7 +82,7 @@ struct OptimizationData {
    and binCount and return.
 
    Return true if you want the calling program to continue to process
-   the data with these parameters and produced a compressed output file.
+   the data with these parameters and produce a compressed output file.
    
    Return false if this was just an experiment and you want the calling
    program to exit without producing a compressed output file.
@@ -88,11 +111,12 @@ bool optimizeParameters
                testParameters() will just apply the threshold and
                then the inverse wavelet transform.
 
-    quantAlg - QUANT_ALG_LOG, QUANT_ALG_LLOYD, or QUANT_ALG_UNIFORM
+    quantAlg - QUANT_ALG_LOG, QUANT_ALG_LLOYD, QUANT_ALG_UNIFORM,
+               or QUANT_ALG_UNKNOWN if no quantization is to be done.
 
     output parameters:
 
-    outputSize - size of the output data, in bytes
+    outputSizeByte - size of the output data, in bytes
     l1Error, l2Error, pSNR - error metrics
 
     On error, return false.
@@ -101,8 +125,9 @@ bool optimizeParameters
 bool testParameters(OptimizationData *optData,
                     float thresholdValue, int binCount,
                     QuantizeAlgorithm quantAlg,
-                    int *outputSize,
-                    float *l1Error, float *l2Error, float *pSNR);
+                    int *outputSizeBytes,
+                    float *l1Error, float *l2Error, float *meanSquaredError,
+                    float *pSNR);
 
 #endif // __OPTIMIZE_H__
 

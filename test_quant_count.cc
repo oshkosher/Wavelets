@@ -125,7 +125,8 @@ int main_compres_with_previous() {
       startTime = NixTimer::time();
       quant_boundaries_array(boundaries, width*height, data);
       elapsed1 = NixTimer::time() - startTime;
-      QuantCodebook qu(boundaries, codebook);
+      QuantCodebook qu;
+      qu.init(boundaries, codebook);
       QuantizationLooper<QuantCodebook> qlu(&qu, 1 << bits);
       qlu.quantize(width*height, origData, quantizedData, doComputeErr);
       elapsed2 = qlu.getExecuteTime();
@@ -230,8 +231,10 @@ void tryQuant(float f, QuantLog &qlog, QuantUniform &quniform) {
 
   
 int main_quick_test() {
-  QuantLog qlog(100, 1, 5);
-  QuantUniform quniform(100, 1, 5);
+  QuantLog qlog;
+  QuantUniform quniform;
+  qlog.init(100, 1, 5);
+  quniform.init(100, 1, 5);
 
   printf("Quantize\n");
   tryQuant(0, qlog, quniform);
@@ -256,8 +259,23 @@ int main_quick_test() {
 }
 
 
+void try_binary_search() {
+
+  const float boundaries[] = {.1, .2, .5, 1, 2, 2, 2, 10};
+  const int count = sizeof boundaries / sizeof(float);
+  printf("0: %d\n", QuantCodebook::quant(0, count, boundaries));
+  printf(".2: %d\n", QuantCodebook::quant(.2f, count, boundaries));
+  printf(".5: %d\n", QuantCodebook::quant(.5f, count, boundaries));
+  printf("1: %d\n", QuantCodebook::quant(1, count, boundaries));
+  printf("2: %d\n", QuantCodebook::quant(2, count, boundaries));
+  printf("10: %d\n", QuantCodebook::quant(10, count, boundaries));
+  printf("20: %d\n", QuantCodebook::quant(20, count, boundaries));
+}
+
+
 int main() {
-  main_quick_test();
+  // main_quick_test();
+  try_binary_search();
   
   return 0;
 }

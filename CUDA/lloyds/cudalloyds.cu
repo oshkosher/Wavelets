@@ -7,6 +7,8 @@
 /*  - IN/OUT - codebook:      initial codebook and final codebook            */
 /*  - IN     - csize:         size of the codebook array                     */
 /*  - IN     - stop_criteria: typically 10e-7                                */
+/*  - IN     - points_are_on_gpu: if true, point data is already on the GPU, */
+/*                            and 'points' is a device address.              */
 /*                                                                           */
 /*  Doesn't return the partition because it can be easily calculated         */
 /*  as the mid-point between codebooks.                                      */
@@ -35,7 +37,7 @@ __device__ static float atomicMin(float* address, float val)
     return __int_as_float(old);
 }
 
-__global__ void groupKernelMaxMin(float *points, unsigned int psize, float *codebook, unsigned int csize, unsigned int *groups, unsigned int *counts, float *sum, float *dist, float *max, float *min) {
+__global__ void groupKernelMaxMin(const float *points, unsigned int psize, float *codebook, unsigned int csize, unsigned int *groups, unsigned int *counts, float *sum, float *dist, float *max, float *min) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (idx < psize) {
@@ -58,7 +60,7 @@ __global__ void groupKernelMaxMin(float *points, unsigned int psize, float *code
 	}
 }
 
-__global__ void groupKernel(float *points, unsigned int psize, float *codebook, unsigned int csize, unsigned int *groups, unsigned int *counts, float *sum, float *dist) {
+__global__ void groupKernel(const float *points, unsigned int psize, float *codebook, unsigned int csize, unsigned int *groups, unsigned int *counts, float *sum, float *dist) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (idx < psize) {
@@ -80,8 +82,8 @@ __global__ void groupKernel(float *points, unsigned int psize, float *codebook, 
 }
 
 
-void cudaLloyd(float *points, unsigned int psize, float *codebook, unsigned int csize, float stop_criteria) {
-	float *d_points;
+void cudaLloyd(const float *points, unsigned int psize, float *codebook, unsigned int csize, float stop_criteria, bool points_are_on_gpu, int *iterations) {
+	const float *d_points;
 	unsigned *d_groups;
 	float *d_codebook;
 	float *partition = (float*)malloc((csize-1)*sizeof(float));;
@@ -95,7 +97,14 @@ void cudaLloyd(float *points, unsigned int psize, float *codebook, unsigned int 
 	float *d_max,max;
 	float *d_min,min;
 
-	cudaMalloc((void**)&d_points, sizeof(float)*psize);
+        // check if the point data is already on the GPU
+        if (points_are_on_gpu) {
+          d_points = points;
+        } else {
+          cudaMalloc((void**)&d_points, sizeof(float)*psize);
+          cudaMemcpy((void*)d_points, points, sizeof(float) * psize, cudaMemcpyHostToDevice);
+        }
+
 	cudaMalloc((void**)&d_groups, sizeof(unsigned)*psize);
 	cudaMalloc((void**)&d_codebook, sizeof(float)*csize);
 	cudaMalloc((void**)&d_counts, sizeof(unsigned)*csize);
@@ -104,13 +113,14 @@ void cudaLloyd(float *points, unsigned int psize, float *codebook, unsigned int 
 	cudaMalloc((void**)&d_max, sizeof(float));
 	cudaMalloc((void**)&d_min, sizeof(float));
 
-	cudaMemcpy(d_points, points, sizeof(float) * psize, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_codebook, codebook, sizeof(float)*csize, cudaMemcpyHostToDevice);
 	cudaMemset(d_counts,0,sizeof(unsigned)*csize);
 	cudaMemset(d_sum,0,sizeof(float)*csize);
 	cudaMemset(d_dist,0,sizeof(float));
 	cudaMemcpy(d_max, d_points, sizeof(float), cudaMemcpyDeviceToDevice);
 	cudaMemcpy(d_min, d_points, sizeof(float), cudaMemcpyDeviceToDevice);
+
+        if (iterations) *iterations = 0;
 
 	// Initial Table
 	for(int i = 0; i < csize-1; i++) {
@@ -128,6 +138,7 @@ void cudaLloyd(float *points, unsigned int psize, float *codebook, unsigned int 
 	reldist = abs(dist);
 
 	while(reldist > stop_criteria) {
+		if (iterations) ++*iterations;
 		cudaMemcpy(counts, d_counts, sizeof(unsigned)*csize, cudaMemcpyDeviceToHost);
 		cudaMemcpy(sum, d_sum, sizeof(float)*csize, cudaMemcpyDeviceToHost);
 
@@ -172,7 +183,7 @@ void cudaLloyd(float *points, unsigned int psize, float *codebook, unsigned int 
 	free(partition);
 	free(counts);
 	free(sum);
-	cudaFree(d_points);
+	if (!points_are_on_gpu) cudaFree((void*)d_points);
 	cudaFree(d_groups);
 	cudaFree(d_codebook);
 	cudaFree(d_counts);

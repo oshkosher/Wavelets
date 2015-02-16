@@ -13,6 +13,7 @@
 #include "cubelet_file.h"
 
 using namespace scu_wavelet;
+using namespace std;
 
 bool compressFile(const char *inputFile, const char *outputFile, Options &opt);
 bool decompressFile(const char *inputFile, const char *outputFile,
@@ -21,6 +22,7 @@ bool decompressFile(const char *inputFile, const char *outputFile,
 
 void computeLloydQuantization(const float *inputData, int count,
                               int binCount, float minVal, float maxVal,
+                              float thresholdValue,
 			      std::vector<float> &quantBinBoundaries,
 			      std::vector<float> &quantBinValues);
 
@@ -120,8 +122,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   if (opt.doOptimize) {
     assert(inputData.datatype == WAVELET_DATA_UINT8);
     OptimizationData optData((CubeByte*)&inputData, &data, 
-                             count, sortedAbsData,
-                             nonzeroCount,
+                             sortedAbsData,
                              minVal, maxVal, maxAbsVal, param.transformSteps,
                              param.waveletAlg);
     if (!optimizeParameters(&optData, &param.thresholdValue, &param.binCount))
@@ -137,8 +138,8 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   elapsed = NixTimer::time() - startTime;
   if (!QUIET)
-    printf("Compute threshold = %.10g, min = %g, max = %g: %.2f ms\n",
-           param.thresholdValue, minVal, maxVal, elapsed*1000);
+    printf("min = %f, max = %f, threshold = %.10g: %.2f ms\n", minVal, maxVal,
+           param.thresholdValue, elapsed*1000);
 
   // don't write a data file; just run some experiments testing different
   // quantization settings
@@ -268,13 +269,9 @@ bool quantize(const CubeFloat &data, CubeInt &quantizedData,
     break;
 
   case QUANT_ALG_LLOYD: 
-    startTime = NixTimer::time();
     computeLloydQuantization(nonzeroData, nonzeroCount, param.binCount,
-                             minVal, maxVal,
+                             minVal, maxVal, param.thresholdValue,
                              param.binBoundaries, param.binValues);
-    elapsed = NixTimer::time() - startTime;
-    if (!QUIET)
-      printf("Lloyd quantization %.2f ms\n", elapsed*1000);
     break;
 
   default: {}
@@ -325,6 +322,7 @@ bool quantize(const CubeFloat &data, CubeInt &quantizedData,
 void computeLloydQuantization
 (const float *inputData, int count, 
  int binCount, float minVal, float maxVal,
+ float thresholdValue,
  std::vector<float> &quantBinBoundaries,
  std::vector<float> &quantBinValues) {
 
@@ -333,8 +331,8 @@ void computeLloydQuantization
 
   quantBinBoundaries.clear();
   quantBinValues.clear();
-  float *binBoundaries = new float[codebookSize-1];
-  float *binValues = new float[codebookSize];
+
+  // float *binValues = new float[codebookSize];
 
   // inputData is sorted, use it to get minVal and maxVal
   // Skip the last entry in inputData[] because it is often much larger than
@@ -344,126 +342,47 @@ void computeLloydQuantization
 
   // if the smallest input value is zero, set minAbsVal to the smallest
   // nonzero value
+  /*
   float minAbsVal = inputData[0];
   if (minAbsVal <= 0) {
     minAbsVal = *std::upper_bound(inputData, inputData+count, 0);
   }
-
-  assert(minAbsVal > 0);
-  assert(maxAbsVal > minAbsVal);
-
-  /* use log quantization to create an initial codebook
-     f(minAbsVal) = 0, f(maxAbsVal) = codebookSize
-     f(x) = b*log(a*x)
-
-       b*log(a*min) = 0  b*log(a*max) = binCount
-       log(a*min) = 0    b = codebookSize / log(a*max)
-       a*min = 1
-       a = 1/min
-
-     y = b*log(a*x)
-     y/b = log(a*x)
-     e^(y/b) = a*x
-     e^(y/b) / a = x
-
-       1/a = min, logScale = 1/b = log(max/min) / codebookSize
-
-     min * e^(y*logScale) = x
   */
 
-  // printf("min=%f, max=%f\n", minAbsVal, maxAbsVal);
-  float logScale = logf(maxAbsVal / minAbsVal) / codebookSize;
-  for (int i=0; i < codebookSize; i++) {
-    binValues[i] = minAbsVal * expf(i * logScale);
-    // printf("InitCB %d: %f\n", i, binValues[i]);
-  }
-
+  vector<float> codebook;
+  initialLloydCodebook(codebook, codebookSize, thresholdValue, maxAbsVal);
+  
+  /*
+  printf("Before Lloyd\n");
+  for (int i=0; i < codebookSize; i++) printf("%d) %f\n", i, codebook[i]);
+  */
 
   // fine-tune the codebook and bin boundaries using Lloyd's algorithm.
   // This also applies the quantization to each value, writing the values
   // to quantizedData[].
   float dist, reldist;
   unsigned *quantizedData = new unsigned[count];
-  lloyd(inputData, count-1, binValues, codebookSize, binBoundaries, dist,
-        reldist, quantizedData);
-
-  /*
-  printf("LLoyd output:\n");
-  for (int i=0; ; i++) {
-    printf("codebook %d: %g\n", i, binValues[i]);
-    if (i == codebookSize-1) break;
-    printf("bin %d: %g\n", i, binBoundaries[i]);
-  }
-  */
-
-  // sanity-check
-  for (int i=0; i < codebookSize-1; i++) {
-    if (binValues[i] > binValues[i+1]) {
-      fprintf(stderr, "ERROR: codebook[%d] > codebook[%d]  (%f > %f)\n",
-              i, i+1, binValues[i], binValues[i+1]);
-    }
-
-    if (binBoundaries[i] < binValues[i] || binBoundaries[i] > binValues[i+1]) {
-      fprintf(stderr, "ERROR: partition[%d] (%.8g) should be between codebook[%d] (%.8g) and codebook[%d] (%.8g)\n",
-              i, binBoundaries[i], i, binValues[i], i+1, binValues[i+1]);
-    }
-  }
-
-  // if binCount is even and abs(minVal) > maxVal, add minVal as the
-  // first codebook entry
-  if ((binCount & 1)==0 && fabsf(minVal) > maxVal) {
-    quantBinValues.push_back(minVal);
-    quantBinBoundaries.push_back( (minVal + -binValues[codebookSize-1])/2 );
-  }
-
-  // negative bins
-  quantBinValues.push_back(-binValues[codebookSize-1]);
-
-  for (int i=codebookSize-2; i >= 0; i--) {
-    quantBinBoundaries.push_back(-binBoundaries[i]);
-    quantBinValues.push_back(-binValues[i]);
-  }
-
-  // zero bin
-  quantBinBoundaries.push_back(-minAbsVal);
-  quantBinValues.push_back(0);
-  quantBinBoundaries.push_back(minAbsVal);
-
-  // positive bins
-  for (int i=0; i < codebookSize-1; i++) {
-    quantBinValues.push_back(binValues[i]);
-    quantBinBoundaries.push_back(binBoundaries[i]);
-  }    
-  quantBinValues.push_back(binValues[codebookSize-1]);
-
-  // top bin
-  if ((binCount & 1)==0 && maxVal >= fabsf(minVal) ) {
-    quantBinValues.push_back(maxVal);
-    quantBinBoundaries.push_back( (maxVal + binValues[codebookSize-1])/2 );
-  }
-
-  // fprintf(stderr, "%d bin values, binCount=%d\n", (int)quantBinValues.size(), binCount);
-  assert(quantBinBoundaries.size() + 1 == quantBinValues.size());
-  assert((int)quantBinValues.size() == binCount);
-
-  // print all the value and boundaries
-  /*
-  for (size_t i=0; i < quantBinBoundaries.size(); i++) {
-    printf("   %f\n%f\n", quantBinValues[i], quantBinBoundaries[i]);
-  }
-  printf("   %f\n", quantBinValues[quantBinValues.size()-1]);
-  */
-
-  /*
-    // print all the input data and the quantized value for each
-  for (int i=0; i < count; i++) {
-    printf("%g\t%d\n", inputData[i], quantizedData[i]);
-  }
-  */
+  float *tmpBinBoundaries = new float[codebookSize-1];
+  double startTime = NixTimer::time();
+  int lloydIters = 0;
+  lloyd(inputData, count-1, codebook.data(), (int)codebook.size(),
+        tmpBinBoundaries, dist, reldist, quantizedData,
+        DEFAULT_LLOYD_STOP_CRITERIA, &lloydIters);
+  double elapsed = NixTimer::time() - startTime;
+  if (!QUIET)
+    printf("CPU Lloyd %d iters, %.2f ms\n", lloydIters, elapsed*1000);
   
   delete[] quantizedData;
-  delete[] binBoundaries;
-  delete[] binValues;
+  delete[] tmpBinBoundaries;
+
+  /*
+  printf("After Lloyd\n");
+  for (int i=0; i < codebookSize; i++) printf("%d) %f\n", i, codebook[i]);
+  */
+
+  setBinsFromCodebook(quantBinValues, quantBinBoundaries, binCount,
+                      codebook, thresholdValue, minVal, maxVal);
+  
 }
 
 

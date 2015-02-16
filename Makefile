@@ -44,9 +44,9 @@
 #      http://developer.download.nvidia.com/compute/cuda/6_5/rel/installers/cuda_6.5.14_linux_64.run
 
 # build all the tools that don't require CUDA
-default: test_compress_cpu java convert histogram cubelet_convert test_compress_gpu
+default: test_compress_cpu java convert histogram cubelet_convert
 
-EXECS = test_compress_cpu test_haar_cpu haar \
+EXECS = test_compress_cpu test_compress_gpu test_haar_cpu haar \
   test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu \
   normalize test_rle test_huffman test_bit_stream test_quant_count \
   list_data image_error test_transform test_lloyd \
@@ -152,7 +152,10 @@ JAVAC = javac -cp .:$(PROTOBUF_JAR):$(JAVACV_JAR)
 
 endif
 
-NVCC = nvcc $(NVCC_OPT) $(NVCC_ARCH) $(NVCC_ARCH_SIZE) $(NVCC_COMPILER_BINDIR) $(CC_OPT_FLAG) 
+LLOYD_INC=-IOctave/LloydsAlgorithm/src/c++
+LLOYD_GPU_INC=-ICUDA/lloyds
+
+NVCC = nvcc $(NVCC_OPT) $(NVCC_ARCH) $(NVCC_ARCH_SIZE) $(NVCC_COMPILER_BINDIR) $(CC_OPT_FLAG) $(LLOYD_GPU_INC)
 
 %.$(OBJ_EXT): %.cc
 	$(NVCC) -c $<
@@ -167,8 +170,6 @@ CUDA_OBJS=dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) data_io.$(OBJ_EXT) \
 HAAR_OBJS=haar.$(OBJ_EXT) dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) \
   data_io.$(OBJ_EXT) transpose_gpu.$(OBJ_EXT) nixtimer.$(OBJ_EXT) \
   wavelet.$(OBJ_EXT) wavelet_compress.pb.$(OBJ_EXT)
-
-LLOYD_INC=-IOctave/LloydsAlgorithm/src/c++
 
 haar.$(OBJ_EXT): wavelet_compress.pb.h haar.cu dwt_cpu.h data_io.h dwt_gpu.h
 
@@ -242,18 +243,21 @@ test_compress: test_compress_cpu test_compress_gpu
 test_compress_cpu.o: test_compress_cpu.cc test_compress_common.h \
 	  dwt_cpu.h nixtimer.h thresh_cpu.h quant.h bit_stream.h huffman.h \
 	  Octave/LloydsAlgorithm/src/c++/lloyds.h wavelet_compress.pb.h \
-	  wavelet.h cubelet_file.h
+	  wavelet.h cubelet_file.h optimize.h
 	$(CC) $(LLOYD_INC) -c $<
 
 wavelet.o: wavelet.cc wavelet.h wavelet_compress.pb.h
 	$(CC) -c $<
 
-optimize.o: optimize.cc optimize.h test_compress_cpu.h wavelet.h
+optimize.o: optimize.cc optimize.h
+	$(CC) -c $<
+
+optimize_cpu.o: optimize_cpu.cc optimize.h wavelet.h test_compress_cpu.h
 	$(CC) -c $<
 
 test_compress_common.o: test_compress_common.cc test_compress_common.h \
 	  rle.h bit_stream.h nixtimer.h huffman.h dwt_cpu.h \
-	  wavelet_compress.pb.h wavelet.h
+	  wavelet_compress.pb.h wavelet.h quant.h
 	$(CC) -c $<
 
 dwt_cpu.o: dwt_cpu.cc dwt_cpu.h nixtimer.h wavelet.h
@@ -284,6 +288,12 @@ lloyds.o: Octave/LloydsAlgorithm/src/c++/lloyds.cpp \
 	  Octave/LloydsAlgorithm/src/c++/lloyds.h
 	$(CC) -c -IOctave/LloydsAlgorithm/src/c++ $< -o $@
 
+cudalloyds.$(OBJ_EXT): CUDA/lloyds/cudalloyds.cu CUDA/lloyds/cudalloyds.h
+	$(NVCC) -c $<
+
+dwt_gpu.$(OBJ_EXT): dwt_gpu.cu dwt_gpu.h dwt_cpu.h
+	$(NVCC) -c $<
+
 cubelet_file.o: cubelet_file.cc cubelet_file.h wavelet_compress.pb.h
 	$(CC) -c $<
 
@@ -302,21 +312,29 @@ TEST_COMPRESS_CPU_OBJS=test_compress_cpu.o wavelet.o \
 	test_compress_common.o dwt_cpu.o data_io.o \
 	nixtimer.o thresh_cpu.o \
 	quant.o wavelet_compress.pb.o \
-	lloyds.o huffman.o cubelet_file.o optimize.o
+	lloyds.o huffman.o cubelet_file.o optimize.o optimize_cpu.o
 
 test_compress_cpu: $(TEST_COMPRESS_CPU_OBJS)
 	$(CC) $(TEST_COMPRESS_CPU_OBJS) -o $@ $(LIBS) $(PROTOBUF_LIB)
 
-test_compress_gpu.$(OBJ_EXT): test_compress_gpu.cu wavelet_compress.pb.h quant.h
+test_compress_gpu.$(OBJ_EXT): test_compress_gpu.cu test_compress_gpu.h \
+  wavelet_compress.pb.h quant.h
 
 test_compress_common.$(OBJ_EXT): test_compress_common.cc test_compress_common.h quant.h rle.h
+
+wavelet_cuda.$(OBJ_EXT): CUDA/wavelet/wavelet.cu CUDA/wavelet/wavelet.h
+	$(NVCC) -ICUDA/wavelet -c $< -o $@
 
 TEST_COMPRESS_GPU_OBJS=test_compress_gpu.$(OBJ_EXT) \
   test_compress_common.$(OBJ_EXT) \
   dwt_cpu.$(OBJ_EXT) dwt_gpu.$(OBJ_EXT) huffman.$(OBJ_EXT) \
   data_io.$(OBJ_EXT) transpose_gpu.$(OBJ_EXT) nixtimer.$(OBJ_EXT) \
   wavelet_compress.pb.$(OBJ_EXT) quant_count.$(OBJ_EXT) wavelet.$(OBJ_EXT) \
-  cubelet_file.$(OBJ_EXT)
+  cubelet_file.$(OBJ_EXT) cudalloyds.$(OBJ_EXT) \
+  optimize.$(OBJ_EXT) optimize_gpu.$(OBJ_EXT) quant_gpu.$(OBJ_EXT) \
+  histogram_gpu.$(OBJ_EXT)
+
+#  wavelet_cuda.$(OBJ_EXT)
 
 test_compress_gpu: $(TEST_COMPRESS_GPU_OBJS)
 	$(NVCC) $(TEST_COMPRESS_GPU_OBJS) -o $@ $(PROTOBUF_LIB_NVCC)

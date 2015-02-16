@@ -189,14 +189,26 @@ void computeErrorRatesAfterDequant
 void translateCubeDataToOriginal(CubeFloat *src, Cube *dest,
                                  bool verbose = false);
 
+// create an initial codebook before using Lloyd's algorithm
+void initialLloydCodebook(std::vector<float> &codebook, int codebookSize,
+                          float minAbsVal, float maxAbsVal);
+
+void setBinsFromCodebook(std::vector<float> &binValues,
+                         std::vector<float> &binBoundaries,
+                         int binCount,
+                         std::vector<float> &codebook,
+                         float thresholdValue, float minVal, float maxVal);
+
 // Read cubelet from a file
 bool readQuantData(CubeletStreamReader &cubeletStream, CubeInt *data);
 
 // Write 'cube' to a cubelet stream.
 // If sizeBytes is not NULL, store the size of the output data in it.
+// if binCounts is not NULL, it contains an array listing the frequencies
+// of each values.
 bool writeQuantData(CubeletStreamWriter &cubeletStream,
                     CubeInt *cube, Options &opt,
-                    int *sizeBytes = NULL);
+                    int *sizeBytes = NULL, int *binCounts = NULL);
 
 Quantizer *createQuantizer(const WaveletCompressionParam &param);
 

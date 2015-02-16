@@ -446,7 +446,7 @@ class CubeNum : public Cube {
   }
 
   ~CubeNum() {
-    if (ownsData && data_) free(data_);
+    deallocate();
   }
 
   // get one value
