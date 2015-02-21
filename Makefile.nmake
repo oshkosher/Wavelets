@@ -64,6 +64,8 @@ NVCC = nvcc $(NVCC_OPT) $(NVCC_ARCH) $(NVCC_ARCH_SIZE) $(CC_OPT_FLAG) \
   --compiler-options $(CL_OPT_FLAG) -I$(PROTOBUF_DIR)\include \
   -D_SCL_SECURE_NO_WARNINGS
 
+MATLAB_HOME = "c:\Program Files\MATLAB\R2014a\extern"
+
 CC = cl /EHsc /nologo $(BUILD_FLAGS) -D_SCL_SECURE_NO_WARNINGS
 
 
@@ -204,6 +206,8 @@ test_quant_count.exe: test_quant_count.cc quant_count.h quant_count.cc quant.h \
 	  data_io.cc thresh_cpu.cc quant_unif_cpu.cc quant_log_cpu.cc \
 	  dquant_unif_cpu.cc dquant_log_cpu.cc nixtimer.cc
 
+test_wavelet.exe: test_wavelet.cc wavelet.cc wavelet.h wavelet_compress.pb.cc nixtimer.cc
+	$(CC) /I$(PROTOBUF_DIR)\include test_wavelet.cc wavelet.cc wavelet_compress.pb.cc nixtimer.cc $(PROTOBUF_DIR)\$(BUILD)\libprotobuf.lib
 
 list_data.exe: list_data.cc data_io.cc data_io.h
 	$(CC) list_data.cc data_io.cc
@@ -216,6 +220,15 @@ WaveletSampleImage.class: WaveletSampleImage.java
 ImageDiff.class: ImageDiff.java
 	$(JAVAC) ImageDiff.java
 
+mat2cube.exe: mat2cube.cc cubelet_file.cc cubelet_file.h wavelet.cc wavelet.h \
+  wavelet_compress.pb.cc wavelet_compress.pb.h
+	$(CC) /I$(MATLAB_HOME)\include /I$(PROTOBUF_DIR)\include \
+          mat2cube.cc cubelet_file.cc wavelet.cc wavelet_compress.pb.cc \
+          protobuf-2.6.0-save-vs2012\vsprojects\x64\$(BUILD)\libprotobuf.lib \
+          /link /OUT:mat2cube.exe \
+          /DEFAULTLIB:$(MATLAB_HOME)\lib\win64\microsoft\libmat.lib \
+          /DEFAULTLIB:$(MATLAB_HOME)\lib\win64\microsoft\libmx.lib
+          
 
 clean:
 	del *.class *.obj *.o *.exp *.lib *.pdb *.ilk *.idb *~ \
