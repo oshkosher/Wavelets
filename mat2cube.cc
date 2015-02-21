@@ -165,7 +165,8 @@ int main(int argc, char **argv) {
     cube.datatype = WAVELET_DATA_UINT8;
     break;
   default:
-    printf("datatype: %d\n", (int)dataType, dimCount, dims);
+    printf("datatype %d not supported yet\n", (int)dataType);
+    return 1;
   }
 
   CubeletStreamWriter cubeWriter;
