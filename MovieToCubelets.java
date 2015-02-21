@@ -98,7 +98,12 @@ public class MovieToCubelets {
       System.err.flush();
 
       // get one frame
-      BufferedImage image = grabber.grab().getBufferedImage();
+      org.bytedeco.javacpp.opencv_core.IplImage im = grabber.grab();
+      if (im == null) {
+        System.err.println("\nFrame grabber failed on frame " + (frameNo+1));
+        break;
+      }
+      BufferedImage image = im.getBufferedImage();
 
       // convert to grayscale
       BufferedImage grayImage = new BufferedImage
