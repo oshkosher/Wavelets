@@ -44,18 +44,20 @@
 #      http://developer.download.nvidia.com/compute/cuda/6_5/rel/installers/cuda_6.5.14_linux_64.run
 
 # build all the tools that don't require CUDA
-default: test_compress_cpu java convert histogram cubelet_convert
+default: cube test_compress_cpu java histogram
+default2: test_compress_cpu test_compress_gpu
 
 EXECS = test_compress_cpu test_compress_gpu test_haar_cpu haar \
   test_haar_thresh_quantUnif_cpu test_haar_thresh_quantLog_cpu \
   normalize test_rle test_huffman test_bit_stream test_quant_count \
   list_data image_error test_transform test_lloyd \
-  histogram test_cubelet_file cubelet_convert test_wavelet
+  histogram test_cubelet_file cube test_wavelet \
+  shortImagesToCubelets
 
 # build the tools that require CUDA
 cuda: haar test_compress_gpu
 
-java: makeall.class
+java: makeall.class wrappers
 
 makeall.class Cubelet.class CubeletFile.class CubeletViewer.class \
   ImageDiff.class WaveletCompress.class WaveletSampleImage.class \
@@ -132,7 +134,8 @@ PROTOC_VC = $(PROTOBUF_DIR_VC)/$(BUILD)/protoc.exe
 PROTOC = protoc
 NVCC_ARCH_SIZE = -m32
 NVCC_OPT = --compiler-options $(CL_OPT_FLAG) -D_SCL_SECURE_NO_WARNINGS  -I$(PROTOBUF_DIR_VC)/include $(NVCC_COMPILER_BINDIR)
-CLASSPATH_DIR="$(shell cygpath --windows `pwd`);protobuf-2.6.0/protobuf.jar;c:/Apps/javacv-bin/javacv.jar"
+CURDIR="$(shell cygpath --windows `pwd` | tr '\\' /)"
+CLASSPATH_DIR="$(CURDIR);$(CURDIR)/protobuf-2.6.0/protobuf.jar;c:/Apps/javacv-bin/javacv.jar"
 JAVAC = javac -cp '.;$(PROTOBUF_JAR);$(JAVACV_JAR)'
 
 else
@@ -176,7 +179,7 @@ haar.$(OBJ_EXT): wavelet_compress.pb.h haar.cu dwt_cpu.h data_io.h dwt_gpu.h
 haar: $(HAAR_OBJS)
 	$(NVCC) $(HAAR_OBJS) $(PROTOBUF_LIB_NVCC) -o $@
 
-cubelet: test_cubelet_file MovieToCubelets.class cubelet_convert
+cubelet: test_cubelet_file MovieToCubelets.class cube
 
 MovieToCubelets.class: MovieToCubelets.java
 	$(JAVAC) $<
@@ -301,7 +304,7 @@ test_cubelet_file: test_cubelet_file.cc cubelet_file.o wavelet_compress.pb.o \
 	  wavelet.o
 	$(CC) $^ $(PROTOBUF_LIB) -o $@
 
-cubelet_convert: cubelet_convert.cc cubelet_file.o wavelet_compress.pb.o \
+cube: cubelet_convert.cc cubelet_file.o wavelet_compress.pb.o \
 	  wavelet.o
 	$(CC) $^ $(PROTOBUF_LIB) -o $@
 
@@ -320,7 +323,7 @@ test_compress_cpu: $(TEST_COMPRESS_CPU_OBJS)
 test_compress_gpu.$(OBJ_EXT): test_compress_gpu.cu test_compress_gpu.h \
   wavelet_compress.pb.h quant.h
 
-test_compress_common.$(OBJ_EXT): test_compress_common.cc test_compress_common.h quant.h rle.h
+test_compress_common.$(OBJ_EXT): test_compress_common.cc test_compress_common.h quant.h rle.h cubelet_file.h
 
 wavelet_cuda.$(OBJ_EXT): CUDA/wavelet/wavelet.cu CUDA/wavelet/wavelet.h
 	$(NVCC) -ICUDA/wavelet -c $< -o $@
@@ -354,6 +357,10 @@ histogram: histogram.cc data_io.cc data_io.h
 test_array_data: test_array_data.cc array_data.h
 	$(CC) test_array_data.cc -o $@
 
+shortImagesToCubelets: shortImagesToCubelets.cc wavelet.o cubelet_file.o \
+  wavelet_compress.pb.o
+	$(CC) $^ -o $@ $(PROTOBUF_LIB)
+
 libwaveletcuda.so: dwt_cpu.h dwt_cpu.cc dwt_gpu.h dwt_gpu.cu data_io.h data_io.cc \
   transpose_gpu.h transpose_gpu.cu nixtimer.h nixtimer.cc wavelet.cc wavelet.h \
   Octave/LloydsAlgorithm/octave_wrapper.cu \
@@ -368,12 +375,27 @@ libwaveletcuda.so: dwt_cpu.h dwt_cpu.cc dwt_gpu.h dwt_gpu.cu data_io.h data_io.c
 cudahaar.mex: Octave/LloydsAlgorithm/cudahaar.cc libwaveletcuda.so
 	$(MKOCT) -L. -lwaveletcuda Octave/LloydsAlgorithm/cudahaar.cc
 
+wrappers: convert cubeview movcube
+
 convert: Makefile
 	@echo Write $@ wrapper for \"java WaveletSampleImage\"
-	@echo '#!/bin/sh' > convert
-	@echo 'unset DISPLAY' >> convert
-	@echo java -cp \"$(CLASSPATH_DIR)\" WaveletSampleImage \"\$$@\" >> convert
-	chmod 755 convert
+	@echo '#!/bin/sh' > $@
+	@echo 'unset DISPLAY' >> $@
+	@echo java -cp \"$(CLASSPATH_DIR)\" WaveletSampleImage \"\$$@\" >> $@
+	chmod 755 $@
+
+cubeview: Makefile
+	@echo Write $@ wrapper for \"java CubeletViewer\"
+	@echo '#!/bin/sh' > $@
+	@echo java -cp \"$(CLASSPATH_DIR)\" CubeletViewer \"\$$@\" >> $@
+	chmod 755 $@
+
+movcube: Makefile
+	@echo Write $@ wrapper for \"java MovieToCubelets\"
+	@echo '#!/bin/sh' > $@
+	@echo 'unset DISPLAY' >> $@
+	@echo java -cp \"$(CLASSPATH_DIR)\" MovieToCubelets \"\$$@\" >> $@
+	chmod 755 $@
 
 send: .senddevel
 
@@ -389,5 +411,6 @@ sendscu: .sendscu
 
 clean:
 	rm -f *.class *.obj *.o *.exp *.lib *.pdb *.so *.gch *.ilk *~ \
-	  *.stackdump $(EXECS) convert libwaveletcuda.so cudahaar.oct \
-	  wavelet_compress.pb.{h,cc} WaveletCompress.java
+	  *.stackdump $(EXECS) libwaveletcuda.so cudahaar.oct \
+	  wavelet_compress.pb.{h,cc} WaveletCompress.java \
+	  convert movcube cubeview

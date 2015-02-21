@@ -293,8 +293,9 @@ class Cube {
  private:
   char idString[50];
  public:
-  const char *getId() {
-    sprintf(idString, "(%d,%d,%d)", 
+  const char *getId() const {
+    char *ncstr = (char*)idString;
+    sprintf(ncstr, "(%d,%d,%d)", 
             parentOffset.x, parentOffset.y, parentOffset.z);
     return idString;
   }
@@ -304,6 +305,24 @@ class Cube {
   uint64_t dataFileOffset;
 
   WaveletDataType datatype;
+
+  // Maximum possible value for this data, used when computing
+  // peak signal-to-noise ratio.
+  int maxPossibleValue;
+
+  // Returns 0 if no value set.
+  int getMaxPossibleValue() const {
+    if (maxPossibleValue <= 0) {
+      if (datatype == WAVELET_DATA_UINT8) {
+        return 255;
+      } else {
+        return 0;
+      }
+    } else {
+      return maxPossibleValue;
+    }
+  }
+
 
   // If true, then this object "owns" the data, so if 'data' is non-NULL
   // when the destructor is called, delete[] it.
@@ -393,6 +412,7 @@ class Cube {
     }
   }
 
+  // Copy data from/to a protocol buffer object.
   void copyFromCubeletBuffer(const CubeletBuffer *buf);
   void copyToCubeletBuffer(CubeletBuffer *buf) const;
 
@@ -421,6 +441,11 @@ class Cube {
     return "%f ";
   }
 
+  const char *printfFormatSimple() const {
+    printf("warning: default printfFormatSimple() called\n");
+    return "%f";
+  }
+
   bool writeToFile(FILE *outf) const;
 };
 
@@ -434,9 +459,12 @@ template<class NUM>
 class CubeNum : public Cube {
  public:
 
+  typedef NUM MyType;
+
   // set the datatype field appropriately
   void setType();
   const char *printfFormat() const;
+  const char *printfFormatSimple() const;
 
   const NUM *data() const {return (NUM*) data_;}
   NUM *data() {return (NUM*) data_;}
@@ -907,14 +935,17 @@ class CubeNum : public Cube {
 typedef CubeNum<float> CubeFloat;
 template<> void CubeNum<float>::setType();
 template<> const char *CubeNum<float>::printfFormat() const;
+template<> const char *CubeNum<float>::printfFormatSimple() const;
 
 typedef CubeNum<int> CubeInt;
 template<> void CubeNum<int>::setType();
 template<> const char *CubeNum<int>::printfFormat() const;
+template<> const char *CubeNum<int>::printfFormatSimple() const;
 
 typedef CubeNum<unsigned char> CubeByte;
 template<> void CubeNum<unsigned char>::setType();
 template<> const char *CubeNum<unsigned char>::printfFormat() const;
+template<> const char *CubeNum<unsigned char>::printfFormatSimple() const;
 
 
 #endif // __WAVELET_H__

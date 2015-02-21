@@ -4,6 +4,16 @@
 #include "cubelet_file.h"
 #include "wavelet_compress.pb.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#include <io.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#else
+#include <unistd.h>
+#include <sys/types.h>
+#include <errno.h>
+#endif
 
 // 20 character header line
 static const char *CUBELET_HEADER = "SCU cubelets 1.0\n";
@@ -21,6 +31,8 @@ static int writeProtobuf(FILE *outf, google::protobuf::Message *message,
 
 static bool readProtobuf(FILE *inf, google::protobuf::Message *message,
                          uint32_t *length = NULL);
+
+static bool fileExists(const char *filename);
 
 
 // This is designed to be 64 bytes
@@ -114,13 +126,57 @@ static bool readProtobuf(FILE *inf, google::protobuf::Message *message,
 }
 
 
-bool CubeletStreamWriter::open(const char *filename) {
+static bool fileExists(const char *filename) {
+  FILE *inf = fopen(filename, "r");
+  if (inf) {
+    fclose(inf);
+    return true;
+  } else {
+    return false;
+  }
+}
+
+
+bool isCubeletFile(const char *filename) {
+  if (!filename || !strcmp("-", filename)) return false;
+
+  CubeletStreamReader reader;
+  if (reader.open(filename, true)) {
+    reader.close();
+    return true;
+  } else {
+    return false;
+  }
+}
+
+
+bool CubeletStreamWriter::open(const char *filename, bool append) {
   // basic assumption in a 32-bit world
   assert(sizeof(unsigned) == 4);
 
   if (outf) close();
+  index.clear_cubelets();
 
   if (filename && strcmp(filename, "-")) {
+
+    if (append) {
+
+      // if the file doesn't exist, just create it like normal
+      if (fileExists(filename)) {
+
+	// if it exists but is not a cubelet file, complain and fail
+	if (!isCubeletFile(filename)) {
+	  fprintf(stderr, "Error: \"%s\" is not a cubelet file.\n", filename);
+	  return false;
+	}
+
+	// open the file for writing, positioned after the last cubelet,
+	// with the footer data truncated.
+	return openAfterLastCubelet(filename);
+      }
+
+    }
+
     outf = fopen(filename, "wb");
     if (!outf) {
       fprintf(stderr, "Error: cannot open \"%s\" for writing.\n", filename);
@@ -142,6 +198,62 @@ bool CubeletStreamWriter::open(const char *filename) {
   
   return true;
 }
+
+
+bool CubeletStreamWriter::openAfterLastCubelet(const char *filename) {
+  
+  // find the last cubelet in the file
+  CubeletStreamReader reader;
+  if (!reader.open(filename)) return false;
+
+  std::vector<Cube> cubelets;
+  if (!reader.listCubelets(cubelets)) return false;
+
+  off_t offsetAfterLastCubelet = HEADER_SIZE;
+  for (size_t i=0; i < cubelets.size(); i++) {
+    off_t offsetAfter = cubelets[i].dataFileOffset + 
+      cubelets[i].getSizeInBytes();
+    if (offsetAfter > offsetAfterLastCubelet)
+      offsetAfterLastCubelet = offsetAfter;
+
+    // add the the list of cubelets in this file
+    CubeletBuffer *buffer = index.add_cubelets();
+    cubelets[i].copyToCubeletBuffer(buffer);
+  }
+  reader.close();
+
+  // truncate the file after the last cubelet
+#ifndef _WIN32
+  if (truncate(filename, offsetAfterLastCubelet)) {
+    fprintf(stderr, "Error truncating \"%s\": %s\n", filename, strerror(errno));
+    return false;
+  }
+#else
+  int fd;
+  if (_sopen_s(&fd, filename, _O_BINARY | _O_WRONLY, _SH_DENYRW,
+               _S_IREAD | _S_IWRITE)) {
+    fprintf(stderr, "Error opening \"%s\" for truncation: %s\n",
+            filename, strerror(errno));
+    return false;
+  }
+  if (_chsize_s(fd, offsetAfterLastCubelet)) {
+    fprintf(stderr, "Error truncating \"%s\": %s\n",
+            filename, strerror(errno));
+    return false;
+  }
+#endif
+
+  outf = fopen(filename, "a");
+  if (!outf) {
+    fprintf(stderr, "Failed to open \"%s\" for writing.\n", filename);
+    return false;
+  }
+
+  // printf("open to offset %d\n", (int)ftell(outf));
+
+  return true;
+}
+
 
 
 bool CubeletStreamWriter::addCubelet(const Cube *cubelet) {
@@ -213,13 +325,14 @@ bool CubeletStreamWriter::close() {
 }
 
 
-bool CubeletStreamReader::open(const char *filename) {
+bool CubeletStreamReader::open(const char *filename, bool quiet) {
   if (inf) close();
 
   if (filename && strcmp(filename, "-")) {
     inf = fopen(filename, "rb");
     if (!inf) {
-      fprintf(stderr, "Cannot open \"%s\" for reading.\n", filename);
+      if (!quiet)
+	fprintf(stderr, "Cannot open \"%s\" for reading.\n", filename);
       return false;
     }
   } else {
@@ -230,19 +343,38 @@ bool CubeletStreamReader::open(const char *filename) {
 
   // read the header
   if (fread(&header, sizeof header, 1, inf) != 1) {
-    fprintf(stderr, "Failed to read header in \"%s\".\n", filename);
+    if (!quiet)
+      fprintf(stderr, "Failed to read header in \"%s\".\n", filename);
     if (inf != stdout) fclose(inf);
     inf = NULL;
     return false;
   }
 
   if (strcmp(header.headerLine, CUBELET_HEADER)) {
-    fprintf(stderr, "Input file \"%s\" is not a cubelet file.\n", filename);
+    if (!quiet)
+      fprintf(stderr, "Input file \"%s\" is not a cubelet file.\n", filename);
     if (inf != stdout) fclose(inf);
     inf = NULL;
     return false;
   }
 
+  dataSizeBytes = 0;
+  dataHasBeenRead = true;
+  eofReached = false;
+
+  return true;
+}
+
+
+bool CubeletStreamReader::reset() {
+  // reset on a closed file might as well be a no-op
+  if (!inf) return true;
+
+  if (fseek(inf, sizeof(CubeletHeader), SEEK_SET)) {
+    fprintf(stderr, "Failed to jump back to the top of the cubelet file.\n");
+    return false;
+  }
+  
   dataSizeBytes = 0;
   dataHasBeenRead = true;
   eofReached = false;
@@ -284,6 +416,21 @@ bool CubeletStreamReader::next(Cube *cube) {
 }
 
 
+bool CubeletStreamReader::find(Cube *cube, int3 id) {
+  if (!reset()) return false;
+  
+  Cube tmpCube;
+  while (true) {
+    if (!next(&tmpCube)) return false;
+    
+    if (id < int3(0,0,0) || id == tmpCube.parentOffset) {
+      *cube = tmpCube;
+      return true;
+    }
+  }
+}
+  
+
 void *CubeletStreamReader::getRawData(void *data) {
 
   if (dataSizeBytes == 0) return NULL;
@@ -310,8 +457,7 @@ void *CubeletStreamReader::getRawData(void *data) {
 
 /**
    Read the data for the curent cube.
-   If the given cubelet object does not match the cubelet most
-   recently read via the 'next()' function, the behavior is undefined.
+   If cube->dataFileOffset is not set, this fails and returns false.
 
    data is compressed:
      storage is not allocated: allocate and store
@@ -322,6 +468,17 @@ void *CubeletStreamReader::getRawData(void *data) {
 
 */
 bool CubeletStreamReader::getCubeData(Cube *cube) {
+
+  if (cube->dataFileOffset == 0) {
+    fprintf(stderr, "Cannot read cubelet %s; dataFileOffset not set.\n",
+	    cube->getId());
+    return false;
+  }
+
+  fseek(inf, cube->dataFileOffset, SEEK_SET);
+  dataHasBeenRead = false;
+  dataSizeBytes = cube->getSizeInBytes();
+  if (!cube->data_) cube->allocate();
 
   // if the data is compressed, just store it directly
   if (cube->isWaveletCompressed) {
@@ -362,6 +519,20 @@ bool CubeletStreamReader::getCubeData(Cube *cube) {
 
       free(rawData);
     }
+  }
+
+  return true;
+}
+
+
+bool CubeletStreamReader::listCubelets(std::vector<Cube> &cubelets) {
+
+  reset();
+  cubelets.clear();
+  Cube cube;
+  
+  while (next(&cube)) {
+    cubelets.push_back(cube);
   }
 
   return true;

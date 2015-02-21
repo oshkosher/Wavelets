@@ -4,10 +4,15 @@
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
+#include <vector>
 #include "wavelet_compress.pb.h"
 
 
 #include "wavelet.h"  // "Cube" class is defined here
+
+
+bool isCubeletFile(const char *filename);
+
 
 /*
 
@@ -45,7 +50,10 @@ class CubeletStreamWriter {
  public:
 
   // or NULL or "-" to write to stdout
-  bool open(const char *filename);
+  // if 'filename' exists:
+  //   if append == false, overwrite it
+  //   if append == true, add cubelets to it
+  bool open(const char *filename, bool append = false);
 
   bool addCubelet(const Cube *cubelet);
 
@@ -60,6 +68,8 @@ class CubeletStreamWriter {
   }
 
  private:
+  bool openAfterLastCubelet(const char *filename);
+
   FILE *outf;
 
   // metadata for all the cubelets that have been written to this stream
@@ -72,15 +82,25 @@ class CubeletStreamReader {
   typedef scu_wavelet::int3 int3;
 
   // or NULL or "-" to read from stdin
-  bool open(const char *filename);
+  // if quiet==true, suppress error messages
+  bool open(const char *filename, bool quiet = false);
 
   bool isOpen() {return inf != NULL;}
 
+  // Return to the beginning of the file. If some cubelets have already
+  // been scanned via 'next()' this will restart the scan.
+  bool reset();
+  
   // Read the next cubelet in the stream and fill 'cube' with all
   // the metadata for it. Do not read the content data for the cubelet.
   // If we reach the end of the file (or empty cubelet that marks the end
   // of the file) return false, otherwise true;
   bool next(Cube *cube);
+
+  // Find the first cubelet with parentOffset matching 'id'.
+  // Alternatively, if id is all negative, return the first cubelet.
+  // Like next(), this will not load the content data for the cubelet.
+  bool find(Cube *cube, int3 id);
 
   // Return the content data for the current cubelet.
   // If data is NULL, memory for the data will be allocated with malloc().
@@ -92,9 +112,12 @@ class CubeletStreamReader {
   // Return the address of where the data was written, or NULL on error.
   void *getRawData(void *data = NULL);
 
-  // read the data directly into a cubelet, which may have padding between
-  // data rows
+  // Read the data directly into a cubelet, which may have padding between
+  // data rows. This also allows random access in the file.
   bool getCubeData(Cube *cube);
+
+  // get a list of all the cubelets in this file
+  bool listCubelets(std::vector<Cube> &cubelets);
 
   void close();
 

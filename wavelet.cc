@@ -186,6 +186,10 @@ template<> const char *CubeNum<float>::printfFormat() const {
   return "%8.4f ";
 }
 
+template<> const char *CubeNum<float>::printfFormatSimple() const {
+  return "%.8g";
+}
+
 template<> void CubeNum<int>::setType() {
   datatype = WAVELET_DATA_INT32;
 }
@@ -194,12 +198,20 @@ template<> const char *CubeNum<int>::printfFormat() const {
   return "%5d ";
 }
 
+template<> const char *CubeNum<int>::printfFormatSimple() const {
+  return "%d";
+}
+
 template<> void CubeNum<unsigned char>::setType() {
   datatype = WAVELET_DATA_UINT8;
 }
 
 template<> const char *CubeNum<unsigned char>::printfFormat() const {
   return "%3d ";
+}
+
+template<> const char *CubeNum<unsigned char>::printfFormatSimple() const {
+  return "%d";
 }
 
 
@@ -213,6 +225,7 @@ void Cube::copyFromCubeletBuffer(const CubeletBuffer *buf) {
 
   dataFileOffset = buf->data_file_offset();
   datatype = protoIdToWaveletDatatype(buf->data_type());
+  maxPossibleValue = buf->maximum_value();
   if (buf->compression_algorithm() !=
       CubeletBuffer_CompressionAlgorithm_WAVELET) {
     isWaveletCompressed = false;
@@ -268,9 +281,11 @@ void Cube::copyToCubeletBuffer(CubeletBuffer *buf) const {
 
   if (dataFileOffset > 0) buf->set_data_file_offset(dataFileOffset);
   buf->set_data_type(datatypeToProtoId(datatype));
+  buf->set_maximum_value(getMaxPossibleValue());
 
   if (!isWaveletCompressed) {
     buf->set_compression_algorithm(CubeletBuffer_CompressionAlgorithm_NONE);
+    buf->set_byte_count(getSizeInBytes());
   } else {
     buf->set_compression_algorithm(CubeletBuffer_CompressionAlgorithm_WAVELET);
     buf->set_byte_count(param.compressedSize);
