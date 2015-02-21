@@ -43,6 +43,10 @@ public:
     }
   }
 
+  size_t getUniqueCount() {
+    return table.size();
+  }
+
   void getMode(float &value, size_t &count) {
     TableIt maxIt = table.begin();
     
@@ -325,7 +329,9 @@ int main(int argc, char **argv) {
 
   // output some statistics
   printf("range %.7g .. %.7g\n", min, max);
-  printf("count %llu, mode=%.7g (%llu)\n", (unsigned long long) data.size(),
+  printf("count %llu, %llu unique values, mode=%.7g (%llu)\n",
+         (unsigned long long) data.size(),
+         (unsigned long long) counter.getUniqueCount(),
 	 mode, (unsigned long long) modeCount);
   printf("average %.7g\n", sum / data.size());
   printf("stddev %.7g\n", stddev);
