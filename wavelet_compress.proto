@@ -1,54 +1,9 @@
 // For documentation on protocol buffers, see:
 //   https://developers.google.com/protocol-buffers/docs/proto
 
-// This is used when writing a sigle compressed image to a file.
-// It is superceded by the cubelet file format.
-message WaveletCompressedImage {
-  required int32 width = 1;
-  required int32 height = 2;
-  required int32 wavelet_transform_step_count = 3;
-
-  enum WaveletAlgorithm {
-    HAAR = 1;
-    CDF79 = 2;
-    CDF53 = 3;
-  }
-  required WaveletAlgorithm wavelet_algorithm = 4;
-
-  // This proportion of the original data that was replaced with zero.
-  // It will be a value between 0 and 1.
-  // (this value is not needed when reconstructing the data)
-  optional float threshold_fraction = 6;
-
-  // All values with an absolute value less than this were replaced with zero.
-  optional float threshold_value = 7;
-
-  required int32 quantize_bits = 8;
-
-  enum QuantizationAlgorithm {
-    UNIFORM = 1;
-    LOG = 2;
-    COUNT = 3;
-    LLOYD = 4;
-  }
-  optional QuantizationAlgorithm quantization_algorithm = 9;
-
-  // the maximum value used when computing quantization
-  optional float quant_max_value = 10;
-
-  // The boundaries of the quantization bins
-  // For N quantizeBits, there are 2^N bins, and (2^N)+1 boundaries.
-  repeated float quant_bin_boundaries = 11 [packed=true];
-
-  // The values that should be used to represent each quantized value.
-  // AKA the codebook.
-  // For N quantizeBits, there are 2^N quantize values.
-  repeated float quant_bin_values = 12 [packed=true];
-
-  repeated int32 huffman_encode_table = 13 [packed=true];
-}
-
-
+// This is the metadata that describes how a cubelet was compressed, and
+// how to decompress it. It will be stored as the "compression_parameters"
+// optional field on each cubelet.
 message CompressionParametersBuffer {
 
   // If this data is the result of a wavelet transformation, then it might
@@ -136,6 +91,14 @@ message CubeletBuffer {
     FLOAT32 = 3; // 4-byte float
   }
   required DataType data_type = 7;
+
+  // If the data is values in the range 0..N, set this to N,
+  // so peak signal-to-noise ratio can be computed.
+  // For UINT8, this may be omitted, and will be assumed to be 255.
+  // Note that it may be unreliable to set the automatically based
+  // on the maximum value found in the data. pSNR is based on the maximum
+  // possible value not the maximum value found.
+  optional int32 maximum_value = 15 [default = 0];
 
   // number of bytes used by the data
   required uint32 byte_count = 8;
