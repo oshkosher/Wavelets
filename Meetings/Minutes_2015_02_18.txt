@@ -1,0 +1,54 @@
+Minutes of Weekly Meeting of the Wavelet Group
+
+Date: Wednesday, February 18th, 2015
+
+Time:  From about Noon to about 12:40 PM
+
+Present: All connected remotely. Anupam Goyal, Drazen Fabris, Ed Karrels, Bonnie Smithson. 
+
+Presentations:  None
+
+Discussions:
+
+Bonnie mentioned the following:
+
+1. She has three medical datasets – abdomen, coronary, and angio.  Angio has 460 slides of size 512x512.
+
+2. She has converted DICOM files to an image cube and then to a binary file.
+
+3. MatLab format files are there for Ed under a folder.  As Anupam looked in FileZilla, these seem to be under 
+“/MedicalVolumeSets/ImageCubes” (though he seems to have heard “ImageDataSets” as the name of directory during 
+the meeting).
+
+4. She has not heard back from her contact at nVidia about “Northstar”.  She may need to utilize another contact 
+at nVidia, which may be the contact that Serge has. 
+
+Ed mentioned the following:
+
+1. He may be able to directly read the .mov movie file created for Anupam by Craig Gower.  By the time of sending 
+these minutes, Ed read that file by reading three bytes for each pixel for Red, Green, and Blue (RGB) and then saving
+one value in monochrome of 1 byte that resulted in a file of 0.9 GB.  However, Anupam mentioned that, as per details 
+of this file obtained via Apple QuickTime, each pixel should be read as a 16-bit integer in Big Endean format that 
+should give a file of 1.8 GB.  Bonnie mentioned in an email to Anupam that this movie has very little change in it 
+and so it may not be suitable for our purposes and we may use other data such as obtained thorough Larry.
+
+2. The raw files have absolutely no header.
+
+3. He has both logarithmic and Lloyd’s quantizations running.  This was in response to a question from Drazen.
+
+4. Distortion calculations are in GPU code.
+
+Drazen mentioned that if we are working with raw files, it may be in competition with nVidia.
+
+There was also some discussion of MatLab code.
+
+Future Work:
+
+1. Anupam to email details of seven articles to Drazen, so that he can get PDFs of these through IEEE Explore 
+subscription of Santa Clara University libraries.  By the time of sending these minutes, Anupam got these from 
+Martin Luther King library and emailed them to the group.
+
+2. Bonnie plans to talk to Larry tonight at 8 PM about getting data samples.
+
+3. Bonnie plans to redo the datasets with lossless TIFFs, so that lossy JPEG is not used.  She plans to save these 
+as raw files.
