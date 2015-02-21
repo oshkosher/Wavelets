@@ -27,7 +27,7 @@ public class CubeletFile {
 
 
   // test function - list the cubelets in a file
-  public static void main2(String args[]) throws Exception {
+  public static void main(String args[]) throws Exception {
     if (args.length != 1) printHelp();
 
     String filename = args[0];
@@ -38,7 +38,7 @@ public class CubeletFile {
 
 
   // test function - write simple cubelet file
-  public static void main(String[] args) throws Exception {
+  public static void main2(String[] args) throws Exception {
     Cubelet cube = new Cubelet();
     float[] data = new float[100*100*100];
 
@@ -100,6 +100,13 @@ public class CubeletFile {
         for (int y=0; y < cube.height; y++) {
           for (int x=0; x < cube.width; x++) {
             System.out.printf("%4d", 0xff & cube.byteData[y*cube.width + x]);
+          }
+          System.out.println();
+        }
+      } else if (cube.datatype == Cubelet.DataType.INT32) {
+        for (int y=0; y < cube.height; y++) {
+          for (int x=0; x < cube.width; x++) {
+            System.out.printf("%7d", 0xff & cube.intData[y*cube.width + x]);
           }
           System.out.println();
         }
@@ -247,6 +254,7 @@ public class CubeletFile {
       switch (cubeBuf.getDataType()) {
       case UINT8: cube.datatype = Cubelet.DataType.UINT8; break;
       case FLOAT32: cube.datatype = Cubelet.DataType.FLOAT32; break;
+      case INT32: cube.datatype = Cubelet.DataType.INT32; break;
       }
 
       switch (cubeBuf.getCompressionAlgorithm()) {
@@ -255,9 +263,12 @@ public class CubeletFile {
       case WAVELET: cube.compressionAlg = Cubelet.CompressionAlg.WAVELET; break;
       }
 
+      cube.maxPossibleValue = cubeBuf.getMaximumValue();
+
       cube.dataFileOffset = 0;
       cube.byteData = null;
       cube.floatData = null;
+      cube.intData = null;
 
       // save the size of the data for this buffer
       dataSizeBytes = cubeBuf.getByteCount();
@@ -271,6 +282,7 @@ public class CubeletFile {
     /** Get the data for the current cubelet.
         If the data is UINT8, store it in cube.byteData.
         If the data is FLOAT32, store it in cube.floatData.
+        If the data is INT32, store it in cube.intData.
         Throws CubeletStreamingException if the data for this cubelet has
         already been read (the input data may be streaming, so we can't
         back up to read the data again).
@@ -305,6 +317,18 @@ public class CubeletFile {
         }
         
         cube.floatData = floats;
+      }
+
+      else if (currentCubeletDatatype == Cubelet.DataType.INT32) {
+        int count = dataSizeBytes / 4;
+        int[] ints = new int[count];
+
+        for (int i=0; i < count; i++) {
+          // convert the bytes to ints, then to floats
+          ints[i] = intFromByteArray(bytes, i*4);
+        }
+        
+        cube.intData = ints;
       }
 
     }
@@ -489,6 +513,18 @@ public class CubeletFile {
         }
         break;
 
+      case INT32:
+        datatype = WaveletCompress.CubeletBuffer.DataType.INT32;
+        if (cube.intData == null)
+          throw new NullPointerException("cubelet data not set");
+
+        pixelSize = 4;
+        bytes = new byte[count * pixelSize];
+        for (int i=0; i < count; i++) {
+          intToByteArray(cube.intData[i], bytes, i*4);
+        }
+        break;
+
       }
 
       WaveletCompress.CubeletBuffer cubeBuf
@@ -501,6 +537,7 @@ public class CubeletFile {
         .setZOffset(cube.zOffset)
         .setByteCount(pixelSize * count)
         .setDataType(datatype)
+        .setMaximumValue(cube.maxPossibleValue)
         .build();
 
       // write the metadata

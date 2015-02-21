@@ -4,8 +4,10 @@ public class Cubelet {
   public int width, height, depth;
   public int xOffset, yOffset, zOffset;
 
-  public enum DataType {UINT8, FLOAT32};
+  public enum DataType {UINT8, FLOAT32, INT32};
   public DataType datatype;
+
+  public int maxPossibleValue;
 
   public long dataFileOffset;
 
@@ -17,6 +19,7 @@ public class Cubelet {
   // to be in 'byteData', and 'floatData' is ignored.
   public byte[] byteData;
   public float[] floatData;
+  public int[] intData;
 
   public void setSize(int w, int h, int d) {
     width = w;

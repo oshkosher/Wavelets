@@ -95,9 +95,11 @@ public class CubeletViewer extends JFrame {
         break;
       }
 
+      /*
       // only uncompressed 8-bit int or 32-bit float supported
       if (cube.datatype != Cubelet.DataType.UINT8 &&
           cube.datatype != Cubelet.DataType.FLOAT32) continue;
+      */
 
       if (cube.compressionAlg != Cubelet.CompressionAlg.NONE) continue;
 
@@ -218,14 +220,34 @@ public class CubeletViewer extends JFrame {
     void rescaleData(int offset, int length) {
       if (cube.datatype == Cubelet.DataType.UINT8) return;
 
+      if (cube.maxPossibleValue > 0) {
+        dataOffset = 0;
+        dataScale = 255.0f / cube.maxPossibleValue;
+        return;
+      }
+
+
       float min, max;
-      min = max = cube.floatData[offset];
-      for (int i=offset; i < offset+length; i++) {
-        float f = cube.floatData[i];
-        if (f < min) {
-          min = f;
-        } else if (f > max) {
-          max = f;
+      if (cube.datatype == Cubelet.DataType.FLOAT32) {
+        min = max = cube.floatData[offset];
+        for (int i=offset; i < offset+length; i++) {
+          float f = cube.floatData[i];
+          if (f < min) {
+            min = f;
+          } else if (f > max) {
+            max = f;
+          }
+        }
+      } else {
+        // cube.datatype == Cubelet.DataType.INT32
+        min = max = cube.intData[offset];
+        for (int i=offset; i < offset+length; i++) {
+          float f = cube.intData[i];
+          if (f < min) {
+            min = f;
+          } else if (f > max) {
+            max = f;
+          }
         }
       }
 
@@ -291,6 +313,18 @@ public class CubeletViewer extends JFrame {
       else if (cube.datatype == Cubelet.DataType.FLOAT32) {
         for (int i=0; i < rgbArray.length; i++) {
           float tmp = (cube.floatData[dataIdx+i] + dataOffset) * dataScale;
+          if (tmp < 0)
+            tmp = 0;
+          else if (tmp > 255)
+            tmp = 255;
+          int pixel = (int)tmp & 0xff;
+          rgbArray[i] = pixel | (pixel << 8) | (pixel << 16);
+        }
+      }
+
+      else if (cube.datatype == Cubelet.DataType.INT32) {
+        for (int i=0; i < rgbArray.length; i++) {
+          float tmp = (cube.intData[dataIdx+i] + dataOffset) * dataScale;
           if (tmp < 0)
             tmp = 0;
           else if (tmp > 255)
