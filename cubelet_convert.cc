@@ -500,12 +500,14 @@ bool cube_split_typed(CubeType *allCubes, int allCubesCount,
 	if (!streamOut.addCubelet(c)) return false;
 
 	// set the z offset for the next copy of this cubelet
-	c->parentOffset.z = frameNo+1;
+	c->parentOffset.z = frameNo + 1 - overlap;
       }
 
       // reset the depth
       currentDepth = 0;
 
+      // if this isn't the end of the frames, back up a bit 
+      if (frameNo < inputSize.z-1) frameNo -= overlap;
     }
 
   }
