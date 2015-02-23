@@ -426,6 +426,7 @@ class Cube {
     datatype = WAVELET_DATA_UNKNOWN;
     ownsData = false;
     isWaveletCompressed = false;
+    maxPossibleValue = 0;
     param.init();
     data_ = NULL;
   }

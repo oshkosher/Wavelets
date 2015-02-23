@@ -578,7 +578,7 @@ void computeErrorRates(const CubeInt *quantizedData,
   // restoredData.print("Dequantized");
 
   ErrorAccumulator errAccum;
-
+  
   computeErrorRatesAfterDequant(&restoredData, param, inputData, &errAccum);
 
   *meanSquaredError = errAccum.getMeanSquaredError();
@@ -596,9 +596,20 @@ void computeErrorRatesAfterDequant
  const Cube *inputData,
  ErrorAccumulator *errAccum) {
 
-  if (inputData->datatype != WAVELET_DATA_UINT8) {
-    fprintf(stderr, "Current implementation can only compute error rates if input data is unsigned bytes (0..255)\n");
-    return;
+  if (inputData->datatype == WAVELET_DATA_UINT8) {
+    // for byte-sized data, assume max possible is 255
+    if (inputData->maxPossibleValue > 0)
+      errAccum->setMaxPossible(inputData->maxPossibleValue);
+    else
+      errAccum->setMaxPossible(255);
+  } else {
+    if (inputData->maxPossibleValue > 0) {
+      errAccum->setMaxPossible(inputData->maxPossibleValue);
+    } else {
+      fprintf(stderr, "Cannot compute error rates: no maximum possible input"
+	      " value set.\n");
+      return;
+    }
   }
 
   // perform the inverse wavelet transform on restoredData
@@ -608,26 +619,52 @@ void computeErrorRatesAfterDequant
   // restoredData->print("After transform");
 
   const int width = inputData->width();
-  const CubeByte *original = (const CubeByte *) inputData;
-
-  errAccum->setMaxPossible(255);  // largest unsigned char value
 
   // for each row of data in the original data, compare pixels
-  for (int z=0; z < original->depth(); z++) {
-    for (int y=0; y < original->height(); y++) {
-      const unsigned char *originalRow = original->pointer(0, y, z);
+  for (int z=0; z < inputData->depth(); z++) {
+    for (int y=0; y < inputData->height(); y++) {
       const float *restoredRow = restoredData->pointer(0, y, z);
-      
-      for (int x=0; x < width; x++) {
-        unsigned char pixelValue = ByteInputData::floatToByte(restoredRow[x]);
 
-        // printf("%d,%d,%d %d %d\n", z, y, x, originalRow[x], pixelValue);
+      switch (inputData->datatype) {
+      case WAVELET_DATA_UINT8:
+	{
+	  CubeByte *original = (CubeByte*) inputData;
+	  const unsigned char *originalRow = original->pointer(0, y, z);
+	  for (int x=0; x < width; x++) {
+	    // convert values in the range -.5 .. +.5 to 0..255
+	    unsigned char pixelValue = 
+	      ByteInputData::floatToByte(restoredRow[x]);
+	    // printf("%d,%d,%d %d %d\n", z, y, x, originalRow[x], pixelValue);
+	    errAccum->add(originalRow[x], pixelValue);
+	  }
+	}
+	break;
 
-        errAccum->add(originalRow[x], pixelValue);
+      case WAVELET_DATA_INT32:
+	{
+	  CubeInt *original = (CubeInt*) inputData;
+	  const int *originalRow = original->pointer(0, y, z);
+	  for (int x=0; x < width; x++)
+	    errAccum->add(originalRow[x], (int)restoredRow[x]);
+	}
+	break;
+
+
+      case WAVELET_DATA_FLOAT32:
+	{
+	  CubeFloat *original = (CubeFloat*) inputData;
+	  const float *originalRow = original->pointer(0, y, z);
+	  for (int x=0; x < width; x++)
+	    errAccum->add(originalRow[x], (int)restoredRow[x]);
+	}
+	break;
+
+      default:
+	break;
       }
+
     }
   }
-
 }
 
 
@@ -856,11 +893,14 @@ static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet,
     TraverseForHuffman init(huff);
     cube->visit<TraverseForHuffman>(init);
   }
+  double summarizeTime = NixTimer::time() - startTime;
 
+  startTime = NixTimer::time();
   huff.computeHuffmanCoding();
-  double elapsed = NixTimer::time() - startTime;
+  double buildEncodingTime = NixTimer::time() - startTime;
   if (!quiet) {
-    printf("Huffman build table %.3f ms\n", elapsed*1000);
+    printf("Huffman summarize frequencies %.3f ms, build encoding %.3f ms\n",
+	   summarizeTime, buildEncodingTime);
     fflush(stdout);
   }
 }
