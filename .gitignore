@@ -32,12 +32,14 @@ LargeImages
 WaveletCompress.java
 cube
 cube.exe
+cubeview
 histogram
 histogram.exe
 image_error
 image_error.exe
 mat2cube
 mat2cube.exe
+movcube
 protobuf-2.5.0*
 protobuf-2.6.0*
 shortImagesToCubelets

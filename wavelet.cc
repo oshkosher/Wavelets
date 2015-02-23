@@ -281,7 +281,8 @@ void Cube::copyToCubeletBuffer(CubeletBuffer *buf) const {
 
   if (dataFileOffset > 0) buf->set_data_file_offset(dataFileOffset);
   buf->set_data_type(datatypeToProtoId(datatype));
-  buf->set_maximum_value(getMaxPossibleValue());
+  if (maxPossibleValue > 0)
+    buf->set_maximum_value(maxPossibleValue);
 
   if (!isWaveletCompressed) {
     buf->set_compression_algorithm(CubeletBuffer_CompressionAlgorithm_NONE);

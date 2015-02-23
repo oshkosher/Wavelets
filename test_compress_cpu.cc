@@ -8,7 +8,6 @@
 #include "quant.h"
 #include "lloyds.h"
 #include "bit_stream.h"
-#include "huffman.h"
 #include "wavelet.h"
 #include "cubelet_file.h"
 
