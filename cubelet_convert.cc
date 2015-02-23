@@ -38,6 +38,9 @@ bool cube_split_typed(CubeType *allCubes, int allCubesCount,
 		      int3 output_cubelet_size, int overlap);
 bool cube_extract(const char *output_file, bool do_append,
 		  const char *input_file, const std::vector<int3> &id_list);
+bool cube_partial(const char *output_file, const char *input_file,
+		  int3 offset, int3 size, const std::vector<int3> &id_list);
+		  
 
 template<class T>
 void copy2d(T *dest, int destWidth, const T *src, int srcWidth,
@@ -108,6 +111,32 @@ int main(int argc, const char **argv) {
     cube_extract(output_file, do_append, input_file, id_list);
   }
 
+  else if (!strcmp(command, "partial")) {
+    if (argc < 6) printHelp();
+    const char *output_file = argv[2];
+    const char *input_file = argv[3];
+    int3 offset, size;
+    if (3 != offset.parse(argv[4]) || !(offset >= int3(0,0,0))) {
+      printf("Invalid <x,y,z> offset: %s\n", argv[4]);
+      return 1;
+    }
+    if (3 != size.parse(argv[5]) || !(size > int3(0,0,0))) {
+      printf("Invalid <x,y,z> size: %s\n", argv[5]);
+      return 1;
+    }
+    vector<int3> id_list;
+    for (int argno = 6; argno < argc; argno++) {
+      int3 id;
+      if (3 != id.parse(argv[argno])) {
+	printf("Invalid <x,y,z> cubelet id: %s\n", argv[argno]);
+	return 1;
+      }
+      id_list.push_back(id);
+    }
+    cube_partial(output_file, input_file, offset, size, id_list);
+  }
+    
+
   else printHelp();
 
   // deallocate static protobuf data
@@ -148,6 +177,11 @@ void printHelp() {
 "  cube extract [-append] <outputCube> <inputCube> <x,y,z> [<x,y,z> ...]\n"
 "    Copy one or more cublets from one file to another.\n"
 "    With the \"-append\" flag, add to <outputCube>, otherwise overwrite.\n"
+"\n"
+"  cube partial <outputCube> <inputCube> <offset> <size> [<x,y,z> ...]\n"
+"    Extract part of a cubelet, starting at the given offset, of the given size.\n"
+"    Both <offset> and <size> are x,y,z triplets.\n"
+"    If no cubelet id is specified, extract the same part from every cubelet.\n"
 "\n"
          );
   exit(1);
@@ -575,3 +609,100 @@ bool cube_extract(const char *output_file, bool do_append,
   return !any_errors;
 }
 
+
+template<class CubeType>
+void copy_partial_typed(const CubeType *cube, CubeletStreamWriter &writer,
+			int3 offset, int3 size) {
+  const typename CubeType::MyType *readp;
+  typename CubeType::MyType *writep;
+
+  if (!(offset < cube->size)) {
+    printf("Cubelet %s too small for offset %d,%d,%d\n",
+	   cube->getId(), size.x, size.y, size.z);
+    return;
+  }
+  
+  CubeType outCube = *cube;
+  outCube.size = outCube.totalSize = size;
+  outCube.data_ = NULL;
+  outCube.allocate();
+
+  int width;
+  if (offset.x + size.x > cube->size.x) {
+    width = cube->size.x - offset.x;
+  } else {
+    width = size.x;
+  }
+
+  for (int z=0; z < size.z && z + offset.z < cube->size.z; z++) {
+    for (int y=0; y < size.y && y + offset.y < cube->size.y; y++) {
+      readp = cube->pointer(offset.x, offset.y + y, offset.z + z);
+      writep = outCube.pointer(0, y, z);
+      memcpy(writep, readp, width * (sizeof *readp));
+    }
+  }
+
+  writer.addCubelet(&outCube);
+}
+
+
+void copy_partial(const Cube *cube, CubeletStreamWriter &writer,
+		  int3 offset, int3 size) {
+
+  switch(cube->datatype) {
+  case WAVELET_DATA_UINT8:
+    copy_partial_typed((const CubeByte*)cube, writer, offset, size);
+    break;
+  case WAVELET_DATA_INT32:
+    copy_partial_typed((const CubeInt*)cube, writer, offset, size);
+    break;
+  case WAVELET_DATA_FLOAT32:
+    copy_partial_typed((const CubeFloat*)cube, writer, offset, size);
+    break;
+  default:
+    printf("Error on cube %s: unrecognized datatype %d\n",
+	   cube->getId(), cube->datatype);
+  }
+}
+
+
+bool cube_partial(const char *output_file, const char *input_file,
+		  int3 offset, int3 size, const std::vector<int3> &id_list) {
+  
+  CubeletStreamWriter writer;
+  if (!writer.open(output_file)) return false;
+
+  CubeletStreamReader reader;
+  if (!reader.open(input_file)) return false;
+
+  Cube cube;
+
+  if (id_list.empty()) {
+    // loop through all the input cubelets
+    while (reader.next(&cube)) {
+      cube.allocate();
+      reader.getRawData(cube.data_);
+      copy_partial(&cube, writer, offset, size);
+      cube.deallocate();
+    }
+  } else {
+    // extract just the listed cubelets
+    for (size_t i=0; i < id_list.size(); i++) {
+      int3 id = id_list[i];
+      if (!reader.find(&cube, id)) {
+	printf("Cubelet %d,%d,%d not found.\n", id.x, id.y, id.z);
+      } else {
+	cube.allocate();
+	reader.getRawData(cube.data_);
+	copy_partial(&cube, writer, offset, size);
+	cube.deallocate();
+      }
+    }
+  }
+
+  reader.close();
+  writer.close();
+
+  return true;
+}
+		  

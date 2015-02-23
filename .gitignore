@@ -15,6 +15,7 @@
 *.data
 *.out
 *.cube
+*.pem
 foo*
 haar
 haar.exe
