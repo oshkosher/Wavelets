@@ -483,6 +483,7 @@ bool CubeletStreamReader::getCubeData(Cube *cube) {
   // if the data is compressed, just store it directly
   if (cube->isWaveletCompressed) {
     cube->data_ = getRawData(cube->data_);
+    if (!cube->data_) return false;
   }
 
   // if it isn't compressed, read it into the cube, resizing if necessary
@@ -492,6 +493,7 @@ bool CubeletStreamReader::getCubeData(Cube *cube) {
     if (currentCubeSize == cube->size &&
         currentCubeSize == cube->totalSize) {
       cube->data_ = getRawData(cube->data_);
+      if (!cube->data_) return false;
     }
 
     // translation might be needed
@@ -500,6 +502,7 @@ bool CubeletStreamReader::getCubeData(Cube *cube) {
       assert(currentCubeSize <= cube->size);
 
       void *rawData = getRawData(NULL);
+      if (!rawData) return false;
     
       switch (cube->datatype) {
       case WAVELET_DATA_UINT8:
