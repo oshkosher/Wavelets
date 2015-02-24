@@ -11,8 +11,8 @@ class OptimizationData {
   
   const float *sorted;  // sorted absolute values, length is equal to count()
 
-  // original cubelet data, 3-d array of unsigned char
-  const CubeByte *originalData;
+  // original cubelet data
+  const Cube *originalData;
 
   // cubelet data after wavelet transform, 3-d array of floats
   const CubeFloat *transformedData;
@@ -40,7 +40,7 @@ class OptimizationData {
   // or multiple 2-d transforms.
   const bool do2DTransform;
   
-  OptimizationData(const CubeByte *originalData_,
+  OptimizationData(const Cube *originalData_,
                    const CubeFloat *transformedData_,
                    const float *sorted_,
                    float minVal_, float maxVal_, float maxAbsVal_)

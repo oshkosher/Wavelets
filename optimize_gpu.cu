@@ -155,15 +155,34 @@ bool testParameters(OptimizationData *o,
 
   // compare to original
   ErrorAccumulator errAccum;
+  errAccum.setMaxPossible(o->originalData->getMaxPossibleValue());
 
   float *tempData_dev;
   CUCHECK(cudaMalloc((void**)&tempData_dev, count * sizeof(float)));
 
-  computeErrorRatesAfterDequantGPU
-    (inverseWaveletInput_dev, o->transformedData->size,
-     tempData_dev, param, (const unsigned char *)o->originalData->data_,
-     errAccum);
-     
+  switch (o->originalData->datatype) {
+  case WAVELET_DATA_UINT8:
+    computeErrorRatesAfterDequantGPU
+      (inverseWaveletInput_dev, o->transformedData->size, tempData_dev, param,
+       (const unsigned char *)o->originalData->data_, o->originalData->datatype,
+       errAccum);
+       
+    break;
+  case WAVELET_DATA_INT32:
+    computeErrorRatesAfterDequantGPU
+      (inverseWaveletInput_dev, o->transformedData->size, tempData_dev, param,
+       (const int *)o->originalData->data_, o->originalData->datatype,
+       errAccum);
+    break;
+  case WAVELET_DATA_FLOAT32:
+    computeErrorRatesAfterDequantGPU
+      (inverseWaveletInput_dev, o->transformedData->size, tempData_dev, param,
+       (const float *)o->originalData->data_, o->originalData->datatype,
+       errAccum);
+    break;
+  default:
+    break;
+  }
 
   CUCHECK(cudaFree(tempData_dev));
   CUCHECK(cudaFree(inverseWaveletInput_dev));

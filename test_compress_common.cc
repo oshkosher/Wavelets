@@ -612,11 +612,13 @@ void computeErrorRatesAfterDequant
     }
   }
 
+  // restoredData->print("Before inverse transform");
+
   // perform the inverse wavelet transform on restoredData
   // restoredData->print("Before transform");
   if (!waveletTransform(*restoredData, param, true, false)) return;
 
-  // restoredData->print("After transform");
+  // restoredData->print("After inverse transform");
 
   const int width = inputData->width();
 
@@ -645,7 +647,7 @@ void computeErrorRatesAfterDequant
 	  CubeInt *original = (CubeInt*) inputData;
 	  const int *originalRow = original->pointer(0, y, z);
 	  for (int x=0; x < width; x++)
-	    errAccum->add(originalRow[x], (int)restoredRow[x]);
+	    errAccum->add(originalRow[x], (int)(restoredRow[x] + .5f));
 	}
 	break;
 

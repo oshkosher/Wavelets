@@ -58,13 +58,15 @@ bool computeErrorRatesGPU(int *quantizedData_dev,
                           scu_wavelet::int3 size,
                           float *tempData_dev,
                           const WaveletCompressionParam &param,
-                          const unsigned char *inputData_dev,
+                          const void *inputData_dev, WaveletDataType inputType,
+                          int maxPossibleValue,
                           float *meanSqErr, float *peakSNR);
 
+template <class T>
 void computeErrorRatesAfterDequantGPU
 (float *data_dev, scu_wavelet::int3 size, float *tempData_dev,
  const WaveletCompressionParam &param,
- const unsigned char *inputData_dev, ErrorAccumulator &errAccum);
+ const T *inputData_dev, WaveletDataType inputType, ErrorAccumulator &errAccum);
 
 
 inline bool isClose(float a, float b) {
@@ -172,7 +174,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   // XXX use a stream for asynchronous operation
 
   // allocate memory on the GPU for two copies of the data
-  unsigned char *inputData_dev = NULL;
+  void *inputData_dev = NULL;
   float *data1_dev, *data2_dev;
   size_t dataCount = data.count();
   size_t dataCountBytes = dataCount * sizeof(float);
@@ -182,8 +184,15 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   // if the input data is bytes, we can compute its error rate later.
   // copy it to the GPU so we can do that
-  if (inputData.datatype == WAVELET_DATA_UINT8) {
-    CUCHECK(cudaMalloc((void**)&inputData_dev, inputData.count()));
+  if (inputData.datatype == WAVELET_DATA_UINT8 ||
+      inputData.maxPossibleValue > 0) {
+    CUCHECK(cudaMalloc(&inputData_dev, inputData.getSizeInBytes()));
+  } else {
+    if (opt.doOptimize || opt.doComputeError) {
+      printf("Error: cannot optimize or compute error rates when input "
+             "data is not bytes and has no maximum possible value set.\n");
+      return false;
+    }
   }
 
   if (!QUIET) {
@@ -196,8 +205,8 @@ bool compressFile(const char *inputFile, const char *outputFile,
   CUCHECK(cudaMemcpy(data1_dev, data.data(), dataCountBytes,
                      cudaMemcpyHostToDevice));
   if (inputData_dev)
-    CUCHECK(cudaMemcpy(inputData_dev, inputData.data_, inputData.count(),
-                       cudaMemcpyHostToDevice));
+    CUCHECK(cudaMemcpy(inputData_dev, inputData.data_,
+                       inputData.getSizeInBytes(), cudaMemcpyHostToDevice));
   copyToGPUTimer.end();
 
   // size of the data as it exists on the device
@@ -317,6 +326,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   int nonzeroCount = dataCount - thresholdOffset;
 
   if (opt.doOptimize) {
+    
     assert(inputData.datatype == WAVELET_DATA_UINT8);
     
     // Replace the data pointers in inputData and data (which point to
@@ -330,7 +340,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
     deviceData.data_ = data1_dev;
     deviceData.param = param;
 
-    OptimizationData optData((CubeByte*)&inputData, &deviceData, data2_dev,
+    OptimizationData optData(&inputData, &deviceData, data2_dev,
                              minValue, maxValue, maxAbsVal);
     bool result = optimizeParameters(&optData, &param.thresholdValue,
                                      &param.binCount);
@@ -344,6 +354,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
                    nonzeroData_dev, nonzeroCount,
                    maxAbsVal, minValue, maxValue, quantizeTimer))
     return false;
+  // printDeviceArray((int*)data1_dev, deviceSize, "before inverse transform");
 
 #ifdef DO_DETAILED_CHECKS
   if (unquantizedCopy)
@@ -364,7 +375,9 @@ bool compressFile(const char *inputFile, const char *outputFile,
     float meanSqErr, peakSNR;
     // quantizedData.print("quantized before computing error rates");
     if (computeErrorRatesGPU((int*)data1_dev, deviceSize, data2_dev,
-                             param, inputData_dev, &meanSqErr, &peakSNR)) {
+                             param, inputData_dev, inputData.datatype,
+                             inputData.getMaxPossibleValue(),
+                             &meanSqErr, &peakSNR)) {
       printf("Mean squared error: %.3f, peak SNR: %.3f\n", meanSqErr, peakSNR);
       fflush(stdout);
     }
@@ -422,6 +435,8 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
 bool decompressFile(const char *inputFile, const char *outputFile,
 		    Options &opt) {
+
+  printf("Decompress not implemented yet on the GPU.\n");
 
   /*
   FileData f;
@@ -850,45 +865,15 @@ bool check3Quantized(const int *quantizedData_dev, int count,
 }
 
 
-// Size is transformed.
-bool computeErrorRatesGPU(int *quantizedData_dev, scu_wavelet::int3 size,
-                          float *tempData_dev,
-                          const WaveletCompressionParam &param,
-                          const unsigned char *inputData_dev,
-                          float *meanSqErr, float *peakSNR) {
-
-  float *data_dev;
-  int count = size.count(), byteCount = size.count() * sizeof(float);
-
-  CUCHECK(cudaMalloc((void**)&data_dev, byteCount));
-
-  // dequantize quantizedData_dev into data_dev
-  if (!dequantizeGPU(data_dev, quantizedData_dev, count, param)) return false;
-
-  // printDeviceArray(data_dev, size.x, size.y, size.z, "Dequantized");
-
-  ErrorAccumulator errAccum;
-
-  computeErrorRatesAfterDequantGPU(data_dev, size, tempData_dev, param,
-                                   inputData_dev, errAccum);
-  
-  *meanSqErr = errAccum.getMeanSquaredError();
-  *peakSNR = errAccum.getPeakSignalToNoiseRatio();
-
-
-  CUCHECK(cudaFree(data_dev));
-
-  return true;
-}
-
-
 // errSums[0] = sumDiff
 // errSums[1] = sumDiffSquared
+template <class T>
 __global__ void computeErrorKernel(float errSums[2],
                                    const float *data, 
-                                   const unsigned char *orig,
+                                   const T *orig,
                                    scu_wavelet::int3 dataSize,
-                                   scu_wavelet::int3 origSize) {
+                                   scu_wavelet::int3 origSize,
+                                   WaveletDataType datatype) {
 
   unsigned long long sumDiff = 0, sumDiffSquared = 0;
   __shared__ unsigned long long sumDiffShared, sumDiffSquaredShared;
@@ -909,7 +894,12 @@ __global__ void computeErrorKernel(float errSums[2],
         if (x < origSize.x && y < origSize.y) {
 
           float valuef = data[x + dataSize.x*(y + z*dataSize.y)];
-          int value = ByteInputData::floatToByte(valuef);
+          int value;
+          if (datatype == WAVELET_DATA_UINT8) {
+            value = ByteInputData::floatToByte(valuef);
+          } else {
+            value = (int)(valuef + .5f);
+          }
           int origValue = orig[x + origSize.x*(y + z*origSize.y)];
 
           // printf("%d,%d,%d %d %d\n", z, y, x, origValue, value);
@@ -944,16 +934,14 @@ __global__ void computeErrorKernel(float errSums[2],
 
 
 
-
+template <class T>
 void computeErrorRatesAfterDequantGPU
 (float *data_dev, scu_wavelet::int3 size, float *tempData_dev,
  const WaveletCompressionParam &param,
- const unsigned char *inputData_dev, ErrorAccumulator &errAccum) {
-  
-  if (inputData_dev == NULL) {
-    fprintf(stderr, "Current implementation can only compute error rates if input data is unsigned bytes (0..255)\n");
-    return;
-  }
+ const T *inputData_dev, WaveletDataType inputType,
+ ErrorAccumulator &errAccum) {
+
+  assert(inputData_dev);
 
   // inverse transform
   CudaTimer waveletTimer("Inverse wavelet"),
@@ -961,8 +949,10 @@ void computeErrorRatesAfterDequantGPU
     computeErrTimer("Compute error");
 
   // printDeviceArray(data_dev, size, "before inverse transform");
+
   waveletTransformGPU(data_dev, tempData_dev, size, param, true,
                       &waveletTimer, &transposeTimer);
+
   // printDeviceArray(data_dev, size, "after inverse transform");
 
   float *errSums_dev;
@@ -975,8 +965,9 @@ void computeErrorRatesAfterDequantGPU
   // 2 thread blocks: 11ms
   // 4 thread blocks: 6ms
   // 8 thread blocks: 26ms
-  computeErrorKernel<<<4,dim3(32,32)>>>
-    (errSums_dev, data_dev, inputData_dev, size, param.originalSize);
+  computeErrorKernel<T><<<4,dim3(32,32)>>>
+    (errSums_dev, data_dev, inputData_dev, size, param.originalSize,
+     inputType);
 
   float errSums[2];
   CUCHECK(cudaMemcpy(&errSums, errSums_dev, sizeof(float) * 2,
@@ -993,9 +984,58 @@ void computeErrorRatesAfterDequantGPU
   }
   
   // largest unsigned char value
-  errAccum.setMaxPossible(255);
   errAccum.setSumDiff(errSums[0]);
   errAccum.setSumDiffSquared(errSums[1]);
   errAccum.setCount(param.originalSize.count());
+}
 
+
+// Size is transformed.
+bool computeErrorRatesGPU(int *quantizedData_dev, scu_wavelet::int3 size,
+                          float *tempData_dev,
+                          const WaveletCompressionParam &param,
+                          const void *inputData_dev, WaveletDataType inputType,
+                          int maxPossibleValue,
+                          float *meanSqErr, float *peakSNR) {
+
+  float *data_dev;
+  int count = size.count(), byteCount = size.count() * sizeof(float);
+
+  CUCHECK(cudaMalloc((void**)&data_dev, byteCount));
+
+  // dequantize quantizedData_dev into data_dev
+  if (!dequantizeGPU(data_dev, quantizedData_dev, count, param)) return false;
+
+  // printDeviceArray(data_dev, size.x, size.y, size.z, "Dequantized");
+
+  ErrorAccumulator errAccum;
+  errAccum.setMaxPossible(maxPossibleValue);
+
+  switch (inputType) {
+  case WAVELET_DATA_UINT8:
+    computeErrorRatesAfterDequantGPU(data_dev, size, tempData_dev, param,
+                                     (const unsigned char *)inputData_dev,
+                                     inputType, errAccum);
+    break;
+  case WAVELET_DATA_INT32:
+    computeErrorRatesAfterDequantGPU(data_dev, size, tempData_dev, param,
+                                     (const int *)inputData_dev,
+                                     inputType, errAccum);
+    break;
+  case WAVELET_DATA_FLOAT32:
+    computeErrorRatesAfterDequantGPU(data_dev, size, tempData_dev, param,
+                                     (const float *)inputData_dev,
+                                     inputType, errAccum);
+    break;
+  default:
+    break;
+  }
+  
+  *meanSqErr = errAccum.getMeanSquaredError();
+  *peakSNR = errAccum.getPeakSignalToNoiseRatio();
+
+
+  CUCHECK(cudaFree(data_dev));
+
+  return true;
 }

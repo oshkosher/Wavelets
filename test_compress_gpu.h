@@ -22,10 +22,10 @@ void printDeviceArray(const int *array_dev, int width, int height, int depth,
 void printDeviceArray(const int *array_dev, scu_wavelet::int3 size,
                       const char *name = NULL);
 
+template <class T>
 void computeErrorRatesAfterDequantGPU
 (float *data_dev, scu_wavelet::int3 size, float *tempData_dev,
  const WaveletCompressionParam &param,
- const unsigned char *inputData_dev, ErrorAccumulator &errAccum);
-
+ const T *inputData_dev, WaveletDataType inputType, ErrorAccumulator &errAccum);
 
 #endif // __TEST_COMPRESS_GPU_H__

@@ -368,7 +368,6 @@ class QuantLog {
   HD int quant(float x) const {
 
     int zeroBin = (binCount-1) >> 1;
-
     if (x < 0) {
 
       x = -x;
@@ -380,7 +379,7 @@ class QuantLog {
         if (x < 0) {
           return 0;
         } else {
-          return (int) x;
+          return (int) (x + 0.5f);
         }
       }
 
@@ -393,7 +392,7 @@ class QuantLog {
         if (x >= binCount) {
           return binCount-1;
         } else {
-          return (int) x;
+          return (int) (x + 0.5f);
         }
       }
     }
@@ -404,21 +403,21 @@ class QuantLog {
     assert(x >= 0 && x < binCount);
 
     int zeroBin = (binCount-1) >> 1;
-    float sign, scale, offset;
+    float sign, invScale, offset;
     if (x < zeroBin) {
       sign = -1;
       offset = negOffset;
-      scale = negInvScale;
+      invScale = negInvScale;
     } else {
       sign = 1;
       offset = posOffset;
-      scale = posInvScale;
+      invScale = posInvScale;
     }
 
     if (x == zeroBin) {
       return 0;
     } else {
-      return sign * expf( (sign*(x - zeroBin) - offset) * scale );
+      return sign * expf( (sign*(x - zeroBin) - offset) * invScale );
     }
 
       /*
