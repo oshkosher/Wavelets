@@ -297,6 +297,8 @@ cudalloyds.$(OBJ_EXT): CUDA/lloyds/cudalloyds.cu CUDA/lloyds/cudalloyds.h
 dwt_gpu.$(OBJ_EXT): dwt_gpu.cu dwt_gpu.h dwt_cpu.h
 	$(NVCC) -c $<
 
+quant_gpu.$(OBJ_EXT): quant_gpu.cu quant_gpu.h quant.h
+
 cubelet_file.o: cubelet_file.cc cubelet_file.h wavelet_compress.pb.h
 	$(CC) -c $<
 

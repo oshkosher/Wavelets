@@ -151,6 +151,8 @@ bool compressFile(const char *inputFile, const char *outputFile,
   if (!quantize(data, quantizedData, maxAbsVal, param, nonzeroData,
                 nonzeroCount, minVal, maxVal)) return false;
 
+  // quantizedData.print("After quantization");
+
   // compute error rates
   if (opt.doComputeError) {
     float meanSqErr, peakSNR;
