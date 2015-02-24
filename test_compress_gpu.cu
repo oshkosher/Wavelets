@@ -897,8 +897,10 @@ __global__ void computeErrorKernel(float errSums[2],
           int value;
           if (datatype == WAVELET_DATA_UINT8) {
             value = ByteInputData::floatToByte(valuef);
+          } else if (datatype == WAVELET_DATA_INT32) {
+            value = IntInputData::floatToInt(valuef, 4095);
           } else {
-            value = (int)(valuef + .5f);
+            value = (int)valuef;
           }
           int origValue = orig[x + origSize.x*(y + z*origSize.y)];
 
