@@ -424,7 +424,7 @@ public:
     const int *end = readp + length;
     float *writep = dest->pointer(0, y, z);
     while (readp < end) {
-      *writep++ = (float) *readp++;
+      *writep++ = IntInputData::intToFloat(*readp++, 4095);
     }
   }
 };
@@ -647,7 +647,8 @@ void computeErrorRatesAfterDequant
 	  CubeInt *original = (CubeInt*) inputData;
 	  const int *originalRow = original->pointer(0, y, z);
 	  for (int x=0; x < width; x++)
-	    errAccum->add(originalRow[x], (int)(restoredRow[x] + .5f));
+	    errAccum->add(originalRow[x],
+                          IntInputData::floatToInt(restoredRow[x], 4095));
 	}
 	break;
 
@@ -711,7 +712,7 @@ void translateCubeDataToOriginal(CubeFloat *src, Cube *dest, bool verbose) {
 
     // map 0..255 to -.5 .. .5
     while (readp < endp) {
-      *writep++ = (int)*readp++;
+      *writep++ = IntInputData::floatToInt(*readp++, 4095);
     }
 
     if (verbose) d->print("After restoring data type");

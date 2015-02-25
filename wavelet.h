@@ -183,8 +183,41 @@ class ByteInputDataHalfAtZero {
 };
 
 
+class IntInputDataHalfAtZero {
+ public:
+  HD static float intToFloat(int b, int max) {
+    return b * (1.0f / max) - 0.5f;
+  }
+
+  HD static int floatToInt(float f, int max) {
+    f = (f + 0.5f) * max + 0.5f;
+    if (f <= 0) {
+      f = 0;
+    } else if (f >= max) {
+      f = max;
+    }
+    return (int) f;
+  }
+};
+
+
+class IntInputDataUnchanged {
+ public:
+  HD static float intToFloat(int b, int max) {
+    return (float)b;
+  }
+
+  HD static int floatToInt(float f, int max) {
+    return (int)(f + 0.5f);
+  }
+};
+
+
 // use the second one: -.5 .. +.5
 typedef ByteInputDataHalfAtZero ByteInputData;
+
+typedef IntInputDataHalfAtZero IntInputData;
+// typedef IntInputDataUnchanged IntInputData;
 
 
 class WaveletCompressionParam {
