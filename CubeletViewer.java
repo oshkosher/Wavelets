@@ -1,5 +1,6 @@
 import java.awt.*;
 import java.awt.image.*;
+import java.awt.event.*;
 import javax.swing.event.*;
 import javax.swing.*;
 import java.net.URL;
@@ -7,6 +8,10 @@ import java.io.IOException;
 import java.io.File;
 import java.io.FileNotFoundException;
 
+
+/*******************************************************\ 
+* CubeletViewer: application for viewing Cubelet files. *
+\*******************************************************/
 public class CubeletViewer extends JFrame {
 
   // make the font this many points larger than the default
@@ -138,10 +143,8 @@ public class CubeletViewer extends JFrame {
 
     this.cube = cube;
 
-    // make the default font a bit larger
-    customizeUI();
-
     setFilenameTitle(filename);
+    setKeyBindings();
 
     cubePanel = new CubePanel();
     cubePanel.setCube(cube);
@@ -215,7 +218,27 @@ public class CubeletViewer extends JFrame {
   }
 
 
-  static class Point3D {
+  public void doExit() {
+    System.exit(0);
+  }
+
+  public void setKeyBindings() {
+    InputMap inputMap = getRootPane().
+      getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+    ActionMap actionMap = getRootPane().getActionMap();
+
+    inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_Q, 0), "exit");
+    inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "exit");
+
+    actionMap.put("exit", new AbstractAction() {
+	public void actionPerformed(ActionEvent e) {doExit();}});
+  }
+
+
+  /********************************************\ 
+  * Point3D: encapsulate an (x,y,z) coordinate *
+  \********************************************/
+  public static class Point3D {
     public int x, y, z;
 
     public static Point3D parse(String s) {
@@ -260,6 +283,9 @@ public class CubeletViewer extends JFrame {
   }
 
   
+  /*************************************************************\ 
+  * CubePanel: component for displaying slices of a 3-d Cubelet *
+  \*************************************************************/
   public static class CubePanel extends JPanel {
     private Cubelet cube;
 
