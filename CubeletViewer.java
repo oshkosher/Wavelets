@@ -2,53 +2,22 @@ import java.awt.*;
 import java.awt.image.*;
 import javax.swing.event.*;
 import javax.swing.*;
+import java.net.URL;
 import java.io.IOException;
 import java.io.File;
 import java.io.FileNotFoundException;
 
 public class CubeletViewer extends JFrame {
 
-  static class Point3D {
-    public int x, y, z;
+  // make the font this many points larger than the default
+  private static final float LABEL_FONT_SIZE_OFFSET = 3;
 
-    public static Point3D parse(String s) {
-      Point3D p = new Point3D();
-      if (p.set(s))
-        return p;
-      else
-        return null;
-    }
-    
-    public boolean set(String s) {
-      int start = 0, end = 0;
+  // size to which the brightness icon will be scaled
+  private static final int BRIGHTNESS_ICON_SIZE = 32;
 
-      try {
-        end = s.indexOf(',');
-        if (end == -1) return false;
-        x = Integer.parseInt(s.substring(start, end));
-        start = end+1;
-        end = s.indexOf(',', start);
-        if (end == -1) return false;
-        y = Integer.parseInt(s.substring(start, end));
-        z = Integer.parseInt(s.substring(end+1));
-        return true;
-      } catch (NumberFormatException e) {
-        return false;
-      }
-    }
+  // store the brightness icon here 
+  private static ImageIcon BRIGHTNESS_ICON;
 
-    public void set(int x, int y, int z) {
-      this.x = x; this.y = y; this.z = z;
-    }
-
-    public boolean equals(int x, int y, int z) {
-      return this.x == x && this.y == y && this.z == z;
-    }
-
-    public String toString() {
-      return x + "," + y + "," + z;
-    }
-  }
 
   public static void main(String[] args) {
 
@@ -95,12 +64,6 @@ public class CubeletViewer extends JFrame {
         break;
       }
 
-      /*
-      // only uncompressed 8-bit int or 32-bit float supported
-      if (cube.datatype != Cubelet.DataType.UINT8 &&
-          cube.datatype != Cubelet.DataType.FLOAT32) continue;
-      */
-
       if (cube.compressionAlg != Cubelet.CompressionAlg.NONE) continue;
 
       // no ID was specified; use the first cubelet
@@ -124,14 +87,8 @@ public class CubeletViewer extends JFrame {
       return;
     }
 
-    /*
-    if (cube.byteData.length != cube.width * cube.height * cube.depth) {
-      System.out.println("Cubelet has " + cube.byteData.length + " bytes of " +
-                         "data, expected " +
-                         (cube.width * cube.height * cube.depth));
-      return;
-    }
-    */
+    customizeUI();
+    loadIcons();
 
     CubeletViewer viewer = new CubeletViewer(cube, cubeFile);
     viewer.setVisible(true);
@@ -149,33 +106,90 @@ public class CubeletViewer extends JFrame {
   }
 
 
+  static void customizeUI() {
+    Font labelFont = UIManager.getFont("Label.font");
+    labelFont = labelFont.deriveFont
+      ((float)(labelFont.getSize() + LABEL_FONT_SIZE_OFFSET));
+    UIManager.put("Label.font", labelFont);
+  }
+
+
+  static void loadIcons() {
+    URL iconURL = CubeletViewer.class.getResource("brightness.png");
+    // System.out.println("icon URL: " + iconURL);
+    ImageIcon originalIcon = new ImageIcon(iconURL);
+    Image tmpImage = originalIcon.getImage().getScaledInstance
+      (BRIGHTNESS_ICON_SIZE, BRIGHTNESS_ICON_SIZE, Image.SCALE_SMOOTH);
+    BRIGHTNESS_ICON = new ImageIcon(tmpImage);
+    // System.out.println("icon: " + brightnessIcon);
+  }
+
+
   Cubelet cube;
   CubePanel cubePanel;
   JSlider zLevelSlider;
+  JLabel zLevelLabel;
+  JSlider brightnessSlider;
 
   public CubeletViewer(Cubelet cube, String filename) {
     super("Cubelet viewer");
+
+    Dimension size;
+
     this.cube = cube;
+
+    // make the default font a bit larger
+    customizeUI();
 
     setFilenameTitle(filename);
 
     cubePanel = new CubePanel();
     cubePanel.setCube(cube);
 
+    brightnessSlider = new JSlider(SwingConstants.VERTICAL, -255, 255, 0);
+    // brightnessSlider.setBorder(BorderFactory.createEmptyBorder(5,5,0,10));
+    size = brightnessSlider.getPreferredSize();
+    size.height = 200;
+    brightnessSlider.setPreferredSize(size);
+    brightnessSlider.addChangeListener(new ChangeListener() {
+        public void stateChanged(ChangeEvent ce) {
+          setBrightness(brightnessSlider.getValue());
+        }});
+    JLabel brightnessLabel = new JLabel(BRIGHTNESS_ICON);
+    brightnessLabel.setAlignmentX(.5f);
+
+    Box rightBox = Box.createVerticalBox();
+    rightBox.add(brightnessSlider);
+    rightBox.add(brightnessLabel);
+    rightBox.setBorder(BorderFactory.createEmptyBorder(5,5,5,5));
+
+
     zLevelSlider = new JSlider(0, cube.depth-1, 0);
     zLevelSlider.setPaintLabels(true);
     zLevelSlider.setPaintTicks(true);
-    zLevelSlider.setMajorTickSpacing(25);
+    zLevelSlider.setMajorTickSpacing(50);
     zLevelSlider.addChangeListener(new ChangeListener() {
         public void stateChanged(ChangeEvent ce) {
           setZ(zLevelSlider.getValue());
         }});
-    Dimension size = zLevelSlider.getPreferredSize();
+    zLevelSlider.setBorder(BorderFactory.createEmptyBorder(5,5,5,5));
+    size = zLevelSlider.getPreferredSize();
     size.width = cube.width;
     zLevelSlider.setPreferredSize(size);
 
+    zLevelLabel = new JLabel("9999", SwingConstants.RIGHT);
+    zLevelLabel.setPreferredSize(zLevelLabel.getPreferredSize());
+    zLevelLabel.setText("0");
+    zLevelLabel.setAlignmentY(0);
+
+    Box bottomBox = Box.createHorizontalBox();
+    bottomBox.add(zLevelSlider);
+    bottomBox.add(zLevelLabel);
+    bottomBox.setBorder(BorderFactory.createEmptyBorder(5,5,5,5));
+
+    add(rightBox, "East");
     add(cubePanel, "Center");
-    add(zLevelSlider, "South");
+    add(bottomBox, "South");
 
     pack();
     setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
@@ -183,13 +197,66 @@ public class CubeletViewer extends JFrame {
     setLocationRelativeTo(null);
   }
 
+
   void setFilenameTitle(String filename) {
     File f = new File(filename);
     setTitle(f.getName());
   }
 
+
   public void setZ(int z) {
     cubePanel.setZ(z);
+    zLevelLabel.setText(""+z);
+  }
+
+
+  public void setBrightness(int b) {
+    cubePanel.setBrightness(b);
+  }
+
+
+  static class Point3D {
+    public int x, y, z;
+
+    public static Point3D parse(String s) {
+      Point3D p = new Point3D();
+      if (p.set(s))
+        return p;
+      else
+        return null;
+    }
+
+    // parse a string in the form "1,2,3"
+    // return true iff all three values are parsed successfully
+    public boolean set(String s) {
+      int start = 0, end = 0;
+
+      try {
+        end = s.indexOf(',');
+        if (end == -1) return false;
+        x = Integer.parseInt(s.substring(start, end));
+        start = end+1;
+        end = s.indexOf(',', start);
+        if (end == -1) return false;
+        y = Integer.parseInt(s.substring(start, end));
+        z = Integer.parseInt(s.substring(end+1));
+        return true;
+      } catch (NumberFormatException e) {
+        return false;
+      }
+    }
+
+    public void set(int x, int y, int z) {
+      this.x = x; this.y = y; this.z = z;
+    }
+
+    public boolean equals(int x, int y, int z) {
+      return this.x == x && this.y == y && this.z == z;
+    }
+
+    public String toString() {
+      return x + "," + y + "," + z;
+    }
   }
 
   
@@ -201,6 +268,9 @@ public class CubeletViewer extends JFrame {
 
     // z-level of the cube this is currently displayed
     private int z;
+
+    // value added to each color component
+    private int brightnessOffset = 0;
 
     // image created from the current z-level of the cube;
     BufferedImage image;
@@ -225,7 +295,6 @@ public class CubeletViewer extends JFrame {
         dataScale = 255.0f / cube.maxPossibleValue;
         return;
       }
-
 
       float min, max;
       if (cube.datatype == Cubelet.DataType.FLOAT32) {
@@ -275,13 +344,28 @@ public class CubeletViewer extends JFrame {
       refreshImage();
     }
 
+    public void setBrightness(int b) {
+      if (b < -255) {
+	brightnessOffset = -255;
+      } else if (b > 255) {
+	brightnessOffset = 255;
+      } else {
+	brightnessOffset = b;
+      }
+
+      refreshImage();
+    }
+
+
+    // Parameters have been updated--recompute the backing image in
+    // a background thread
     private void refreshImage() {
       // image = createLevelImage(cube, z);
       // repaint();
 
       SwingWorker worker = new SwingWorker<BufferedImage, Void>() {
         public BufferedImage doInBackground() {
-          return createLevelImage(cube, z);
+          return createLevelImage(cube, z, brightnessOffset);
         }
 
         public void done() {
@@ -292,8 +376,10 @@ public class CubeletViewer extends JFrame {
         }};
       worker.execute();
     }
-    
-    private BufferedImage createLevelImage(Cubelet cube, int z) {
+
+
+    private BufferedImage createLevelImage(Cubelet cube, int z,
+					   int brightnessOffset) {
       int dataIdx = z * cube.height * cube.width;
 
       rescaleData(dataIdx, cube.height * cube.width);
@@ -305,14 +391,19 @@ public class CubeletViewer extends JFrame {
       
       if (cube.datatype == Cubelet.DataType.UINT8) {
         for (int i=0; i < rgbArray.length; i++) {
-          int pixel = cube.byteData[dataIdx+i] & 0xff;
+          int pixel = (cube.byteData[dataIdx+i] & 0xff) + brightnessOffset;
+	  if (pixel < 0)
+	    pixel = 0;
+	  else if (pixel > 255)
+	    pixel = 255;
           rgbArray[i] = pixel | (pixel << 8) | (pixel << 16);
         }
       }
 
       else if (cube.datatype == Cubelet.DataType.FLOAT32) {
         for (int i=0; i < rgbArray.length; i++) {
-          float tmp = (cube.floatData[dataIdx+i] + dataOffset) * dataScale;
+          float tmp = (cube.floatData[dataIdx+i] + dataOffset) * dataScale
+	    + brightnessOffset;
           if (tmp < 0)
             tmp = 0;
           else if (tmp > 255)
@@ -324,7 +415,8 @@ public class CubeletViewer extends JFrame {
 
       else if (cube.datatype == Cubelet.DataType.INT32) {
         for (int i=0; i < rgbArray.length; i++) {
-          float tmp = (cube.intData[dataIdx+i] + dataOffset) * dataScale;
+          float tmp = (cube.intData[dataIdx+i] + dataOffset) * dataScale
+	    + brightnessOffset;
           if (tmp < 0)
             tmp = 0;
           else if (tmp > 255)
@@ -338,37 +430,9 @@ public class CubeletViewer extends JFrame {
         System.err.println("Unknown cubelet data type: " + cube.datatype);
         throw new NullPointerException();
       }
-        
 
       img.setRGB(0, 0, cube.width, cube.height, rgbArray, 0, cube.width);
         
-      /*
-      for (int y=0; y < cube.height; y++) {
-        for (int x=0; x < cube.width; x++) {
-
-          // strip off high bits to cast -127 into 255
-          int pixel = cube.byteData[dataIdx++] & 0xff;
-          int rgb = pixel | (pixel << 8) | (pixel << 16);
-
-          // System.out.println(pixel + " -> " + rgb);
-
-          img.setRGB(x, y, rgb);
-
-          // make a checkerboard, just for testing
-        }
-      }
-      */
-
-          /*
-          int bit1 = y & (1<<5);
-          int bit2 = x & (1<<5);
-          if ((bit1 ^ bit2) == 0) {
-            img.setRGB(x, y, 0x00000000);
-          } else {
-            img.setRGB(x, y, 0x00ffffff);
-          }
-          */
-
       return img;
     }
 
@@ -385,11 +449,7 @@ public class CubeletViewer extends JFrame {
       double scale = Math.min(xScale, yScale);
       g.scale(scale, scale);
 
-      // System.out.println("draw image " + image);
       g.drawImage(image, 0, 0, null);
-
-      // g.setColor(Color.BLUE);
-      // g.fillRect(10, 10, getSize().width-20, getSize().height-20);
     }
   }
 
