@@ -75,7 +75,9 @@ struct Options {
 */
 class ErrorAccumulator {
 
-  // declare both these as double to reduce the accumulated error
+  // declare these as double to reduce the accumulated error
+  double sumValue;
+  double sumValueSquared;
   double sumDiff;         // sum of the absolute differences
   double sumDiffSquared;  // sum of the squares of the absolute differences
 
@@ -83,7 +85,8 @@ class ErrorAccumulator {
   int count;
 
  public:
- ErrorAccumulator() : sumDiff(0), sumDiffSquared(0), maxValue(0), count(0) {}
+ ErrorAccumulator() : sumValue(0), sumValueSquared(0),
+    sumDiff(0), sumDiffSquared(0), maxValue(0), count(0) {}
 
   // when computing peak signal-to-noise ratio, we need to know the
   // maximum possible value.
@@ -96,12 +99,16 @@ class ErrorAccumulator {
     }
   }
 
+  void setSumValue(double s) {sumValue = s;}
+  void setSumValueSquared(double s) {sumValueSquared = s;}
   void setSumDiff(double s) {sumDiff = s;}
   void setSumDiffSquared(double s) {sumDiffSquared = s;}
   void setCount(int c) {count = c;}
 
   // add one pair of values
   void add(float a, float b) {
+    sumValue += a;
+    sumValueSquared += a*a;
     float diff = fabsf(a-b);
     sumDiff += diff;
     sumDiffSquared += diff*diff;
@@ -129,6 +136,12 @@ class ErrorAccumulator {
     float mse = getMeanSquaredError();
     if (mse == 0) return 0;
     return 10 * log10(maxValue * maxValue / mse);
+  }
+
+  // MSE / sumSquared
+  float getRelativeError() {
+    if (sumValueSquared == 0) return 0;
+    return sumDiffSquared / sumValueSquared;
   }
 };
 
@@ -175,7 +188,7 @@ void computeErrorRates(const CubeInt *quantizedData,
                        const WaveletCompressionParam &param,
                        const Cube *inputData,
                        float *meanSquaredError,
-                       float *peakSNR);
+                       float *peakSNR, float *relativeError);
 
 
 // this will modify restoredData in place

@@ -155,10 +155,12 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   // compute error rates
   if (opt.doComputeError) {
-    float meanSqErr, peakSNR;
+    float meanSqErr, peakSNR, relErr;
     // quantizedData.print("quantized before computing error rates");
-    computeErrorRates(&quantizedData, param, &inputData, &meanSqErr, &peakSNR);
-    printf("Mean squared error: %.3f, peak SNR: %.3f\n", meanSqErr, peakSNR);
+    computeErrorRates(&quantizedData, param, &inputData, &meanSqErr, &peakSNR,
+                      &relErr);
+    printf("Mean squared error: %.3f, relative error: %g, peak SNR: %.3f\n",
+           meanSqErr, relErr, peakSNR);
   }
 
   if (opt.verbose) quantizedData.print("After quantization");

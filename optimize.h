@@ -7,7 +7,8 @@ class OptimizationData {
   friend bool testParameters
     (OptimizationData *o, float thresholdValue, int binCount,
      QuantizeAlgorithm quantAlg, int *outputSizeBytes,
-     float *l1Error, float *l2Error, float *mse, float *pSNR);
+     float *l1Error, float *l2Error, float *mse, float *pSNR,
+     float *relativeError);
   
   const float *sorted;  // sorted absolute values, length is equal to count()
 
@@ -122,7 +123,7 @@ bool optimizeParameters
     output parameters:
 
     outputSizeByte - size of the output data, in bytes
-    l1Error, l2Error, pSNR - error metrics
+    l1Error, l2Error, pSNR, relativeSqError - error metrics
 
     On error, return false.
     On success, return true.
@@ -131,8 +132,9 @@ bool testParameters(OptimizationData *optData,
                     float thresholdValue, int binCount,
                     QuantizeAlgorithm quantAlg,
                     int *outputSizeBytes,
-                    float *l1Error, float *l2Error, float *meanSquaredError,
-                    float *pSNR);
+                    float *l1Error = NULL, float *l2Error = NULL,
+                    float *meanSquaredError = NULL,
+                    float *pSNR = NULL, float *relativeError = NULL);
 
 #endif // __OPTIMIZE_H__
 
