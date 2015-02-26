@@ -213,11 +213,9 @@ class IntInputDataUnchanged {
 };
 
 
-// use the second one: -.5 .. +.5
-typedef ByteInputDataHalfAtZero ByteInputData;
-
-typedef IntInputDataHalfAtZero IntInputData;
-// typedef IntInputDataUnchanged IntInputData;
+// don't normalize byte or input data
+typedef ByteInputDataUnchanged ByteInputData;
+typedef IntInputDataUnchanged IntInputData;
 
 
 class WaveletCompressionParam {
