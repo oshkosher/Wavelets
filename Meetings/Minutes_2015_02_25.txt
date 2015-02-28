@@ -4,7 +4,8 @@ Date: Wednesday, February 25th, 2015
 
 Time:  From about Noon to about 1:00 PM
 
-Present:  Anupam Goyal, David Concha (remotely), Drazen Fabris, Ed Karrels (remotely), Bonnie Smithson (remotely), Sergio Zarantonello. 
+Present:  Anupam Goyal, David Concha (remotely), Drazen Fabris, Ed Karrels (remotely), Bonnie Smithson (remotely), 
+Sergio Zarantonello. 
 
 Presentations:  None
 
@@ -12,11 +13,14 @@ Discussions:
 
 Serge described his work with the MatLab code:
 
-1. He did runs with cutoff of about 79%, and number of bins may be around 1000.  He did not use Lloyd’s algorithm because it takes a very long time in MatLab.  He used logarithmic quantization.
+1. He did runs with cutoff of about 79%, and number of bins may be around 1000.  He did not use Lloydâ€™s algorithm 
+because it takes a very long time in MatLab.  He used logarithmic quantization.
 
-2. After wavelet coefficient thresholding at 79%, he rounded the floating point numbers to the nearest integer.  Thus, a better compression ratio results.
+2. After wavelet coefficient thresholding at 79%, he rounded the floating point numbers to the nearest integer.  
+Thus, a better compression ratio results.
 
-3. Serge described his runs with the maximum possible cutoff without considering quantization at all.  Then, number of bins can be thought of as being the numerical range of wavelet coefficients.
+3. Serge described his runs with the maximum possible cutoff without considering quantization at all.  
+Then, number of bins can be thought of as being the numerical range of wavelet coefficients.
 
 Bonnie mentioned the following:
 
@@ -24,17 +28,22 @@ Bonnie mentioned the following:
 
 Ed mentioned the following:
 
-1. His code has the option to use Lloyd’s or logarithmic quantization.
+1. His code has the option to use Lloydâ€™s or logarithmic quantization.
 
-2. His code allows overlaps in cubelets.  Serge asked if Ed needs any help with filters to stitch the cubelets together when reconstructing the data.
+2. His code allows overlaps in cubelets.  Serge asked if Ed needs any help with filters to stitch the cubelets together
+when reconstructing the data.
 
 3. Photron data uses 12 out of 16 bits and abdomen data uses 7 out of 8 bits.
 
-It was mentioned that David’s Lloyd’s algorithm does as many numbers of iterations as needed to give specified error tolerance.
+It was mentioned that Davidâ€™s Lloydâ€™s algorithm does as many numbers of iterations as needed to give specified error 
+tolerance.
 
-Drazen mentioned that it would be good to have a theoretical description of why 3-D compression is better than 2-D compression.
+Drazen mentioned that it would be good to have a theoretical description of why 3-D compression is better than 2-D 
+compression.
 
-For Anupam to run 3-D compression vs. 2-D compression tests, an SCU Linux account for him was discussed for this purpose.  Alternatively, Ed can help Anupam install a visualizer on his laptop.  At the time of writing these minutes, these were not being pursued.
+For Anupam to run 3-D compression vs. 2-D compression tests, an SCU Linux account for him was discussed for this 
+purpose.  Alternatively, Ed can help Anupam install a visualizer on his laptop.  At the time of writing these 
+minutes, these were not being pursued.
 
 It was also discussed if Drazen can provide examples of fluid dynamics where the data grows rapidly.
 
@@ -43,11 +52,14 @@ Future Work:
 
 1. Serge and David plan to work together to convert error control to C version.
 
-2. Serge to send his results from MatLab code, including those where no quantization is done.  This will include parameters used in the runs.
+2. Serge to send his results from MatLab code, including those where no quantization is done.  This will include 
+parameters used in the runs.
 
 3. References from Anupam should be summarized in PowerPoint slides that emphasize increasing size of scientific data.
 
-4. Anupam should run the test cases for comparing 3-D compression with 2-D compression.  These should have compression ratio vs. error and for about the same error how much is the compression.  At the time of preparing these minutes, Ed completed these runs.
+4. Anupam should run the test cases for comparing 3-D compression with 2-D compression.  These should have compression 
+ratio vs. error and for about the same error how much is the compression.  At the time of preparing these minutes, 
+Ed completed these runs.
 
 5. Serge plans his contact at nVidia to contact Richard Clay internally, as Bonnie has not heard from Richard.
 
