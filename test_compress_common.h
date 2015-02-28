@@ -43,8 +43,11 @@ struct Options {
   // the parameter optimzation routine to set the threshold and bin count.
   bool doOptimize;
 
-  // -bq option : if not "", save a copy data in this file before quantizing
+  // -bq option : if not "", save a copy in this file before quantizing
   std::string saveBeforeQuantizingFilename;
+
+  // -aq option : if not "", save a copy in this file after quantizing
+  std::string saveAfterQuantizingFilename;
 
   bool runQuantizationExperiments;
 
@@ -63,6 +66,7 @@ struct Options {
     doComputeError = false;
     doOptimize = false;
     saveBeforeQuantizingFilename = "";
+    saveAfterQuantizingFilename = "";
     runQuantizationExperiments = false;
 
     param.init();

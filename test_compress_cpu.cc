@@ -18,6 +18,8 @@ bool compressFile(const char *inputFile, const char *outputFile, Options &opt);
 bool decompressFile(const char *inputFile, const char *outputFile,
 		    Options &opt);
 
+void saveBeforeQuantize(Options &opt, CubeFloat *data);
+void saveAfterQuantize(Options &opt, CubeInt *quantizedData);
 
 void computeLloydQuantization(const float *inputData, int count,
                               int binCount, float minVal, float maxVal,
@@ -80,27 +82,9 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   // perform the wavelet transformation
   if (!waveletTransform(data, param, false, opt.verbose)) return false;
+  data.param = param;
 
-  // save the intermediate data to a file before quantizing
-  if (opt.saveBeforeQuantizingFilename != "") {
-    const char *filename = opt.saveBeforeQuantizingFilename.c_str();
-    CubeletStreamWriter writer;
-    data.param = param;
-
-    // if the data is 1xHxD, transpose it to HxDx1
-    if (!param.do2DTransform) data.transpose3dFwd();
-    if (!writer.open(filename) ||
-        !writer.addCubelet(&data) ||
-        !writer.close()) {
-      fprintf(stderr, "Failed to write intermediate data file \"%s\".\n",
-              filename);
-    } else {
-      if (!QUIET)
-        printf("Write intermediate data file \"%s\"\n", filename);
-    }
-    if (!param.do2DTransform) data.transpose3dBack();
-  }
-
+  saveBeforeQuantize(opt, &data);
 
   // find the threshold value by sorting
   // XXX quickselect will speed up this selection, but then we'll lose the
@@ -150,9 +134,11 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   if (!quantize(data, quantizedData, maxAbsVal, param, nonzeroData,
                 nonzeroCount, minVal, maxVal)) return false;
+  quantizedData.param = param;
 
   // quantizedData.print("After quantization");
-
+  saveAfterQuantize(opt, &quantizedData);
+  
   // compute error rates
   if (opt.doComputeError) {
     float meanSqErr, peakSNR;
@@ -171,7 +157,6 @@ bool compressFile(const char *inputFile, const char *outputFile,
   // write the quantized data to a file
   // for now, make a new file just for this cubelet
   startTime = NixTimer::time();
-  quantizedData.param = param;
   CubeletStreamWriter cubeletWriter;
   if (!cubeletWriter.open(outputFile)) return false;
   if (!writeQuantData(cubeletWriter, &quantizedData, opt))
@@ -296,6 +281,52 @@ bool quantize(const CubeFloat &data, CubeInt &quantizedData,
 }
 
 
+void saveBeforeQuantize(Options &opt, CubeFloat *data) {
+
+  // save the intermediate data to a file before quantizing
+  if (opt.saveBeforeQuantizingFilename.length() == 0) return;
+
+  const char *filename = opt.saveBeforeQuantizingFilename.c_str();
+  CubeletStreamWriter writer;
+
+  // if the data is 1xHxD, transpose it to HxDx1
+  if (!data->param.do2DTransform) data->transpose3dFwd();
+  if (!writer.open(filename) ||
+      !writer.addCubelet(data) ||
+      !writer.close()) {
+    fprintf(stderr, "Failed to write intermediate data file \"%s\".\n",
+	    filename);
+  } else {
+    if (!QUIET)
+      printf("Write intermediate data file \"%s\"\n", filename);
+  }
+  if (!data->param.do2DTransform) data->transpose3dBack();
+}
+
+
+void saveAfterQuantize(Options &opt, CubeInt *quantizedData) {
+
+  // save the intermediate data to a file before quantizing
+  if (opt.saveAfterQuantizingFilename.length() == 0) return;
+
+  const char *filename = opt.saveAfterQuantizingFilename.c_str();
+  CubeletStreamWriter writer;
+
+  // if the data is 1xHxD, transpose it to HxDx1
+  if (!quantizedData->param.do2DTransform) quantizedData->transpose3dFwd();
+  if (!writer.open(filename) ||
+      !writer.addCubelet(quantizedData) ||
+      !writer.close()) {
+    fprintf(stderr, "Failed to write intermediate data file \"%s\".\n",
+	    filename);
+  } else {
+    if (!QUIET)
+      printf("Write intermediate data file \"%s\"\n", filename);
+  }
+  if (!quantizedData->param.do2DTransform) quantizedData->transpose3dBack();
+}
+
+
 /*
   If N is odd, distribute N codebook entries like this:
 
@@ -339,15 +370,6 @@ void computeLloydQuantization
   // the rest and skews the results
   float maxAbsVal = inputData[count-2];
   assert(maxAbsVal > 0);
-
-  // if the smallest input value is zero, set minAbsVal to the smallest
-  // nonzero value
-  /*
-  float minAbsVal = inputData[0];
-  if (minAbsVal <= 0) {
-    minAbsVal = *std::upper_bound(inputData, inputData+count, 0);
-  }
-  */
 
   vector<float> codebook;
   initialLloydCodebook(codebook, codebookSize, thresholdValue, maxAbsVal);

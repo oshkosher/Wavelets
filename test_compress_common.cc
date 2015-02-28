@@ -54,6 +54,7 @@ void printHelp() {
          "    -opt : enable parameter optimization\n"
          "           this will automatically find the threshold and bin count\n"
          "    -bq <filename> : before quantizing, save a copy of the data this file\n"
+         "    -aq <filename> : after quantizing, save a copy of the data this file\n"
          "    -enc : print the bit encoding of each value\n"
          "    -err : compute error metrics (slow, disabled by default)\n"
          "    -2d : rather than 3d transform, do 2d transform at each layer\n"
@@ -120,6 +121,11 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
     else if (!strcmp(arg, "-bq")) {
       if (++nextArg >= argc) printHelp();
       opt.saveBeforeQuantizingFilename = argv[nextArg];
+    }
+
+    else if (!strcmp(arg, "-aq")) {
+      if (++nextArg >= argc) printHelp();
+      opt.saveAfterQuantizingFilename = argv[nextArg];
     }
 
     else if (!strcmp(arg, "-qalg")) {
@@ -749,11 +755,9 @@ void initialLloydCodebook(std::vector<float> &codebook, int codebookSize,
      min * e^(y*logScale) = x
   */
 
-  // printf("min=%f, max=%f\n", minAbsVal, maxAbsVal);
   float logScale = logf(maxAbsVal / minAbsVal) / codebookSize;
   for (int i=0; i < codebookSize; i++) {
     codebook[i] = minAbsVal * expf(i * logScale);
-    // printf("InitCB %d: %f\n", i, binValues[i]);
   }
 }
 
