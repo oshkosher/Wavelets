@@ -88,12 +88,15 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
     else if (!strcmp(arg, "-steps")) {
       if (++nextArg >= argc) printHelp();
       arg = argv[nextArg];
-      int steps;
-      if (1 != sscanf(arg, "%d", &steps) || steps < 0) {
+      int nParts = opt.param.transformSteps.parse(arg);
+      if (nParts == 1) {
+        opt.param.transformSteps.y = opt.param.transformSteps.x;
+        opt.param.transformSteps.z = opt.param.transformSteps.x;
+      } else if (nParts == 2) {
+        opt.param.transformSteps.z = 0;
+      } else if (nParts == 0) {
         fprintf(stderr, "Invalid # of wavelet transform steps: \"%s\"\n", arg);
         return false;
-      } else {
-        opt.param.transformSteps = int3(steps, steps, steps);
       }
     }
 
@@ -572,7 +575,7 @@ void computeErrorRates(const CubeInt *quantizedData,
                        const WaveletCompressionParam &param,
                        const Cube *inputData,
                        float *meanSquaredError,
-                       float *peakSNR) {
+                       float *peakSNR, float *relativeErr) {
 
   // dequantize quantizedData into restoredData
   CubeFloat restoredData;
@@ -589,6 +592,7 @@ void computeErrorRates(const CubeInt *quantizedData,
 
   *meanSquaredError = errAccum.getMeanSquaredError();
   *peakSNR = errAccum.getPeakSignalToNoiseRatio();
+  *relativeErr = errAccum.getRelativeError();
 }
 
 

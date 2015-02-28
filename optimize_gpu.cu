@@ -53,7 +53,8 @@ bool testParameters(OptimizationData *o,
                     float thresholdValue, int binCount,
                     QuantizeAlgorithm quantAlg,
                     int *outputSizeBytes,
-                    float *l1Error, float *l2Error, float *mse, float *pSNR) {
+                    float *l1Error, float *l2Error, float *mse, float *pSNR,
+                    float *relativeError) {
 
   WaveletCompressionParam param = o->transformedData->param;
   param.binCount = binCount;
@@ -187,10 +188,11 @@ bool testParameters(OptimizationData *o,
   CUCHECK(cudaFree(tempData_dev));
   CUCHECK(cudaFree(inverseWaveletInput_dev));
 
-  *l1Error = errAccum.getL1Error();
-  *l2Error = errAccum.getL2Error();
-  *mse = errAccum.getMeanSquaredError();
-  *pSNR = errAccum.getPeakSignalToNoiseRatio();
+  if (l1Error) *l1Error = errAccum.getL1Error();
+  if (l1Error) *l2Error = errAccum.getL2Error();
+  if (mse) *mse = errAccum.getMeanSquaredError();
+  if (pSNR) *pSNR = errAccum.getPeakSignalToNoiseRatio();
+  if (relativeError) *relativeError = errAccum.getRelativeError();
 
   return true;
 }

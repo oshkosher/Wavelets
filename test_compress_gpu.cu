@@ -7,14 +7,9 @@
 #include <thrust/binary_search.h>
 #include <thrust/sort.h>
 #include "test_compress_common.h"
-#include "dquant_log_cpu.h"
-#include "dquant_unif_cpu.h"
 #include "dwt_cpu.h"
 #include "dwt_gpu.h"
 #include "nixtimer.h"
-#include "quant_count.h"
-#include "quant_log_cpu.h"
-#include "quant_unif_cpu.h"
 #include "thresh_cpu.h"
 #include "cucheck.h"
 #include "cuda_timer.h"
@@ -60,7 +55,7 @@ bool computeErrorRatesGPU(int *quantizedData_dev,
                           const WaveletCompressionParam &param,
                           const void *inputData_dev, WaveletDataType inputType,
                           int maxPossibleValue,
-                          float *meanSqErr, float *peakSNR);
+                          float *meanSqErr, float *peakSNR, float *relErr);
 
 template <class T>
 void computeErrorRatesAfterDequantGPU
@@ -372,13 +367,14 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   // compute error rates
   if (opt.doComputeError) {
-    float meanSqErr, peakSNR;
+    float meanSqErr, peakSNR, relErr;
     // quantizedData.print("quantized before computing error rates");
     if (computeErrorRatesGPU((int*)data1_dev, deviceSize, data2_dev,
                              param, inputData_dev, inputData.datatype,
                              inputData.getMaxPossibleValue(),
-                             &meanSqErr, &peakSNR)) {
-      printf("Mean squared error: %.3f, peak SNR: %.3f\n", meanSqErr, peakSNR);
+                             &meanSqErr, &peakSNR, &relErr)) {
+      printf("Mean squared error: %.3f, relative error: %g, peak SNR: %.3f\n",
+             meanSqErr, relErr, peakSNR);
       fflush(stdout);
     }
   }
@@ -865,21 +861,26 @@ bool check3Quantized(const int *quantizedData_dev, int count,
 }
 
 
-// errSums[0] = sumDiff
-// errSums[1] = sumDiffSquared
+// errSums[0] = sumValue
+// errSums[1] = sumValueSquared
+// errSums[2] = sumDiff
+// errSums[3] = sumDiffSquared
 template <class T>
-__global__ void computeErrorKernel(float errSums[2],
+__global__ void computeErrorKernel(float errSums[4],
                                    const float *data, 
                                    const T *orig,
                                    scu_wavelet::int3 dataSize,
                                    scu_wavelet::int3 origSize,
                                    WaveletDataType datatype) {
 
-  unsigned long long sumDiff = 0, sumDiffSquared = 0;
-  __shared__ unsigned long long sumDiffShared, sumDiffSquaredShared;
+  unsigned long long sumValue = 0, sumValueSquared = 0, sumDiff = 0,
+    sumDiffSquared = 0;
+  __shared__ unsigned long long sumValueShared, sumValueSquaredShared,
+    sumDiffShared, sumDiffSquaredShared;
 
   if (threadIdx.x == 0 && threadIdx.y == 0) {
-    sumDiffShared = sumDiffSquaredShared = 0;
+    sumValueShared = sumValueSquaredShared = sumDiffShared = 
+      sumDiffSquaredShared = 0;
   }
  
   // sync so all threads get the shared variable initializations
@@ -903,6 +904,8 @@ __global__ void computeErrorKernel(float errSums[2],
             value = (int)valuef;
           }
           int origValue = orig[x + origSize.x*(y + z*origSize.y)];
+          sumValue += origValue;
+          sumValueSquared += origValue * origValue;
 
           // printf("%d,%d,%d %d %d\n", z, y, x, origValue, value);
 
@@ -916,6 +919,8 @@ __global__ void computeErrorKernel(float errSums[2],
   }
 
   // add this thread's results to the total for the thread block
+  atomicAdd(&sumValueShared, sumValue);
+  atomicAdd(&sumValueSquaredShared, sumValueSquared);
   atomicAdd(&sumDiffShared, sumDiff);
   atomicAdd(&sumDiffSquaredShared, sumDiffSquared);
 
@@ -925,8 +930,10 @@ __global__ void computeErrorKernel(float errSums[2],
   // add this thread block's results to errSums[]
   if (threadIdx.x == 0 && threadIdx.y == 0) {
     // FYI, atomicAdd(float) requires CUDA compute level 2.x or higher
-    atomicAdd(&errSums[0], (float)sumDiffShared);
-    atomicAdd(&errSums[1], (float)sumDiffSquaredShared);
+    atomicAdd(&errSums[0], (float)sumValueShared);
+    atomicAdd(&errSums[1], (float)sumValueSquaredShared);
+    atomicAdd(&errSums[2], (float)sumDiffShared);
+    atomicAdd(&errSums[3], (float)sumDiffSquaredShared);
   }
 
   // overhead from doing atomic updates (with 4 thread blocks of 32x32 threads)
@@ -957,10 +964,12 @@ void computeErrorRatesAfterDequantGPU
 
   // printDeviceArray(data_dev, size, "after inverse transform");
 
+  // {sumValue, sumValueSquared, sumDiff, sumDiffSquared}
+  float errSums[4];
   float *errSums_dev;
   computeErrTimer.start();
-  CUCHECK(cudaMalloc((void**)&errSums_dev, sizeof(float) * 2));
-  CUCHECK(cudaMemset(errSums_dev, 0, sizeof(float) * 2));
+  CUCHECK(cudaMalloc((void**)&errSums_dev, sizeof errSums));
+  CUCHECK(cudaMemset(errSums_dev, 0, sizeof errSums));
 
   // on W530 laptop, around.cube
   // with 1 thread or (param.originalSize.z) threads, this takes 20ms
@@ -971,8 +980,7 @@ void computeErrorRatesAfterDequantGPU
     (errSums_dev, data_dev, inputData_dev, size, param.originalSize,
      inputType);
 
-  float errSums[2];
-  CUCHECK(cudaMemcpy(&errSums, errSums_dev, sizeof(float) * 2,
+  CUCHECK(cudaMemcpy(&errSums, errSums_dev, sizeof errSums,
                      cudaMemcpyDeviceToHost));
   CUCHECK(cudaFree(errSums_dev));
   computeErrTimer.end();
@@ -986,8 +994,10 @@ void computeErrorRatesAfterDequantGPU
   }
   
   // largest unsigned char value
-  errAccum.setSumDiff(errSums[0]);
-  errAccum.setSumDiffSquared(errSums[1]);
+  errAccum.setSumValue(errSums[0]);
+  errAccum.setSumValueSquared(errSums[1]);
+  errAccum.setSumDiff(errSums[2]);
+  errAccum.setSumDiffSquared(errSums[3]);
   errAccum.setCount(param.originalSize.count());
 }
 
@@ -998,7 +1008,7 @@ bool computeErrorRatesGPU(int *quantizedData_dev, scu_wavelet::int3 size,
                           const WaveletCompressionParam &param,
                           const void *inputData_dev, WaveletDataType inputType,
                           int maxPossibleValue,
-                          float *meanSqErr, float *peakSNR) {
+                          float *meanSqErr, float *peakSNR, float *relErr) {
 
   float *data_dev;
   int count = size.count(), byteCount = size.count() * sizeof(float);
@@ -1035,7 +1045,7 @@ bool computeErrorRatesGPU(int *quantizedData_dev, scu_wavelet::int3 size,
   
   *meanSqErr = errAccum.getMeanSquaredError();
   *peakSNR = errAccum.getPeakSignalToNoiseRatio();
-
+  *relErr = errAccum.getRelativeError();
 
   CUCHECK(cudaFree(data_dev));
 
