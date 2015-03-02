@@ -57,7 +57,11 @@ class CubeletStreamWriter {
 
   bool addCubelet(const Cube *cubelet);
 
-  bool close();
+  // If noFooter is true, the list of all cubelet metadata will
+  // not be appended to the file. The space savings can be significant
+  // for small files, since it doubles the amount of metadata.
+  // The file will still be fully functional, since the footer is optional.
+  bool close(bool noFooter = false);
 
   CubeletStreamWriter() {
     outf = NULL;
