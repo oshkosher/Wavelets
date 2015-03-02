@@ -132,9 +132,13 @@ bool compressFile(const char *inputFile, const char *outputFile,
   }
   */
 
+  int zeroBin;
+
   if (!quantize(data, quantizedData, maxAbsVal, param, nonzeroData,
-                nonzeroCount, minVal, maxVal)) return false;
+                nonzeroCount, minVal, maxVal, &zeroBin)) return false;
   quantizedData.param = param;
+
+  if (!opt.doCompressZeros) zeroBin = -1;
 
   // quantizedData.print("After quantization");
   saveAfterQuantize(opt, &quantizedData);
@@ -161,9 +165,11 @@ bool compressFile(const char *inputFile, const char *outputFile,
   startTime = NixTimer::time();
   CubeletStreamWriter cubeletWriter;
   if (!cubeletWriter.open(outputFile)) return false;
-  if (!writeQuantData(cubeletWriter, &quantizedData, opt))
+  if (!writeQuantData(cubeletWriter, &quantizedData, opt, NULL, NULL, zeroBin))
     return false;
-  cubeletWriter.close();
+
+  // disable the file footer to save space
+  cubeletWriter.close(true);
 
     
   if (!QUIET) {
@@ -236,7 +242,7 @@ bool quantize(const CubeFloat &data, CubeInt &quantizedData,
               float maxAbsVal, WaveletCompressionParam &param,
               const float *nonzeroData, int nonzeroCount,
               float minVal, float maxVal,
-              float *quantErrorOut) {
+              int *zeroBin) {
 
   // for now, to make the processing easier, don't accept padded data
   assert(data.size == data.totalSize);
@@ -266,6 +272,9 @@ bool quantize(const CubeFloat &data, CubeInt &quantizedData,
 
   Quantizer *quant = createQuantizer(param);
   if (!quant) return false;
+
+  // fill in the zero bin if the caller asked for it
+  if (zeroBin) *zeroBin = quant->quant(0);
 
   startTime = NixTimer::time();
   quant->quantizeRow(data.pointer(0,0,0), quantizedData.pointer(0,0,0),

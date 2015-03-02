@@ -266,6 +266,16 @@ void Cube::copyFromCubeletBuffer(const CubeletBuffer *buf) {
     param.huffDecode.resize(p.huffman_decode_table_size());
     for (int i=0; i < p.huffman_decode_table_size(); i++)
       param.huffDecode[i] = p.huffman_decode_table(i);
+
+    if (p.has_huffman_dup_value())
+      param.huffDuplicateValue = p.huffman_dup_value();
+    else
+      param.huffDuplicateValue = -1;
+
+    if (p.has_huffman_dup_key())
+      param.huffDuplicateKey = p.huffman_dup_key();
+    else
+      param.huffDuplicateKey = -1;
     
   }
 }
@@ -322,6 +332,12 @@ void Cube::copyToCubeletBuffer(CubeletBuffer *buf) const {
 
     for (size_t i=0; i < param.huffDecode.size(); i++)
       p->add_huffman_decode_table(param.huffDecode[i]);
+
+    if (param.huffDuplicateValue >= 0)
+      p->set_huffman_dup_value(param.huffDuplicateValue);
+
+    if (param.huffDuplicateKey >= 0)
+      p->set_huffman_dup_key(param.huffDuplicateKey);
 
   }
 }

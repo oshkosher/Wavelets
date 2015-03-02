@@ -272,6 +272,9 @@ class WaveletCompressionParam {
   // for an explanation
   std::vector<int> huffDecode;
 
+  // use to do zero-compress
+  int huffDuplicateValue, huffDuplicateKey;
+
   // set default values
   void init() {
     originalDatatype = WAVELET_DATA_UNKNOWN;
@@ -287,6 +290,7 @@ class WaveletCompressionParam {
     binBoundaries.clear();
     binValues.clear();
     huffDecode.clear();
+    huffDuplicateValue = huffDuplicateKey = -1;
   }
 };
 

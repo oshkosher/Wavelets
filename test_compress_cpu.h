@@ -9,7 +9,7 @@ bool quantize(const CubeFloat &data, CubeInt &quantizedData,
               float maxAbsVal, WaveletCompressionParam &param,
               const float *nonzeroData, int nonzeroCount,
               float minValue, float maxValue,
-              float *quantErrorOut = NULL);
+              int *zeroBin = NULL);
 
 
 

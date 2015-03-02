@@ -32,7 +32,7 @@ bool QUIET = false;
 // using Huffman encoding. If binCounts is not NULL, use it for the
 // frequency counts.
 static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet,
-                        int *binCounts = NULL);
+                        int *binCounts = NULL, int zeroBin = -1);
 
 static bool writeQuantDataHuffman(Huffman &huff, vector<uint32_t> *outData,
                                   const CubeInt *data, bool quiet);
@@ -58,6 +58,7 @@ void printHelp() {
          "    -enc : print the bit encoding of each value\n"
          "    -err : compute error metrics (slow, disabled by default)\n"
          "    -2d : rather than 3d transform, do 2d transform at each layer\n"
+	 "    -noz : disable compression of long strings of zeros\n"
          "    -q : be quiet; suppess all output\n"
          "    -v : be verbose; print the data after each step\n"
          "\n",
@@ -161,6 +162,10 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
       opt.printHuffmanEncoding = true;
     }
 
+    else if (!strcmp(arg, "-noz")) {
+      opt.doCompressZeros = false;
+    }
+
     else if (!strcmp(arg, "-q")) {
       opt.quiet = true;
     }
@@ -193,13 +198,13 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
 */
 bool writeQuantData(CubeletStreamWriter &cubeletStream,
                     CubeInt *cube, Options &opt,
-                    int *sizeBytes, int *binCounts) {
+                    int *sizeBytes, int *binCounts, int zeroBin) {
   
   if (sizeBytes) *sizeBytes = 0;
 
   // initialize the huffman encoding
   Huffman huff;
-  initHuffman(huff, cube, opt.quiet, binCounts);
+  initHuffman(huff, cube, opt.quiet, binCounts, zeroBin);
   if (opt.printHuffmanEncoding) huff.printEncoding();
 
   vector<uint32_t> encodedData;
@@ -208,6 +213,15 @@ bool writeQuantData(CubeletStreamWriter &cubeletStream,
     return false;
 
   huff.getDecoderTable(cube->param.huffDecode);
+  if (zeroBin >= 0) {
+    cube->param.huffDuplicateValue = huff.getDuplicateValue();
+    cube->param.huffDuplicateKey = huff.getDuplicateKey();
+    assert(huff.getDuplicateValue() == zeroBin);
+  } else {
+    cube->param.huffDuplicateValue = -1;
+    cube->param.huffDuplicateKey = -1;
+  }
+
   cube->param.compressedSize = (int)(encodedData.size() * sizeof(uint32_t));
   cube->isWaveletCompressed = true;
 
@@ -860,6 +874,8 @@ bool readQuantData(CubeletStreamReader &cubeletStream, CubeInt *cube) {
 
   HuffmanDecoder huffDecoder;
   huffDecoder.init(cube->param.huffDecode);
+  huffDecoder.setDuplicate(cube->param.huffDuplicateKey,
+			   cube->param.huffDuplicateValue);
 
   BitStreamMemorySource mem(&bitData);
   BitStreamReader<BitStreamMemorySource> bitReader(&mem);
@@ -882,15 +898,31 @@ bool readQuantData(CubeletStreamReader &cubeletStream, CubeInt *cube) {
 class TraverseForHuffman {
 public:
   Huffman &huff;
-  TraverseForHuffman(Huffman &h) : huff(h) {}
+  int dupValue, dupStringLength;
+  
+
+  TraverseForHuffman(Huffman &h, int dupValue_ = -1)
+    : huff(h), dupValue(dupValue_), dupStringLength(0) {}
   
   void visit(int value) {
-    huff.increment(value);
+    if (value == dupValue) {
+      dupStringLength++;
+    } else {
+      flush();
+      huff.increment(value);
+    }
+  }
+
+  void flush() {
+    if (dupStringLength > 0) {
+      huff.addDupString(dupStringLength);
+      dupStringLength = 0;
+    }
   }
 };
 
 static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet,
-                        int *binCounts) {
+                        int *binCounts, int zeroBin) {
 
   double startTime = NixTimer::time();
 
@@ -900,10 +932,14 @@ static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet,
     // number of possible values
     huff.init(cube->param.binCount);
 
+    if (zeroBin >= 0) huff.setDuplicateValue(zeroBin);
+
     // train the huffman encoder
-    TraverseForHuffman init(huff);
+    TraverseForHuffman init(huff, zeroBin);
     cube->visit<TraverseForHuffman>(init);
+    init.flush();
   }
+
   double summarizeTime = NixTimer::time() - startTime;
 
   startTime = NixTimer::time();
