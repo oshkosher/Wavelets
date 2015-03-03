@@ -297,6 +297,8 @@ cudalloyds.$(OBJ_EXT): CUDA/lloyds/cudalloyds.cu CUDA/lloyds/cudalloyds.h
 dwt_gpu.$(OBJ_EXT): dwt_gpu.cu dwt_gpu.h dwt_cpu.h
 	$(NVCC) -c $<
 
+optimize.$(OBJ_EXT): optimize.cc optimize.h
+
 quant_gpu.$(OBJ_EXT): quant_gpu.cu quant_gpu.h quant.h
 
 cubelet_file.o: cubelet_file.cc cubelet_file.h wavelet_compress.pb.h
@@ -323,7 +325,7 @@ test_compress_cpu: $(TEST_COMPRESS_CPU_OBJS)
 	$(CC) $(TEST_COMPRESS_CPU_OBJS) -o $@ $(LIBS) $(PROTOBUF_LIB)
 
 test_compress_gpu.$(OBJ_EXT): test_compress_gpu.cu test_compress_gpu.h \
-  wavelet_compress.pb.h quant.h
+  test_compress_common.h dwt_cpu.h dwt_gpu.h nixtimer.h thresh_cpu.h cucheck.h cuda_timer.h quant.h quant_gpu.h test_compress_gpu.h histogram_gpu.h wavelet_compress.pb.h wavelet.h
 
 test_compress_common.$(OBJ_EXT): test_compress_common.cc test_compress_common.h quant.h rle.h cubelet_file.h
 
