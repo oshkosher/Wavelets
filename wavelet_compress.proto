@@ -67,6 +67,13 @@ message CompressionParametersBuffer {
   // For an explanation of the table, see the HuffmanDecoder class
   // declared in huffman.h.
   repeated int32 huffman_decode_table = 13 [packed=true];
+
+  // To optmize the compressed data size, long strings of duplicates
+  // the most frequent value are encoded in a special compact form.
+  // huffman_dup_key is how these values appear in the encoded data,
+  // and huffman_dup_value is the value to which they should be expanded.
+  optional int32 huffman_dup_key = 19;
+  optional int32 huffman_dup_value = 20;
 }
 
 

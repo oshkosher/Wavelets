@@ -301,7 +301,7 @@ optimize.$(OBJ_EXT): optimize.cc optimize.h
 
 quant_gpu.$(OBJ_EXT): quant_gpu.cu quant_gpu.h quant.h
 
-cubelet_file.o: cubelet_file.cc cubelet_file.h wavelet_compress.pb.h
+cubelet_file.o: cubelet_file.cc cubelet_file.h wavelet_compress.pb.h wavelet.h
 	$(CC) -c $<
 
 test_cubelet_file: test_cubelet_file.cc cubelet_file.o wavelet_compress.pb.o \

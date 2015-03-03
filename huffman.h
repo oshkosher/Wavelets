@@ -9,6 +9,55 @@
 #include "bit_stream.h"
 
 
+// Logic for encoding long strings of duplicate values efficiently
+class HuffmanDup {
+
+ public:
+  // use this many bits to encode the duplicate string length
+  static const int DUP_ENCODE_BITS = 3;
+
+  // offset the duplicate string length by this much
+  static const int DUP_OFFSET = 3;
+
+  static int decodeLength(unsigned v) {return 1 << (v + DUP_OFFSET);}
+  static int dupMaximumValue() {return (1 << DUP_ENCODE_BITS) - 1;}
+  static int dupMinimumLength() {return decodeLength(0);}
+  static int dupMaximumLength() {return decodeLength(dupMaximumValue());}
+
+  static const int DUP_MIN_ENCODED_LEN = 1 << DUP_OFFSET;
+
+  // Returns encoding for the longest possible string less than or equal
+  // to the given length. If length < dupMinimumLength(), returns 0.
+  static unsigned dupFindLongest(int length) {
+
+    if (length >= decodeLength(dupMaximumValue()))
+      return dupMaximumValue();
+
+    unsigned encoding = 0, encodedLength = dupMinimumLength();
+    while (length >= (int)(encodedLength << 1)) {
+      encoding++;
+      encodedLength <<= 1;
+    }
+    return encoding;
+  }
+
+  // Given a length, count how many times the duplicate-string encoding
+  // will be used, and how many time the regular single-encoding will be used
+  static void dupCount(int length, int &singleEncodingCount,
+		       int &dupEncodingCount) {
+    dupEncodingCount = 0;
+
+    while (length > dupMinimumLength()) {
+      unsigned encoding = dupFindLongest(length);
+      length -= decodeLength(encoding);
+      dupEncodingCount++;
+    }
+
+    singleEncodingCount = length;
+  }
+};
+
+
 class HuffmanDecoder {
 
   // Table used to decode bits
@@ -24,9 +73,22 @@ class HuffmanDecoder {
   // use the right entry to get the next offset.
   std::vector<int> table;
 
+  // When the value 'dupKey' is found in the input stream the next
+  // DUP_ENCODE_BITS bits represent the length of a duplicates
+  // of the value 'dupValue'. Use Huffman::decodeLength() to decode the bits
+  // into a length.
+  int dupKey, dupValue;
+
  public:
   void init(const std::vector<int> &table_) {
     table = table_;
+    dupKey = -1;
+    dupValue = 0;
+  }
+
+  void setDuplicate(int dupKey_, int dupValue_) {
+    dupKey = dupKey_;
+    dupValue = dupValue_;
   }
 
   // Read up to 'count' integers from bitStream. Return the number read.
@@ -42,8 +104,24 @@ class HuffmanDecoder {
         // putchar(bit ? '1' : '0');
         pos = table[pos + bit] * 2;
         if (table[pos] == 0) {
-          values[i] = table[pos+1];
-          // printf("%d %d\n", i, values[i]);
+
+	  int v = table[pos+1];
+
+	  // this value marks a duplicate string, decode the length
+	  if (v == dupKey) {
+	    unsigned encodedLength =
+	      bitStream->read(HuffmanDup::DUP_ENCODE_BITS);
+	    int decodedLength = HuffmanDup::decodeLength(encodedLength);
+	    // printf("%d. %d*[%d]\n", i, dupValue, decodedLength);
+	    while (decodedLength > 0) {
+	      values[i++] = dupValue;
+	      decodedLength--;
+	    }
+	    i--;
+	  } else {
+	    values[i] = v;
+	    // printf("%d %d\n", i, values[i]);
+	  }
           break;
         }
       }
@@ -77,6 +155,8 @@ class Huffman {
     counts.resize(size, 0);
     computed = false;
     nodeStorage = NULL;
+    dupValue = -1;
+    dupValueCount = 0;
   }
 
   void init(const int *counts_, int size_) {
@@ -84,11 +164,32 @@ class Huffman {
     counts.assign(counts_, counts_ + size);
     computed = false;
     nodeStorage = NULL;
+    dupValue = -1;
+    dupValueCount = 0;
   }
   
   ~Huffman() {
     if (nodeStorage) delete[] nodeStorage;
   }
+
+  // Mark a value as a common one that will have many strings of duplicates.
+  // Must be in the range [0..getSize()-1].  Any value outside that range
+  // will disable the 'common value' feature.
+  void setDuplicateValue(int v) {
+    if (v < 0 || v >= size) v = -1;
+    dupValue = v;
+  }
+
+  int getDuplicateValue() {
+    return dupValue;
+  }
+
+  // the value used internally to represent the start of the dup string
+  int getDuplicateKey() {
+    return size;
+  }
+
+  bool isDuplicateValueSet() {return dupValue >= 0;}
 
   int getSize() {return size;}
 
@@ -102,6 +203,17 @@ class Huffman {
   void update(int value, int change) {
     assert(value >= 0 && value < size);
     counts[value] += change;
+  }
+
+  // a string of 'length' copies of 'dupValue' was found.
+  // update counters appropriately
+  void addDupString(int length) {
+    int single, dup;
+    HuffmanDup::dupCount(length, single, dup);
+    // add one for each instance of a single copy of 'dupValue'
+    update(dupValue, single);
+    // add one for each time the special dup encoding would be used
+    dupValueCount += dup;
   }
 
   // get the count for one entry
@@ -130,17 +242,59 @@ class Huffman {
   void encodeToStream(BitStreamWriter<Sink> *bitStream,
                       const int *values, int count) {
     assert(computed);
-    unsigned *encodedData = encodeTable.data();
+    // unsigned *encodedData = encodeTable.data();
 
     for (int i = 0; i < count; i++) {
       // printf("%d %d\n", i, values[i]);
-      unsigned value = values[i];
-      unsigned bitCount = encodedData[value*2];
-      unsigned bitDataOffset = encodedData[value*2+1];
-      bitStream->write(encodedData+bitDataOffset, bitCount);
+      int value = values[i];
+
+      // if this is the designated common value, see if it is duplicated
+      if (value == dupValue) {
+	int duplicateLength = 1;
+	while (duplicateLength+i < count && 
+	       values[i+duplicateLength] == dupValue)
+	  duplicateLength++;
+	dupEncodeString(duplicateLength, bitStream);
+	i += duplicateLength-1;
+      } else {
+	// otherwise just write the encoding for this value
+	encodeValue(value, bitStream);
+      }
     }
     bitStream->flush();
   }
+
+  // encode one value and write it to the string
+  template<class Sink>
+  void encodeValue(unsigned value, BitStreamWriter<Sink> *bitStream) {
+    unsigned *encodedData = encodeTable.data();
+    unsigned bitCount = encodedData[value*2];
+    unsigned bitDataOffset = encodedData[value*2+1];
+    bitStream->write(encodedData+bitDataOffset, bitCount);
+  }
+
+  // Encode 'length' copies of 'dupValue' as efficiently as possible.
+  template<class Sink>
+  void dupEncodeString(int length, BitStreamWriter<Sink> *bitStream) {
+
+    // use the efficient encoding to reduce the length as much as possible
+    // For example, if length==205: 128, 64, 8, leaving a remainder of 5
+
+    while (length > HuffmanDup::dupMinimumLength()) {
+      unsigned encoding = HuffmanDup::dupFindLongest(length);
+      length -= HuffmanDup::decodeLength(encoding);
+      encodeValue(getDuplicateKey(), bitStream);
+      bitStream->write(encoding, HuffmanDup::DUP_ENCODE_BITS);
+    }
+
+    // write single instances; the remainder
+    while (length > 0) {
+      encodeValue(dupValue, bitStream);
+      length--;
+    }
+
+  }
+
 
   // Read up to 'count' integers from bitStream. Return the number read.
   template<class WordSource>
@@ -218,6 +372,12 @@ class Huffman {
   // Consider this the 'owner' of all the Node* objects.
   // When this is destroyed, destroy the nodes.
   std::vector<Node*> values;
+
+  // If -1, this is ignored. Otherwise, the caller can set this to
+  // mark a value that will be very common in the data. Repeated
+  // instances of it use an encoding optimized for long strings of
+  // duplicates.
+  int dupValue, dupValueCount;
 
   HuffmanDecoder decoder;
 

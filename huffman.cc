@@ -44,14 +44,21 @@ void Huffman::computeHuffmanCoding() {
   nodes.clear();
   values.clear();
   longestBitString = 0;
+  assert((int)counts.size() == size);
+
+  // temporarily add dupValueCount to counts[]
+  if (isDuplicateValueSet())
+    counts.push_back(dupValueCount);
 
   // allocate space for all the nodes
-  nodeStorage = new Node[size * 2 - 1];
+  if (nodeStorage) delete[] nodeStorage;
+  nodeStorage = new Node[counts.size() * 2 - 1];
 
   // Initialize all the leaf nodes,
   // add all the values that were used to encodedNodes and to queue
   priority_queue<Node*, vector<Node*>, CompareHuffmanNode> queue;
-  for (int i=0; i < size; i++) {
+  int nodeCount = counts.size();
+  for (int i=0; i < nodeCount; i++) {
     Node *node = nodeStorage + i;
     node->initLeaf(i, counts[i]);
     if (counts[i] > 0) {
@@ -61,12 +68,15 @@ void Huffman::computeHuffmanCoding() {
     }
   }
 
+  // remove dupValueCount
+  if (isDuplicateValueSet()) counts.pop_back();
+
   // sort by decreasing frequency
   CompareHuffmanNode sortComparison;
   sort(values.begin(), values.end(), sortComparison);
 
-  // for N elements, do N-1 iterations
-  int storageIdx = size;
+  // for N elements, do N-1 iterations, merging the two smallest nodes
+  int storageIdx = nodeCount;
   while (queue.size() > 1) {
     Node *a = queue.top(); queue.pop();
     Node *b = queue.top(); queue.pop();
@@ -91,7 +101,8 @@ void Huffman::printEncoding() {
   for (size_t i=0; i < values.size(); i++) {
     Node *node = values[i];
     string bits = node->bitString();
-    printf("%3d (%8d): %s\n", node->value, node->count, bits.c_str());
+    printf("%3d (%8d): %d %s\n", node->value, node->count, node->bitLength,
+	   bits.c_str());
   }
 }
 
@@ -104,7 +115,8 @@ void Huffman::computeEncodeTable() {
 
   // build encodeTable
   encodeTable.clear();
-  encodeTable.resize(size * 2, 0);
+  int valueCount = size + (isDuplicateValueSet() ? 1 : 0);
+  encodeTable.resize(valueCount * 2, 0);
   for (size_t i=0; i < values.size(); i++) {
     Node *node = values[i];
 
@@ -194,6 +206,8 @@ void Huffman::computeDecodeTable() {
   */
 
   decoder.init(decodeTable);
+  if (isDuplicateValueSet())
+    decoder.setDuplicate(size, dupValue);
 }
 
 
@@ -216,6 +230,9 @@ void Huffman::orderNodes(std::vector<Node*> &orderedNodes) {
 
 int Huffman::encodedLength(int value) {
   assert(computed);
+  // special case for dup value
+  if (isDuplicateValueSet() && value == size)
+    return encodeTable[value*2] + HuffmanDup::DUP_ENCODE_BITS;
   assert(value >= 0 && value < size);
 
   return encodeTable[value*2];
@@ -226,6 +243,11 @@ int Huffman::totalEncodedLengthBytes() {
   int total = 0;
   for (int v = 0; v < size; v++)
     total += encodedLength(v) * getCount(v);
+
+  // add the cost of encoding duplicate strings
+  if (isDuplicateValueSet())
+    total += dupValueCount * encodedLength(size);
+
   return (total + 31) / 32 * 4;
 }
   

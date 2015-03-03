@@ -300,22 +300,24 @@ bool CubeletStreamWriter::addCubelet(const Cube *cubelet) {
 }
 
 
-bool CubeletStreamWriter::close() {
+bool CubeletStreamWriter::close(bool noFooter) {
   // If the file isn't open do nothing.
   if (!outf) return true;
 
-  int32_t eofMarker = -1; // set all bits
-  fwrite(&eofMarker, sizeof eofMarker, 1, outf);
+  if (!noFooter) {
+    int32_t eofMarker = -1; // set all bits
+    fwrite(&eofMarker, sizeof eofMarker, 1, outf);
   
-  // write the cubelet index
-  int32_t indexLen = writeProtobuf(outf, &index, false);
+    // write the cubelet index
+    int32_t indexLen = writeProtobuf(outf, &index, false);
 
-  if (fwrite(&indexLen, sizeof indexLen, 1, outf) != 1) {
-    fprintf(stderr, "Failed to write index size in the file footer.\n");
+    if (fwrite(&indexLen, sizeof indexLen, 1, outf) != 1) {
+      fprintf(stderr, "Failed to write index size in the file footer.\n");
+    }
+
+    // write special tag to show the footer is valid
+    fwrite("cube", 1, 4, outf);
   }
-
-  // write special tag to show the footer is valid
-  fwrite("cube", 1, 4, outf);
 
   if (outf != stdout) fclose(outf);
 

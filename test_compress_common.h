@@ -43,10 +43,17 @@ struct Options {
   // the parameter optimzation routine to set the threshold and bin count.
   bool doOptimize;
 
-  // -bq option : if not "", save a copy data in this file before quantizing
+  // -bq option : if not "", save a copy in this file before quantizing
   std::string saveBeforeQuantizingFilename;
 
+  // -aq option : if not "", save a copy in this file after quantizing
+  std::string saveAfterQuantizingFilename;
+
   bool runQuantizationExperiments;
+
+  // -noz option : by default, compress long strings of zeros
+  // in the huffman encoding. -noz disables this
+  bool doCompressZeros;
 
   // all the parameters for the wavelet compression
   WaveletCompressionParam param;
@@ -63,7 +70,9 @@ struct Options {
     doComputeError = false;
     doOptimize = false;
     saveBeforeQuantizingFilename = "";
+    saveAfterQuantizingFilename = "";
     runQuantizationExperiments = false;
+    doCompressZeros = true;
 
     param.init();
   }
@@ -221,7 +230,8 @@ bool readQuantData(CubeletStreamReader &cubeletStream, CubeInt *data);
 // of each values.
 bool writeQuantData(CubeletStreamWriter &cubeletStream,
                     CubeInt *cube, Options &opt,
-                    int *sizeBytes = NULL, int *binCounts = NULL);
+                    int *sizeBytes = NULL, int *binCounts = NULL,
+		    int zeroBin = -1);
 
 Quantizer *createQuantizer(const WaveletCompressionParam &param);
 

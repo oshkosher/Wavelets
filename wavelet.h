@@ -272,6 +272,9 @@ class WaveletCompressionParam {
   // for an explanation
   std::vector<int> huffDecode;
 
+  // use to do zero-compress
+  int huffDuplicateValue, huffDuplicateKey;
+
   // set default values
   void init() {
     originalDatatype = WAVELET_DATA_UNKNOWN;
@@ -287,6 +290,7 @@ class WaveletCompressionParam {
     binBoundaries.clear();
     binValues.clear();
     huffDecode.clear();
+    huffDuplicateValue = huffDuplicateKey = -1;
   }
 };
 
@@ -785,10 +789,15 @@ class CubeNum : public Cube {
 
   }
 
+  static inline void transpose4x4_SSE(const int *A, int *B, 
+				      const int lda, const int ldb) {
+    transpose4x4_SSE((const float*)A, (float*)B, lda, ldb);
+  }
 
   // From http://stackoverflow.com/questions/16737298/what-is-the-fastest-way-to-transpose-a-matrix-in-c
   // Except I changed load->loadu and store->storeu to allow unaligned accesses
-  static inline void transpose4x4_SSE(const float *A, float *B, const int lda, const int ldb) {
+  static inline void transpose4x4_SSE(const float *A, float *B, 
+				      const int lda, const int ldb) {
     __m128 row1 = _mm_loadu_ps(&A[0*lda]);
     __m128 row2 = _mm_loadu_ps(&A[1*lda]);
     __m128 row3 = _mm_loadu_ps(&A[2*lda]);
