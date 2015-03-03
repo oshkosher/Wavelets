@@ -8,7 +8,7 @@ bool quantizeGPU(int *outputData, const float *inputData, int count,
                  WaveletCompressionParam &param,
                  const float *nonzeroData_dev, int nonzeroCount,
                  float maxAbsVal, float minValue, float maxValue,
-                 CudaTimer &quantizeTimer);
+                 CudaTimer &quantizeTimer, int *zeroBin = NULL);
 
 bool dequantizeGPU(float *result_dev, const int *input_dev,
                    int count, const WaveletCompressionParam &param);

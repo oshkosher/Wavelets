@@ -345,9 +345,11 @@ bool compressFile(const char *inputFile, const char *outputFile,
     if (!result) return true;
   }
 
+  int zeroBin;
   if (!quantizeGPU((int*)data1_dev, data1_dev, dataCount, param,
                    nonzeroData_dev, nonzeroCount,
-                   maxAbsVal, minValue, maxValue, quantizeTimer))
+                   maxAbsVal, minValue, maxValue, quantizeTimer,
+                   &zeroBin))
     return false;
   // printDeviceArray((int*)data1_dev, deviceSize, "before inverse transform");
 
@@ -379,11 +381,6 @@ bool compressFile(const char *inputFile, const char *outputFile,
     }
   }
 
-  // compute the bin number to which zero values map
-  Quantizer *quantizer = createQuantizer(param);
-  int zeroBin = quantizer->quant(0);
-  delete quantizer;
-
   // compute histogram on the GPU
   int *freqCounts = computeFrequenciesGPU
     (param.binCount, (const int*)data1_dev, dataCount, zeroBin, false);
@@ -411,7 +408,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
   int outputSizeUnused;
   if (!cubeletWriter.open(outputFile)) return false;
   if (!writeQuantData(cubeletWriter, &quantizedData, opt, &outputSizeUnused,
-                      freqCounts))
+                      freqCounts, opt.doCompressZeros ? zeroBin : -1))
     return false;
   cubeletWriter.close();
   delete[] freqCounts;

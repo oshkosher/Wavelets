@@ -895,21 +895,60 @@ bool readQuantData(CubeletStreamReader &cubeletStream, CubeInt *cube) {
 }
 
 
-class TraverseForHuffman {
+/** 
+    Build the histogram for huffman coding, looking for strings
+    of repeats of 'dupValue' at the same time.
+ */
+class HuffmanHistogram {
 public:
   Huffman &huff;
   int dupValue, dupStringLength;
   
 
-  TraverseForHuffman(Huffman &h, int dupValue_ = -1)
+  HuffmanHistogram(Huffman &h, int dupValue_ = -1)
     : huff(h), dupValue(dupValue_), dupStringLength(0) {}
-  
+
+  // this will be called for every element
   void visit(int value) {
     if (value == dupValue) {
       dupStringLength++;
     } else {
       flush();
       huff.increment(value);
+    }
+  }
+
+  // this will be called after all the last call to value()
+  void flush() {
+    if (dupStringLength > 0) {
+      huff.addDupString(dupStringLength);
+      dupStringLength = 0;
+    }
+  }
+};
+
+
+/** 
+    Don't build the Huffman histogram, just look for repeats of 'dupValue'.
+ */
+class HuffmanDupStrings {
+public:
+  Huffman &huff;
+  int dupValue, dupStringLength;
+
+  HuffmanDupStrings(Huffman &h, int dupValue_)
+    : huff(h), dupValue(dupValue_), dupStringLength(0) {
+    assert(dupValue >= 0);
+    // reset the current count for dupValue; we'll recompute it
+    int dupCount = huff.getCount(dupValue);
+    huff.update(dupValue, -dupCount);
+  }
+  
+  void visit(int value) {
+    if (value == dupValue) {
+      dupStringLength++;
+    } else {
+      flush();
     }
   }
 
@@ -921,6 +960,7 @@ public:
   }
 };
 
+
 static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet,
                         int *binCounts, int zeroBin) {
 
@@ -928,23 +968,31 @@ static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet,
 
   if (binCounts) {
     huff.init(binCounts, cube->param.binCount);
+
+    // given the binCount but not dup strings, compute the dup strings stats
+    if (zeroBin >= 0) {
+      huff.setDuplicateValue(zeroBin);
+      HuffmanDupStrings init(huff, zeroBin);
+      cube->visit<HuffmanDupStrings>(init);
+      init.flush();
+    }
+
   } else {
     // number of possible values
     huff.init(cube->param.binCount);
-
     if (zeroBin >= 0) huff.setDuplicateValue(zeroBin);
 
     // train the huffman encoder
-    TraverseForHuffman init(huff, zeroBin);
-    cube->visit<TraverseForHuffman>(init);
+    HuffmanHistogram init(huff, zeroBin);
+    cube->visit<HuffmanHistogram>(init);
     init.flush();
   }
 
-  double summarizeTime = NixTimer::time() - startTime;
+  double summarizeTime = 1000*(NixTimer::time() - startTime);
 
   startTime = NixTimer::time();
   huff.computeHuffmanCoding();
-  double buildEncodingTime = NixTimer::time() - startTime;
+  double buildEncodingTime = 1000*(NixTimer::time() - startTime);
   if (!quiet) {
     printf("Huffman summarize frequencies %.3f ms, build encoding %.3f ms\n",
 	   summarizeTime, buildEncodingTime);

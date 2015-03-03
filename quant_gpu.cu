@@ -118,10 +118,17 @@ bool quantizeGPU(int *outputData, const float *inputData, int count,
                  WaveletCompressionParam &param,
                  const float *nonzeroData_dev, int nonzeroCount,
                  float maxAbsVal, float minValue, float maxValue,
-                 CudaTimer &quantizeTimer) {
+                 CudaTimer &quantizeTimer, int *zeroBin) {
   thrust::device_ptr<const float> inputStart(inputData), 
     inputEnd(inputData+count);
   thrust::device_ptr<int> outputStart(outputData);
+
+  // compute the bin number to which zero values map
+  if (zeroBin) {
+    Quantizer *quantizer = createQuantizer(param);
+    *zeroBin = quantizer->quant(0);
+    delete quantizer;
+  }
 
   switch (param.quantAlg) {
   case QUANT_ALG_UNIFORM:

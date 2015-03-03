@@ -324,6 +324,8 @@ TEST_COMPRESS_CPU_OBJS=test_compress_cpu.o wavelet.o \
 test_compress_cpu: $(TEST_COMPRESS_CPU_OBJS)
 	$(CC) $(TEST_COMPRESS_CPU_OBJS) -o $@ $(LIBS) $(PROTOBUF_LIB)
 
+optimize_gpu.$(OBJ_EXT): optimize_gpu.cu cucheck.h optimize.h test_compress_common.h test_compress_gpu.h cuda_timer.h quant_gpu.h nixtimer.h histogram_gpu.h huffman.h
+
 test_compress_gpu.$(OBJ_EXT): test_compress_gpu.cu test_compress_gpu.h \
   test_compress_common.h dwt_cpu.h dwt_gpu.h nixtimer.h thresh_cpu.h cucheck.h cuda_timer.h quant.h quant_gpu.h test_compress_gpu.h histogram_gpu.h wavelet_compress.pb.h wavelet.h
 
