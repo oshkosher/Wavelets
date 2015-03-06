@@ -4,25 +4,31 @@ Date: Wednesday, March 4, 2015
 
 Time:  From about Noon to about 1:00 PM
 
-Present:  Anupam Goyal, David Concha (remotely), Drazen Fabris, Ed Karrels (remotely), Bonnie Smithson (remotely), Sergio Zarantonello (remotely). 
+Present:  Anupam Goyal, David Concha (remotely), Drazen Fabris, Ed Karrels (remotely), Bonnie Smithson (remotely), 
+Sergio Zarantonello (remotely). 
 
 Presentations:
 
 1. Anupam presented a summary of two published articles.
 
-a. Serge mentioned that one of the user-specified error metrics which is point-by-point error (in the paper by Ye Jin et al.) may be easy to add to his code.
+a. Serge mentioned that one of the user-specified error metrics which is point-by-point error (in the paper by Ye 
+   Jin et al.) may be easy to add to his code.
 
 b. Anupam also mentioned other interesting differences from our work in the paper by Ye Jin et al. as follows:
 
-i. The 1-D input vector is preprocessed to be monotonically increasing for a better wavelet transform and more accurate reconstruction.
+i. The 1-D input vector is preprocessed to be monotonically increasing for a better wavelet transform and more 
+accurate reconstruction.
 
-ii. The iterative process of finding the optimal number of wavelet coefficients, from user specified error metric of Normalized Root Mean Square Error, uses prior experience from other windows for this process.
+ii. The iterative process of finding the optimal number of wavelet coefficients, from user specified error metric 
+    of Normalized Root Mean Square Error, uses prior experience from other windows for this process.
 
-c. Bonnie mentioned the utility of the second paper by Alan Bovik, for our work may be limited (since it is based on modeling human perception).
+c. Bonnie mentioned the utility of the second paper by Alan Bovik, for our work may be limited (since it is based on 
+   modeling human perception).
 
 2. Serge presented graphical results from MatLab runs.
 
-a. The two graphs shown were for percentage cutoff vs. number of bins.  One showed variation of PSNR and other showed variation of compression ratio.
+a. The two graphs shown were for percentage cutoff vs. number of bins.  One showed variation of PSNR and other 
+   showed variation of compression ratio.
 
 b. The goal is to find the highest compression ratio for user specified PSNR.
 
@@ -36,9 +42,10 @@ Discussions: As above and below.
 
 Future Work:
 
-1. As per Drazen’s suggestion, Anupam plans to look into 13 public dataset sites mentioned in paper by Ye Jin et al. to see if these contain multi-dimensional datasets.
+1. As per Drazenâ€™s suggestion, Anupam plans to look into 13 public dataset sites mentioned in paper by 
+   Ye Jin et al. to see if these contain multi-dimensional datasets.
 
-2. David plans to prepare two slides - one on Lloyd’s algorithm and another on CUDA implementation.
+2. David plans to prepare two slides - one on Lloydâ€™s algorithm and another on CUDA implementation.
 
 3. A slide on references should be prepared.
 
