@@ -336,6 +336,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
     deviceData.param = param;
 
     OptimizationData optData(&inputData, &deviceData, data2_dev,
+                             opt.doCompressZeros,
                              minValue, maxValue, maxAbsVal);
     bool result = optimizeParameters(&optData, &param.thresholdValue,
                                      &param.binCount);

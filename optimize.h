@@ -20,6 +20,9 @@ class OptimizationData {
 
   // const int nonzeroCount;  // # of values in sorted[] that are nonzero
 
+  // compress strings of zeros in huffman encoding
+  bool doCompressZeros;
+
  public:
 
   const float minVal;  // minimum value in the data (will be negative)
@@ -43,10 +46,11 @@ class OptimizationData {
   
   OptimizationData(const Cube *originalData_,
                    const CubeFloat *transformedData_,
-                   const float *sorted_,
+                   const float *sorted_, bool doCompressZeros_,
                    float minVal_, float maxVal_, float maxAbsVal_)
     :  sorted(sorted_), originalData(originalData_),
     transformedData(transformedData_),
+    doCompressZeros(doCompressZeros_),
     minVal(minVal_), maxVal(maxVal_), maxAbsVal(maxAbsVal_),
     transformSteps(transformedData_->param.transformSteps),
     waveletAlg(transformedData_->param.waveletAlg),

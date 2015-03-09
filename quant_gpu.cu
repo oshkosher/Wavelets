@@ -123,13 +123,6 @@ bool quantizeGPU(int *outputData, const float *inputData, int count,
     inputEnd(inputData+count);
   thrust::device_ptr<int> outputStart(outputData);
 
-  // compute the bin number to which zero values map
-  if (zeroBin) {
-    Quantizer *quantizer = createQuantizer(param);
-    *zeroBin = quantizer->quant(0);
-    delete quantizer;
-  }
-
   switch (param.quantAlg) {
   case QUANT_ALG_UNIFORM:
     {
@@ -171,6 +164,13 @@ bool quantizeGPU(int *outputData, const float *inputData, int count,
     fprintf(stderr, "Quantization algorithm %d not found.\n",
             (int)param.quantAlg);
     return false;
+  }
+
+  // compute the bin number to which zero values map
+  if (zeroBin) {
+    Quantizer *quantizer = createQuantizer(param);
+    *zeroBin = quantizer->quant(0);
+    delete quantizer;
   }
 
   return true;

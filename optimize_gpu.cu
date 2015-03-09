@@ -107,24 +107,32 @@ bool testParameters(OptimizationData *o,
     int nonzeroCount = count - nonzeroIdx;
     CudaTimer quantTimer("Quantize"), histTimer("Histogram"),
       dequantTimer("Dequantize"), histCopyTimer("Copy histogram data to CPU");
-
+    int zeroBin;
+    
     if (!quantizeGPU((int*)inverseWaveletInput_dev, inputData, count,
                      param, nonzeroData, nonzeroCount,
-                     o->maxAbsVal, o->minVal, o->maxVal, quantTimer))
+                     o->maxAbsVal, o->minVal, o->maxVal, quantTimer, &zeroBin))
       return false;
 
     /*
     printDeviceArray((int*)inverseWaveletInput_dev,
                      o->transformedData->size, "after quantize");
     */
-
-    Quantizer *quantizer = createQuantizer(param);
-    int zeroBin = quantizer->quant(0);
-    delete quantizer;
     
     int *freqCounts;
     freqCounts = computeFrequenciesGPU
       (binCount, (int*)inverseWaveletInput_dev, count, zeroBin, false);
+
+    // if the quantized data needs to be scanned for zero compression,
+    // copy it to the CPU for processing
+    int *quantizedData = NULL;
+    if (o->doCompressZeros) {
+      quantizedData = new int[count];
+      CUCHECK(cudaMemcpy(quantizedData, inverseWaveletInput_dev,
+                         sizeof(int) * count, cudaMemcpyDeviceToHost));
+    } else {
+      zeroBin = -1;
+    }
 
     if (!dequantizeGPU(inverseWaveletInput_dev,
                        (const int*)inverseWaveletInput_dev, count, param))
@@ -132,9 +140,7 @@ bool testParameters(OptimizationData *o,
 
     // compute the huffman coding
     Huffman huff;
-    double startHuffTime = NixTimer::time();
-    huff.init(freqCounts, binCount);
-    huff.computeHuffmanCoding();
+    initHuffman(huff, count, quantizedData, binCount, freqCounts, zeroBin);
 
     // just get the size of the encoded data; don't write it out
     *outputSizeBytes = huff.totalEncodedLengthBytes();
@@ -145,13 +151,11 @@ bool testParameters(OptimizationData *o,
       // histTimer.print();
       // dequantTimer.print();
       // histCopyTimer.print();
-      
-      printf("Huffman coding: %.3f ms\n",
-             (NixTimer::time() - startHuffTime)*1000);
       fflush(stdout);
     }
     
     delete[] freqCounts;
+    if (quantizedData) delete[] quantizedData;
   }
 
   // compare to original

@@ -13,6 +13,7 @@
 #include "cubelet_file.h"
 #include "quant.h"
 #include "optimize.h"
+#include "huffman.h"
 
 #define FILE_ID_STRING "SCU wavelet 1.0\n"
 
@@ -220,6 +221,13 @@ void setBinsFromCodebook(std::vector<float> &binValues,
                          int binCount,
                          std::vector<float> &codebook,
                          float thresholdValue, float minVal, float maxVal);
+
+void initHuffman(Huffman &huff, const CubeInt *cube,
+                 int *freqCounts, int zeroBin = -1);
+
+void initHuffman(Huffman &huff, int count, const int *data,
+                 int binCount, int *freqCounts = NULL, int zeroBin = -1);
+
 
 // Read cubelet from a file
 bool readQuantData(CubeletStreamReader &cubeletStream, CubeInt *data);
