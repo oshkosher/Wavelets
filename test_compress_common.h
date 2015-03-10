@@ -50,6 +50,9 @@ struct Options {
   // -aq option : if not "", save a copy in this file after quantizing
   std::string saveAfterQuantizingFilename;
 
+  // -pb option : after quantizing, print the thresholds between all the bins
+  bool doPrintQuantizationBins;
+
   bool runQuantizationExperiments;
 
   // -noz option : by default, compress long strings of zeros
@@ -74,6 +77,7 @@ struct Options {
     saveAfterQuantizingFilename = "";
     runQuantizationExperiments = false;
     doCompressZeros = true;
+    doPrintQuantizationBins = false;
 
     param.init();
   }

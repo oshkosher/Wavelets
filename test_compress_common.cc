@@ -49,6 +49,7 @@ void printHelp() {
          "           this will automatically find the threshold and bin count\n"
          "    -bq <filename> : before quantizing, save a copy of the data this file\n"
          "    -aq <filename> : after quantizing, save a copy of the data this file\n"
+         "    -pb : after quantizing, print bin thresholds\n"
          "    -enc : print the bit encoding of each value\n"
          "    -err : compute error metrics (slow, disabled by default)\n"
          "    -2d : rather than 3d transform, do 2d transform at each layer\n"
@@ -124,6 +125,10 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
     else if (!strcmp(arg, "-aq")) {
       if (++nextArg >= argc) printHelp();
       opt.saveAfterQuantizingFilename = argv[nextArg];
+    }
+
+    else if (!strcmp(arg, "-pb")) {
+      opt.doPrintQuantizationBins = true;
     }
 
     else if (!strcmp(arg, "-qalg")) {
