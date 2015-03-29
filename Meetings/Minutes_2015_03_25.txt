@@ -1,0 +1,41 @@
+Minutes of Weekly Meeting of the Wavelet Group
+
+Date: Wednesday, March 25, 2015
+
+Time:  From about Noon to about 12:30 PM
+
+Present:  Anupam Goyal, Bonnie Smithson (remotely), Sergio Zarantonello.
+
+Presentations: None
+
+Discussions: 
+
+1. Confidentiality of our work is very important.  At the next meeting on Wednesday, May 13th, Serge would ask that we sign a non-disclosure agreement (NDA).
+
+2. Work from now on would be done under the company Algorithmica LLC only.
+
+3. A Phase I grant proposal would be submitted to the National Science Foundation (NSF).  This proposal would list Serge, Ed, and Bonnie.  Others would be in a support capacity.  Phase II grant can list more people.
+
+4. There is another potential grant for visualization of computational fluid dynamics.  Drazen would be involved in this grant.
+
+5. The following two application of our work would be pursued in near term.
+a. X-Ray CT for non-destructive inspection of materials.
+b. Hyperspectral images.
+
+6. For uploading PDF of our presentation to the conference website:
+a. Anupam suggested adding a copyright.
+b. Since the animation would not come through in the PDF, a still picture from the animation should be shown.
+
+Future Work:
+
+1. Anupam plans to watch the video of the conference presentation of our talk and provide feedback to Serge.  At the time of writing these meeting minutes, Anupam did that and provided feedback to Serge and Ed.
+
+2. Anupam plans to download GitHub and Filezilla and then download the needed files on the Linux machine that Bonnie has loaned him. At the time of writing these meeting minutes, Filezilla has been downloaded.
+
+3. Serge plans to apply for a Phase I grant to National Science Foundation (NSF) for which due date is June 15, 2015.
+
+4. Bonnie plans to ask her contact David Nokk for a letter of support for our Phase I grant proposal.
+
+5. Serge plans to send a paragraph to Bonnie which she can utilize to ask for letter of support.
+
+6. Serge plans to upload the PDF of the presentation to the conference website.
