@@ -10,13 +10,16 @@ Presentations: None
 
 Discussions: 
 
-1. Confidentiality of our work is very important.  At the next meeting on Wednesday, May 13th, Serge would ask that we sign a non-disclosure agreement (NDA).
+1. Confidentiality of our work is very important.  At the next meeting on Wednesday, May 13th, Serge would ask 
+   that we sign a non-disclosure agreement (NDA).
 
 2. Work from now on would be done under the company Algorithmica LLC only.
 
-3. A Phase I grant proposal would be submitted to the National Science Foundation (NSF).  This proposal would list Serge, Ed, and Bonnie.  Others would be in a support capacity.  Phase II grant can list more people.
+3. A Phase I grant proposal would be submitted to the National Science Foundation (NSF).  This proposal would list 
+   Serge, Ed, and Bonnie.  Others would be in a support capacity.  Phase II grant can list more people.
 
-4. There is another potential grant for visualization of computational fluid dynamics.  Drazen would be involved in this grant.
+4. There is another potential grant for visualization of computational fluid dynamics.  Drazen would be involved 
+   in this grant.
 
 5. The following two application of our work would be pursued in near term.
 a. X-Ray CT for non-destructive inspection of materials.
@@ -28,9 +31,11 @@ b. Since the animation would not come through in the PDF, a still picture from t
 
 Future Work:
 
-1. Anupam plans to watch the video of the conference presentation of our talk and provide feedback to Serge.  At the time of writing these meeting minutes, Anupam did that and provided feedback to Serge and Ed.
+1. Anupam plans to watch the video of the conference presentation of our talk and provide feedback to Serge.  At 
+   the time of writing these meeting minutes, Anupam did that and provided feedback to Serge and Ed.
 
-2. Anupam plans to download GitHub and Filezilla and then download the needed files on the Linux machine that Bonnie has loaned him. At the time of writing these meeting minutes, Filezilla has been downloaded.
+2. Anupam plans to download GitHub and Filezilla and then download the needed files on the Linux machine that 
+   Bonnie has loaned him. At the time of writing these meeting minutes, Filezilla has been downloaded.
 
 3. Serge plans to apply for a Phase I grant to National Science Foundation (NSF) for which due date is June 15, 2015.
 
