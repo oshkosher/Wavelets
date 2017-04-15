@@ -104,7 +104,6 @@ class CudaTimer {
   }
 
   // return the number of CUDA events
-  int countEvents() {return (int)(events.size() / 2);}
   cudaEvent_t getEvent(size_t i) {return events[i];}
   cudaEvent_t getLastEvent() {return events[events.size()-1];}
 

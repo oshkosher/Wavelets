@@ -44,6 +44,7 @@
 #      http://developer.download.nvidia.com/compute/cuda/6_5/rel/installers/cuda_6.5.14_linux_64.run
 
 # build all the tools that don't require CUDA
+# default: test_compress_gpu
 default: cube test_compress_cpu java histogram
 default2: test_compress_cpu test_compress_gpu
 
@@ -158,7 +159,7 @@ endif
 LLOYD_INC=-IOctave/LloydsAlgorithm/src/c++
 LLOYD_GPU_INC=-ICUDA/lloyds
 
-NVCC = nvcc $(NVCC_OPT) $(NVCC_ARCH) $(NVCC_ARCH_SIZE) $(NVCC_COMPILER_BINDIR) $(CC_OPT_FLAG) $(LLOYD_GPU_INC)
+NVCC = c:/CUDA/v7.0/bin/nvcc $(NVCC_OPT) $(NVCC_ARCH) $(NVCC_ARCH_SIZE) $(NVCC_COMPILER_BINDIR) $(CC_OPT_FLAG) $(LLOYD_GPU_INC)
 
 %.$(OBJ_EXT): %.cc
 	$(NVCC) -c $<
@@ -359,6 +360,9 @@ list_data: list_data.cc data_io.cc data_io.h
 
 histogram: histogram.cc data_io.cc data_io.h
 	$(CC) histogram.cc data_io.cc -o $@ $(LIBS)
+
+test_iter: test_iter.cc dwt_cpu.h
+	$(CC) test_iter.cc -o $@
 
 test_array_data: test_array_data.cc array_data.h
 	$(CC) test_array_data.cc -o $@

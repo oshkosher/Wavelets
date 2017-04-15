@@ -49,7 +49,7 @@ int	main()
         ucomp(dat_ou,dat_re,par_int);
        
 //******* WRITE RECREATED DATA ******/
-        if (( fout = fopen("/media/SERGIO/out12.dat","w")) == NULL){
+        if (( fout = fopen("out.dat","w")) == NULL){
           printf(" ERROR IN OUTPUT FILE OPEN !!! ");
           return;
         }

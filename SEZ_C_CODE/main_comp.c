@@ -4,9 +4,9 @@
 
         //../TEST12/SourceWave.wi.le.H@
         //out_n.dat
-	#define nz  560 // depth
-	#define nx 1120 // xline 
-	#define ny  450 // inline 
+	#define nz 16 // depth
+	#define nx 16 // xline 
+	#define ny  1 // inline 
 	#define nt    1 // time steps
 
         /*
@@ -71,7 +71,8 @@ int	main()
         //if (( fptr = fopen("out_t.dat","r")) == NULL){
         //if (( fptr = fopen("../TEST12/TT.H@","rl")) == NULL){
         //if (( fptr = fopen("../TEST12/surfzx.H@","rl")) == NULL){
-        if (( fptr = fopen("../TEST12/SourceWave.wi.le.H@","rl")) == NULL){
+        // if (( fptr = fopen("../TEST12/SourceWave.wi.le.H@","rl")) == NULL){
+        if (( fptr = fopen("sez.in","rb")) == NULL){
           printf(" ERROR IN FILE OPEN !!! ");
           return 0;
         } else

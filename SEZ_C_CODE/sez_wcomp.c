@@ -25,7 +25,7 @@ float*  qA;
 float*  qS;
 
 /* Allocate structure */ 
-   S = malloc(sizeof(sez_wcomp_par));
+ S = (sez_wcomp_par*) malloc(sizeof(sez_wcomp_par));
 
 /* Input parameters */
     S->nc =nc;

@@ -545,7 +545,7 @@ class QuantCodebook {
       }
     }
 
-    return start - boundaries;
+    return (int)(start - boundaries);
   }
 
 

@@ -97,5 +97,26 @@ void cdf97_3d_cuda(float *data, float *tmpData,
 
 int bestHaarGPUTileSize();
 
+void haar_v2(float *data_in, float *data_tmp,
+             scu_wavelet::int3 size, int level_count,
+             CudaTimer *transformTimer = NULL);
+
+void haar_3d_cuda_v2(float *data, float *data_tmp, scu_wavelet::int3 &size,
+                     scu_wavelet::int3 stepCount, bool inverse,
+                     CudaTimer *transformTimer, CudaTimer *transposeTimer);
+
+void cdf97_v2(float *data, float *data_tmp,
+              scu_wavelet::int3 size, int level_count,
+              CudaTimer *transformTimer);
+
+void cdf97_3d_cuda_v2(float *data, float *tmpData,
+                      scu_wavelet::int3 &size, scu_wavelet::int3 stepCount,
+                      bool inverse,
+                      CudaTimer *transformTimer, CudaTimer *transposeTimer);
+
+void cdf97_3d_cuda_v3(float *data, float *tmpData,
+                      scu_wavelet::int3 &size, scu_wavelet::int3 stepCount,
+                      bool inverse,
+                      CudaTimer *transformTimer, CudaTimer *transposeTimer);
 
 #endif // __DWT_GPU_H__

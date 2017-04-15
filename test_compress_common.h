@@ -155,7 +155,7 @@ class ErrorAccumulator {
   // MSE / sumSquared
   float getRelativeError() {
     if (sumValueSquared == 0) return 0;
-    return sumDiffSquared / sumValueSquared;
+    return (float)(sumDiffSquared / sumValueSquared);
   }
 };
 

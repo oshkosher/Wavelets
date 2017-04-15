@@ -32,7 +32,7 @@ void ucomp(float* dat_in, float* dat_ou,int* par_int)
     qlen= par_int[3];
     wrds= par_int[5];
 
-    S=sez_wcomp_init(nr,nc,-1,-1);
+    S=sez_wcomp_init(nr,nc,1,1);
 
     ncx0=(S->jc_0)-(S->ic_0)+1;
     nrx0=(S->jr_0)-(S->ir_0)+1;

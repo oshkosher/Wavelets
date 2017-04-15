@@ -18,6 +18,8 @@
 #include "test_compress_gpu.h"
 #include "histogram_gpu.h"
 
+#include "transpose_gpu.h"
+
 // #include "cudalloyds.h"
 // #include "CUDA/wavelet/wavelet.h"
 
@@ -498,15 +500,61 @@ bool waveletTransformGPU(float *data_d, float *tmpData_d,
                          const WaveletCompressionParam &param,
                          bool isInverse, CudaTimer *waveletTimer,
                          CudaTimer *transposeTimer) {
+
+  /*
+  printDeviceArray(data_d, size, "before new GPU cdf97");
+
+  CudaTimer newTransformTimer("new transform");
+  float *data_copy;
+  scu_wavelet::int3 size2 = size;
+  CUCHECK(cudaMalloc((void**)&data_copy, sizeof(float)*size.count()));
+  CUCHECK(cudaMemcpy(data_copy, data_d, sizeof(float)*size.count(),
+                     cudaMemcpyDeviceToDevice));
+  gpuTranspose3dBack(tmpData_d, data_copy, size2);
+  cdf97_v2(tmpData_d, data_copy, size2, param.transformSteps.x, waveletTimer);
+
+  // haar_3d_cuda_v2(data_copy, tmpData_d, size2, param.transformSteps,
+  // isInverse, waveletTimer, &newTransformTimer);
+
+  gpuTranspose3dFwd(data_copy, tmpData_d, size2);
+  newTransformTimer.sync();
+  newTransformTimer.print();
+  printDeviceArray(data_copy, size, "after new GPU cdf97");
+*/
+
   switch (param.waveletAlg) {
   case WAVELET_HAAR:
+    /*
     haar_3d_cuda(data_d, tmpData_d, size, param.transformSteps,
                  isInverse, waveletTimer, transposeTimer);
+    */
+    haar_3d_cuda_v2(data_d, tmpData_d, size, param.transformSteps,
+                    isInverse, waveletTimer, transposeTimer);
+
+    waveletTimer->sync();
+    waveletTimer->print();
     return true;
 
   case WAVELET_CDF97:
+
+    cdf97_3d_cuda_v3(data_d, tmpData_d, size, param.transformSteps,
+                     isInverse, waveletTimer, transposeTimer);
+
+    /*
     cdf97_3d_cuda(data_d, tmpData_d, size, param.transformSteps,
                   isInverse, waveletTimer, transposeTimer);
+    */
+
+    cdf97_3d_cuda_v2(data_d, tmpData_d, size, param.transformSteps,
+                     isInverse, waveletTimer, transposeTimer);
+
+
+    waveletTimer->sync();
+    waveletTimer->print();
+    for (int i=0; i < waveletTimer->count(); i++)
+      printf("  %f", waveletTimer->getEventTime(i));
+    putchar('\n');
+
     return true;
     /*
     {

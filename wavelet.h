@@ -194,7 +194,7 @@ class IntInputDataHalfAtZero {
     if (f <= 0) {
       f = 0;
     } else if (f >= max) {
-      f = max;
+      f = (float)max;
     }
     return (int) f;
   }
