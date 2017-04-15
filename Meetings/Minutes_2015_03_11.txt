@@ -1,0 +1,61 @@
+Minutes of Weekly Meeting of the Wavelet Group
+
+Date: Wednesday, March 11, 2015
+
+Time:  From about Noon to about 1:00 PM
+
+Present:  Anupam Goyal, David Concha (remotely), Ed Karrels (remotely), Bonnie Smithson (remotely), Sergio Zarantonello (remotely).   Ed and David joined half an hour later, due to a misunderstanding about daylight time change.
+
+Presentations: None
+
+Discussions: 
+
+Presentation Slides:
+
+1. Serge has 11 slides excluding the first slide and Ed has 11 slides excluding the last slide about team members.  
+   These should be combined in one presentation.
+
+2. Serge has a new draft for a complete set of slides.  
+
+3. Serge plans to add two more slides one for the macular cube data and other for the energy application.  
+   Macular cube is a harder data to compress than DICOM datasets.
+
+4. Serge categorized the mechanical engineering/casting model dataset as that of material science, as that is more 
+   appropriate.  Detecting a flaw in the casting model and maximum error to be set should be discussed.
+
+5. Ed plans to include some discussion of future directions related to performance and sampling in his description 
+   of Lloyd’s algorithm.
+
+6. Bonnie mentioned that the title of our talk mentions “high-capability”, which nVidia uses in a specific context.  
+   Serge mentioned that the title cannot be changed because it is already in the conference program.
+
+7. Anupam had suggested to Ed to include an introduction to CUDA in his slides.  Ed mentioned that, in general, 
+   the people attending the conference would have a background in CUDA.
+
+8. Anupam suggested that future directions for our work can include applicability of our method to video data.  
+   Serge said that it is premature to get into video compression.
+
+Other Discussions:
+
+1. Serge has hardwired dimensions of the data in the code.
+
+2. For the hill climbing algorithm, a right starting point needs to be determined.  Bonnie feels that instead of 
+   starting with an arbitrary starting point, we should find that point first and then maximize the compression ratio.
+
+3. The numbers obtained in table by Ed match the numbers obtained by Serge using the MatLab code, though Serge is 
+  using logarithmic quantization.
+
+4. Bonnie mentioned that she would not be able to set up a Mikogo session next meeting.
+
+Future Work:
+
+1. Bonnie should email Serge a description of CT scan about the dataset to be presented in the conference.
+
+2. Bonnie plans to talk to the person who gave the casting model dataset and get a description of the dataset.
+
+3. Bonnie should send the C code and/or describe it via a Mikogo session.
+
+4. Bonnie should send a picture of defects in the casting model to Serge and Ed.
+
+5. Bonnie plans to make signs to tell Serge and Ed during the talk about the remaining time.
+
