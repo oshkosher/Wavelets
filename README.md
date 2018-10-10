@@ -4,9 +4,9 @@ Wavelets
 SCU GPU Wavelet Project
 
 To build:
-  You'll need to have CUDA and Java installed.
-  If you're using Linux or Cygwin, just run "make".
-  If you're using Visual Studio, open a visual studio command prompt
+  1. You'll need to have CUDA and Java installed.
+  1. If you're using Linux or Cygwin, just run "make".
+  1. If you're using Visual Studio, open a visual studio command prompt
   and run "make". (this is a batch file that calls "nmake" on Makefile.nmake.
   
   I haven't tried integrating it into the Visual Studio IDE yet.
@@ -30,13 +30,17 @@ There are two main tools:
    
    For example, to convert an image into a data file:
 
+    ```
     % java WaveletSampleImage Images/haleakala_orig.jpg
     2048 x 2048 grayscale data written to "Images/haleakala_orig.data" in 0.444 sec
+    ```
 
    To convert the data file back to an image:
 
+    ```
     % java WaveletSampleImage Images/haleakala_orig.data haleakala2.jpg
     2048 x 2048 image written to "haleakala2.jpg".
+    ```
 
    By default, the data files are in a binary format for best
    performance.  Add the command line parameter "-text" to generate
@@ -57,6 +61,7 @@ There are two main tools:
    
    Example:
 
+    ```
     % java WaveletSampleImage Images/hubble4096.jpg hubble.data
     4096 x 4096 grayscale data written to "hubble.data" in 1.730 sec
     
@@ -91,4 +96,4 @@ There are two main tools:
     
     % java WaveletSampleImage hubble3.data
     4096 x 4096 image written to "hubble3.jpg".
-   
+   ```
