@@ -68,6 +68,9 @@ Here are some of the tools in this project:
    Run the compression algorithm on one cubelet using the CPU.
    
    ```
+   $ ./cube list Images/haleakala_orig.cube
+   Cubelet 0,0,0: 2048x2048x1 of UINT8, 4194304 bytes at 91
+
    $ ./test_compress_cpu Images/haleakala_orig.cube foo.cube
    Read 2048x2048x1 data file: 15.40 ms
    cdf97 wavelet transform (11,11,0 steps): 161.56 ms
@@ -77,6 +80,9 @@ Here are some of the tools in this project:
    Huffman encoding: 2118372 bytes, 3.93 bits/pixel, longest encoding = 23 bits
    Write data file: 50.65 ms
    Total: 574.08 ms
+   
+   $ ./cube list foo.cube
+   Cubelet 0,0,0: 1x2048x2048 of INT32, 2118372 compressed bytes at 1174
    ```
 
 1) test_compress_gpu
