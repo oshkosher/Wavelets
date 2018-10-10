@@ -16,7 +16,7 @@
 #include <cstdio>
 #include <cuda.h>
 #include <assert.h>
-
+#include "../../cucheck.h"
 #include "wavelet.h"
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -145,8 +145,8 @@ __global__ void invConvolutionRowsMirrorHiLoKernel(float *d_Dst, float *d_Src, i
 
 void fwt_1D(float **data, const unsigned level, const unsigned nx, const unsigned ny) {
     assert(ROWS_BLOCKDIM_X * ROWS_HALO_STEPS >= KERNEL_RADIUS);
-    assert(d_w % (ROWS_RESULT_STEPS * ROWS_BLOCKDIM_X) == 0);
-    assert(d_h % ROWS_BLOCKDIM_Y == 0);
+    assert(nx % (ROWS_RESULT_STEPS * ROWS_BLOCKDIM_X) == 0);
+    assert(ny % ROWS_BLOCKDIM_Y == 0);
 
 	const int mem_size = nx*ny*sizeof(float);
 
@@ -159,6 +159,8 @@ void fwt_1D(float **data, const unsigned level, const unsigned nx, const unsigne
     dim3 blocks(nx / (ROWS_RESULT_STEPS * ROWS_BLOCKDIM_X), ny / ROWS_BLOCKDIM_Y);
     dim3 threads(ROWS_BLOCKDIM_X, ROWS_BLOCKDIM_Y);
 	convolutionRowsMirrorHiLoKernel<<<blocks, threads>>>(data2, data1, w, ny, w);
+	CUCHECK(cudaGetLastError());
+
 
 	for (unsigned i = 1; i < level; i++) {
 		blocks.x /= 2;
@@ -171,18 +173,19 @@ void fwt_1D(float **data, const unsigned level, const unsigned nx, const unsigne
 		cudaMemcpy(data2+w*ny, data1+w*ny, w*ny*sizeof(float), cudaMemcpyDeviceToDevice);
 
 		convolutionRowsMirrorHiLoKernel<<<blocks, threads>>>(data2, data1, w, ny, w);
+                CUCHECK(cudaGetLastError());
 	}
     
 	*data = data2;
 	cudaFree(data1);
 
-	printf("Rows: %s\n",cudaGetErrorString(cudaGetLastError()));
+	printf("Rows fwt_1D: %s\n",cudaGetErrorString(cudaGetLastError()));
 }
 
 void iwt_1D(float **data, const unsigned level, const unsigned nx, const unsigned ny) {
     assert(ROWS_BLOCKDIM_X * ROWS_HALO_STEPS >= KERNEL_RADIUS);
-    assert(d_w % (ROWS_RESULT_STEPS * ROWS_BLOCKDIM_X) == 0);
-    assert(d_h % ROWS_BLOCKDIM_Y == 0);
+    assert(nx % (ROWS_RESULT_STEPS * ROWS_BLOCKDIM_X) == 0);
+    assert(ny % ROWS_BLOCKDIM_Y == 0);
 
 	const int mem_size = nx*ny*sizeof(float);
 
@@ -195,6 +198,7 @@ void iwt_1D(float **data, const unsigned level, const unsigned nx, const unsigne
     dim3 blocks(w / (ROWS_RESULT_STEPS * ROWS_BLOCKDIM_X), ny / ROWS_BLOCKDIM_Y);
     dim3 threads(ROWS_BLOCKDIM_X, ROWS_BLOCKDIM_Y);
 	invConvolutionRowsMirrorHiLoKernel<<<blocks, threads>>>(data2, data1, w, ny, w);
+        CUCHECK(cudaGetLastError());
 
 	for (unsigned i = 1; i < level; i++) {
 		cudaMemcpy(data2+w*ny, data1+w*ny, (nx-w)*ny*sizeof(float), cudaMemcpyDeviceToDevice);
@@ -207,12 +211,13 @@ void iwt_1D(float **data, const unsigned level, const unsigned nx, const unsigne
 		data1 = aux;
 
 		invConvolutionRowsMirrorHiLoKernel<<<blocks, threads>>>(data2, data1, w, ny, w);
+                CUCHECK(cudaGetLastError());
 	}
     
 	*data = data2;
 	cudaFree(data1);
 
-	printf("Rows: %s\n",cudaGetErrorString(cudaGetLastError()));
+	printf("Rows iwt_1D: %s\n",cudaGetErrorString(cudaGetLastError()));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -260,6 +265,7 @@ void transpose(float *tdata, const float *idata, const unsigned nx, const unsign
 	dim3 grid(nx/TILE_DIM, ny/TILE_DIM);
 	dim3 threads(TILE_DIM,BLOCK_ROWS); 
 	transposeDiagonal<<<grid, threads>>>(tdata, idata, nx, ny);
+        CUCHECK(cudaDeviceSynchronize());
 }
 
 extern "C" void setUpFilter(const float *filter){
@@ -305,14 +311,20 @@ extern "C" void iwt_1D_GPU(float *data, const unsigned level, const unsigned nx,
 	cudaFree(d_idata);
 }
 
-extern "C" void comp(float *data, const unsigned nx, const unsigned ny, const unsigned nz, const unsigned lvlx, const unsigned lvly, const unsigned lvlz) {
+// data_dest: set this to the device address where the output data resides.
+// If this is not equal to 'data', then 'data' has been freed.
+extern "C" void wavelet_cuda_3d_fwd(float *data, const unsigned nx, const unsigned ny, const unsigned nz, const unsigned lvlx, const unsigned lvly, const unsigned lvlz, bool data_is_on_gpu) {
 	const int mem_size = nx*ny*nz*sizeof(float);
 
 	float *d_idata, *d_tdata;
-	cudaMalloc(&d_idata, mem_size);
 	cudaMalloc(&d_tdata, mem_size);
+        cudaMalloc(&d_idata, mem_size);
 
-	cudaMemcpy(d_idata, data, mem_size, cudaMemcpyHostToDevice);
+        if (data_is_on_gpu) {
+          cudaMemcpy(d_idata, data, mem_size, cudaMemcpyDeviceToDevice);
+        } else {
+          cudaMemcpy(d_idata, data, mem_size, cudaMemcpyHostToDevice);
+        }
 
 	fwt_1D(&d_idata, lvlx, nx, ny*nz);
 
@@ -324,16 +336,20 @@ extern "C" void comp(float *data, const unsigned nx, const unsigned ny, const un
 
 	fwt_1D(&d_idata, lvlz, nz, nx*ny);
 
-	cudaMemcpy(data, d_idata, mem_size, cudaMemcpyDeviceToHost);
+        if (data_is_on_gpu) {
+          cudaMemcpy(data, d_idata, mem_size, cudaMemcpyDeviceToDevice);
+        } else {
+          cudaMemcpy(data, d_idata, mem_size, cudaMemcpyDeviceToHost);
+        }
+        cudaFree(d_idata);
 
 	//cudaDeviceSynchronize();
 	//printf("comp: %s\n",cudaGetErrorString(cudaGetLastError()));
 
-	cudaFree(d_idata);
 	cudaFree(d_tdata);
 }
 
-extern "C" void ucomp(float *data, const unsigned nx, const unsigned ny, const unsigned nz, const unsigned lvlx, const unsigned lvly, const unsigned lvlz) {
+extern "C" void wavelet_cuda_3d_back(float *data, const unsigned nx, const unsigned ny, const unsigned nz, const unsigned lvlx, const unsigned lvly, const unsigned lvlz) {
 	const int mem_size = nx*ny*nz*sizeof(float);
 
 	float *d_idata, *d_tdata;

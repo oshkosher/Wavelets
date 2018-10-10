@@ -114,6 +114,12 @@ int main(int argc, char **argv) {
   Options opt;
   int nextArg;
 
+  int gpuId = 0;
+  CUCHECK(cudaSetDevice(gpuId));
+  cudaDeviceProp prop;
+  CUCHECK(cudaGetDeviceProperties(&prop, gpuId));
+  printf("GPU %d: %s\n", gpuId, prop.name);
+
   if (!parseOptions(argc, argv, opt, nextArg)) return 1;
   
   // set global variable to enable/disable status output

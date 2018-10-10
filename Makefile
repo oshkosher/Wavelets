@@ -98,15 +98,22 @@ NVCC_ARCH_SIZE = -m64
 
 # By default, build CUDA code for many architectures
 NVCC_ARCH = \
-  -gencode arch=compute_11,code=sm_11 \
-  -gencode arch=compute_20,code=sm_20 \
   -gencode arch=compute_30,code=sm_30 \
-  -gencode arch=compute_35,code=sm_35
+  -gencode arch=compute_35,code=sm_35 \
+  -gencode arch=compute_52,code=sm_52 \
+  -gencode arch=compute_61,code=sm_61
+
+# extinct:
+#   -gencode arch=compute_11,code=sm_11
+# depreceted:
+#   -gencode arch=compute_20,code=sm_20
 
 # enable one of these to generate code for just one generation of GPU
 # (reduces compile time by 30%)
 # NVCC_ARCH=-arch sm_20
-NVCC_ARCH=-gencode arch=compute_30,code=sm_30
+# NVCC_ARCH=-gencode arch=compute_30,code=sm_30
+# NVCC_ARCH=-gencode arch=compute_35,code=sm_35
+# NVCC_ARCH=-gencode arch=compute_52,code=sm_52
 
 # use this to direct NVCC to use a different host compiler, if necessary
 # NVCC_COMPILER_BINDIR=--compiler-bindir='C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\bin'

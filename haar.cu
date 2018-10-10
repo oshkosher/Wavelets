@@ -49,8 +49,9 @@ void listGpus() {
 
   for (int gpuId=0; gpuId < gpuCount; gpuId++) {
     CUCHECK(cudaGetDeviceProperties(&prop, gpuId));
-    printf("GPU %d: %s, %.1f MHz, %d MB\n", 
-           gpuId, prop.name, prop.clockRate / 1000.0, 
+    printf("GPU %d: %s, compute %d.%d %.1f MHz, %d mps %d MB\n", 
+           gpuId, prop.name, prop.major, prop.minor, prop.clockRate / 1000.0, 
+	   prop.multiProcessorCount,
            (int)(prop.totalGlobalMem / (1024*1024)));
   }
 }
