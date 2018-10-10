@@ -1,30 +1,34 @@
 #include "optimize.h"
 
 
-bool varyBinCounts(OptimizationData *optData,
-                        float *thresholdValueOut, int *binCountOut) {
-
+bool varyThreshold(OptimizationData *optData,
+                   float *thresholdValueOut, int *binCountOut) {
   int size;
   float l1, l2, mse, psnr, relErr;
 
-  // Note: insert something smarter here
-
-  /*
-  // first try some different threshold settings without quantization
-  printf("No quantization, test just threshold value.\n");
-  for (float thresholdFrac = 0; thresholdFrac < .95; thresholdFrac += 0.1) {
+  for (float invThresh = .5f; invThresh > .01; invThresh *= .8) {
     float thresh = 0;
-    if (thresholdFrac > 0) {
-      int offset = (int)(optData->count() * thresholdFrac);
-      thresh = optData->getSorted(offset);
-    }
+    int offset = (int)(optData->count() * (1-invThresh));
+    thresh = optData->getSorted(offset);
+
     if (!testParameters(optData, thresh, -1, QUANT_ALG_UNKNOWN,
                         &size, &l1, &l2, &mse, &psnr)) return false;
-    printf("  %2d%% (%.4f)  %.2f mse, %.2f psnr\n", (int)(thresholdFrac * 100),
+    printf("  %6.3f%% (%7.4f)  %5.2f mse, %5.2f psnr\n", (1-invThresh) * 100,
            thresh, mse, psnr);
     fflush(stdout);
+    *thresholdValueOut = thresh;
   }
-  */
+
+  *binCountOut = 256;
+  return true;
+}
+
+
+bool varyBinCounts(OptimizationData *optData,
+                   float *thresholdValueOut, int *binCountOut) {
+
+  int size;
+  float l1, l2, mse, psnr, relErr;
 
   float frac = .95;
   *thresholdValueOut = optData->getSorted((int)(optData->count() * frac));
@@ -46,46 +50,47 @@ bool varyBinCounts(OptimizationData *optData,
 }
 
 
-bool fixedRelativeError(OptimizationData *optData, float *thresholdValueOut,
-			int *binCountOut, float target) {
+bool fixedPSNR(OptimizationData *optData, float *thresholdValueOut,
+               int *binCountOut, float targetPSNR) {
                
 
-  float psnr, relativeError;
+  float psnr;
   int size;
-  QuantizeAlgorithm quantAlg = QUANT_ALG_LOG;
+  QuantizeAlgorithm quantAlg = QUANT_ALG_LLOYD;
 
-  for (float frac = .15f; frac > .045; frac -= .01f) {
+  for (float frac = .40f; frac > .04f; frac -= .05) {
     float threshValue = optData->getSorted((int)(optData->count() * (1-frac)));
-    printf("threshold %.1f%%", (1-frac) * 100);
-    fflush(stdout);
+    printf("threshold %.3f", 1-frac);
 
     testParameters(optData, threshValue, 0, quantAlg, &size, 
-                   NULL, NULL, NULL, &psnr, &relativeError);
-    // printf(", max pSNR = %.2f, relErr = %.2e\n", psnr, relativeError);
-
-    if (relativeError > target) {
-      printf("  unable, minimum relErr = %.2e\n", relativeError);
+                   NULL, NULL, NULL, &psnr);
+    printf(", max pSNR = %.2f\n", psnr);
+    fflush(stdout);
+    if (psnr < targetPSNR) {
       continue;
     }
 
+    bool found = false;
     for (int binCount=50; binCount <= 30000; binCount = (int)(binCount*1.1)) {
 
       testParameters(optData, threshValue, binCount, quantAlg, &size, 
-                     NULL, NULL, NULL, &psnr, &relativeError);
+                     NULL, NULL, NULL, &psnr);
       
-      if (relativeError < target) {
-	printf("  %d bins: psnr=%.2f, relErr=%.2e, size=%d\n",
-	       binCount, psnr, relativeError, size);
-	fflush(stdout);
-	break;
+        printf("  %d bins: psnr=%.2f, size=%d\n", binCount, psnr, size);
+        fflush(stdout);
+      if (psnr > targetPSNR) {
+        found = true;
+        break;
       }
 
     }
-
+    if (!found) printf("\n");
   }
 
   return false;
 }
+
+
 
 bool plotAll(OptimizationData *optData, float *thresholdValueOut,
              int *binCountOut) {
@@ -100,7 +105,7 @@ bool plotAll(OptimizationData *optData, float *thresholdValueOut,
 
     float threshValue = optData->getSorted((int)(optData->count() * frac));
 
-    for (int binCount=100; binCount <= 2000; binCount = (int)(binCount*1.5)) {
+    for (int binCount=100; binCount <= 2000; binCount = (int)(binCount*1.1)) {
 
       testParameters(optData, threshValue, binCount, quantAlg, &size, 
                      NULL, NULL, NULL, &psnr);
@@ -117,9 +122,12 @@ bool plotAll(OptimizationData *optData, float *thresholdValueOut,
 
 bool optimizeParameters(OptimizationData *optData,
                         float *thresholdValueOut, int *binCountOut) {
+  // return varyThreshold(optData, thresholdValueOut, binCountOut);
+
   // return varyBinCounts(optData, thresholdValueOut, binCountOut);
 
-  // return fixedRelativeError(optData, thresholdValueOut, binCountOut, .0005);
+  // return fixedPSNR(optData, thresholdValueOut, binCountOut, 46);
+
   return plotAll(optData, thresholdValueOut, binCountOut);
 
 }

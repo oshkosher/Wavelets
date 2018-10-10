@@ -37,7 +37,9 @@ dat_in: input 1D array of dimensions nz*nx*ny.
 
    // structure containing all the parameters
    // -1 means do the maximum number of wavelet steps
-   S=sez_wcomp_init(nr,nc,-1,-1);
+   // XXX 
+   // S=sez_wcomp_init(nr,nc,-1,-1);
+   S=sez_wcomp_init(nr,nc,1,1);
 
    // define an offset into the data to use different indices
 

@@ -13,6 +13,7 @@
 #include "cubelet_file.h"
 #include "quant.h"
 #include "optimize.h"
+#include "huffman.h"
 
 #define FILE_ID_STRING "SCU wavelet 1.0\n"
 
@@ -49,6 +50,9 @@ struct Options {
   // -aq option : if not "", save a copy in this file after quantizing
   std::string saveAfterQuantizingFilename;
 
+  // -pb option : after quantizing, print the thresholds between all the bins
+  bool doPrintQuantizationBins;
+
   bool runQuantizationExperiments;
 
   // -noz option : by default, compress long strings of zeros
@@ -73,6 +77,7 @@ struct Options {
     saveAfterQuantizingFilename = "";
     runQuantizationExperiments = false;
     doCompressZeros = true;
+    doPrintQuantizationBins = false;
 
     param.init();
   }
@@ -150,7 +155,7 @@ class ErrorAccumulator {
   // MSE / sumSquared
   float getRelativeError() {
     if (sumValueSquared == 0) return 0;
-    return sumDiffSquared / sumValueSquared;
+    return (float)(sumDiffSquared / sumValueSquared);
   }
 };
 
@@ -220,6 +225,13 @@ void setBinsFromCodebook(std::vector<float> &binValues,
                          int binCount,
                          std::vector<float> &codebook,
                          float thresholdValue, float minVal, float maxVal);
+
+void initHuffman(Huffman &huff, const CubeInt *cube,
+                 int *freqCounts, int zeroBin = -1);
+
+void initHuffman(Huffman &huff, int count, const int *data,
+                 int binCount, int *freqCounts = NULL, int zeroBin = -1);
+
 
 // Read cubelet from a file
 bool readQuantData(CubeletStreamReader &cubeletStream, CubeInt *data);

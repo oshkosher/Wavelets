@@ -14,6 +14,19 @@
 
 #include "sez_wcomp.h"
 
+#include <stdio.h>
+void print_matrix(float *data, int rows, int cols, int rowWidth,
+                  const char *name) {
+  int row, col;
+  if (name) puts(name);
+  for (row=0; row < rows; row++) {
+    for (col=0; col < cols; col++) {
+      printf("%g, ", data[row*rowWidth + col]);
+    }
+    putchar('\n');
+  }
+}
+
 /*******************************************/
 	void  sym_fwt_2d(sez_wcomp_par* S)
 	{
@@ -38,6 +51,12 @@
 
 	if (S->lev_c != 0){
 
+          print_matrix(S->Win + S->ir_1*S->nc_ext + S->ic_0, 
+                       S->jr_1 - S->ir_1 + 1,
+                       S->jc_0 - S->ic_0 + 1,
+                       S->nc_ext,
+                       "before replication");
+
 	/* left-right replication */
         for (ir=S->ir_1;ir <= S->jr_1;ir++) {
                 kk = ir*(S->nc_ext)+(S->ic_1); 
@@ -51,14 +70,29 @@
                         (S->Win)[jj] = (S->Win)[kk];
 		} 
 	}
+        
+
+        print_matrix(S->Win + S->ir_1*S->nc_ext + S->ic_0, 
+                     S->jr_1 - S->ir_1 + 1,
+                     S->jc_0 - S->ic_0 + 1,
+                     S->nc_ext,
+                     "before replication");
+
 	/* multilevel row processing */  
         len  = S->jc_0 - S->ic_0 + 1;
         frst = S->ic_0;
         for (lev=1;lev<=S->lev_c;lev++){ 
                 last = frst+len-1;
             	len  = (int) len/2;
+
 		/* all rows */
         	for (ir=S->ir_1;ir <= S->jr_1;ir++) {
+
+                  print_matrix(S->Win + ir*S->nc_ext + S->ic_0 - qh,
+                               1, S->jc_0 - S->ic_0 + qh*2, S->nc_ext,
+                               "before row processing");
+                  
+
 			/* symmetric extension */
         		for (ic=1;ic <= qh;ic++) {
           			ii = ir*(S->nc_ext)+frst-ic;
@@ -68,6 +102,13 @@
                       	        (S->Win)[ii] = (S->Win)[ik];
                         	(S->Win)[jj] = (S->Win)[jk];
 			} 
+
+                        
+                        print_matrix(S->Win + ir*S->nc_ext + S->ic_0 - qh,
+                                     1, S->jc_0 - S->ic_0 + qh*2, S->nc_ext,
+                                     "after symmetric extension");
+
+
 			/* convolution with mirror filters */  
 			ev = ir*(S->nc_ext)+qh;
 			od = ev+len;
@@ -79,21 +120,34 @@
 			hgh_pass = ((S->Win)[jj+2]+(S->Win)[jj+8])*qHA_1+((S->Win)[jj+3]+(S->Win)[jj+7])*qHA_2; 
                         hgh_pass +=((S->Win)[jj+4]+(S->Win)[jj+6])*qHA_3+(S->Win)[jj+5]*qHA_4;
 
+                        printf("out[%d] = %d .. %d\n", ev, kk, kk+8);
+                        printf("out[%d] = %d .. %d\n\n", od, kk+2, kk+8);
 			(S->Wou)[ev] = low_pass;
 			(S->Wou)[od] = hgh_pass;
 			kk=kk+2;ev++;od++;
         	        }
 			ev = ir*(S->nc_ext)+qh;
+                	// for (ic=0;ic<len;ic++){
                 	for (ic=0;ic<len;ic++){
 				(S->Win)[ev]=(S->Wou)[ev];
 				ev++;
 			}
+                        
+                        print_matrix(S->Wou + ir*S->nc_ext + S->ic_0,
+                                     1, S->jc_0 - S->ic_0 + 1, S->nc_ext,
+                                     "Wou after transform");
                 }
         }
 	aptr = S->Win;
 	S->Win = S->Wou;
 	S->Wou = aptr;
 	}
+
+          print_matrix(S->Win + S->ir_1*S->nc_ext + S->ic_0, 
+                       S->jr_1 - S->ir_1 + 1,
+                       S->jc_0 - S->ic_0 + 1,
+                       S->nc_ext,
+                       "after row transform");
 
 	if (S->lev_r != 0){
 

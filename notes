@@ -1,0 +1,41 @@
+extract a rectangular region of data file
+tail -n +2 squirrel_v2_inv.data  | cut -d ' ' -f 1-1024 | head -1024
+
+Fastvideo
+http://www.fastcompression.com/solutions/dwt/cuda-dwt.htm
+  .15ms to do a foward/inverse 2D Haar transform (13 GBytes/s)
+    13 GB/s in for .15ms = 2093796 bytes
+    2093796 bytes as:
+      1 byte pixels: 1447x1447
+      4 byte pixels: 723x723
+      8 byte pixels: 512x512
+
+host -> device data bandwidth: 6.1 GB/sec
+  8192x8192 array of floats in 40.6 ms
+
+
+Best time so far:
+Reading collage.data...8192 x 8192
+CPU: 3893.958740 ms
+Time elapsed creating GPU tasks: 0.450717 ms
+Times:
+  Copy data to GPU:      40.741 ms
+  Transform time:        63.451 ms (2 calls)
+  Transpose time:        57.782 ms (2 calls)
+  Copy data from GPU:    40.169 ms
+CUDA: 202.155518 ms
+
+           Time in ms for different image sizes
+BlockSize  256    512    1024   2048    4096    8192
+32         0.167  0.551  2.175  10.509  44.392  178.839
+64         0.128  0.373  1.425   6.894  28.775  115.359
+128        0.112  0.346  1.322   6.354  26.934  110.321
+256        0.137  0.365  1.290   5.256  25.154  107.386
+512        0.214  0.464  1.369   5.076  20.807  100.070
+1024       0.382  0.869  1.977   5.528  20.410  82.583
+
+OpenCV / JavaCV
+  Download OpenCV from http://opencv.org/
+  Download JavaCV from https://github.com/bytedeco/javacv
+
+

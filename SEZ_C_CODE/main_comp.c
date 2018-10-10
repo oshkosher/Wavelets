@@ -71,7 +71,7 @@ int	main()
         //if (( fptr = fopen("out_t.dat","r")) == NULL){
         //if (( fptr = fopen("../TEST12/TT.H@","rl")) == NULL){
         //if (( fptr = fopen("../TEST12/surfzx.H@","rl")) == NULL){
-// if (( fptr = fopen("../TEST12/SourceWave.wi.le.H@","rl")) == NULL){
+        // if (( fptr = fopen("../TEST12/SourceWave.wi.le.H@","rl")) == NULL){
         if (( fptr = fopen("sez.in","rb")) == NULL){
           printf(" ERROR IN FILE OPEN !!! ");
           return 0;

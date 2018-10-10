@@ -16,7 +16,7 @@
   Ed Karrels, June 2014
 */
 
-import java.awt.*;
+import java.awt.Graphics;
 import java.awt.color.*;
 import java.awt.geom.*;
 import java.awt.image.*;
@@ -92,6 +92,8 @@ public class WaveletSampleImage {
     boolean textOutput = false;
     boolean doResize = true;
     float minValue = -.5f, maxValue=.5f;
+    boolean slices = false;
+    List<String> inputFiles = null;
 
     int argNo = 0;
     while (argNo < args.length && args[argNo].charAt(0)=='-') {
@@ -133,6 +135,12 @@ public class WaveletSampleImage {
 	argNo++;
       }
 
+      else if (args[argNo].equals("-slices")) {
+        slices = true;
+        inputFiles = new ArrayList<String>();
+        argNo++;
+      }
+
       else printHelp();
     }
 
@@ -145,9 +153,20 @@ public class WaveletSampleImage {
     // no input file listed
     if (argNo >= args.length) printHelp();
 
-    String inputFile = args[argNo++], outputFile = null;
-    if (argNo < args.length) outputFile = args[argNo++];
+    String inputFile, outputFile = null;
 
+    // with slices, the destination file comes first, then source files
+    if (slices) {
+      outputFile = args[argNo++];
+      while (argNo < args.length) {
+        inputFiles.add(args[argNo++]);
+      }
+      imageSlicesToCubelets(outputFile, inputFiles, doResize);
+      return;
+    } else {
+      inputFile = args[argNo++];
+      if (argNo < args.length) outputFile = args[argNo++];
+    }
 
     String suffix = filenameSuffix(inputFile).toLowerCase();
     boolean sourceIsImage;
@@ -209,6 +228,7 @@ public class WaveletSampleImage {
     System.out.println
       ("\n" +
        "  WaveletSampleImage [opts] <src> [<dest>]\n" +
+       "  WaveletSampleImage [opts] -slices <dest> <src> [<src> ...]\n" +
        "  If src is a jpeg image, convert it to grayscale data, cropped and\n" +
        "    resized so the width and height are equal and a power of two.\n" +
        "  If src is data, convert the float data into a grayscale image\n" +
@@ -229,6 +249,106 @@ public class WaveletSampleImage {
   }
 
 
+  /** Reads an image file. On error, returns null and prints error message. */
+  public static BufferedImage readImage(String filename) {
+    BufferedImage image;
+    try {
+      image = ImageIO.read(new File(filename));
+    } catch (IOException e) {
+      System.err.println("Error reading \"" + filename + "\": " + e);
+      return null;
+    }
+
+    if (image == null) {
+      String[] formats = ImageIO.getReaderFormatNames();
+      System.out.print(filename + " not one of ");
+      for (String s : formats) System.out.print(s + " ");
+      System.out.println();
+      return null;
+    }
+    
+    return image;
+  }
+
+
+  // Resize image to a square power of two
+  public static BufferedImage resizeImage(BufferedImage image) {
+
+    // crop image to be square
+    if (VERBOSE_OUTPUT) {
+      System.out.println("Crop");
+      System.out.flush();
+    }
+    int size = image.getWidth();
+    if (image.getWidth() > image.getHeight()) {
+      size = image.getHeight();
+      int leftCrop = (image.getWidth() - image.getHeight()) / 2;
+
+      image = image.getSubimage(leftCrop, 0, image.getHeight(),
+                                image.getHeight());
+
+    } else if (image.getHeight() > image.getWidth()) {
+      int topCrop = (image.getHeight() - image.getWidth()) / 2;
+      image = image.getSubimage(0, topCrop, image.getWidth(),
+                                image.getWidth());
+    }
+
+    // rescale the image the to next smaller power of 2
+    if (VERBOSE_OUTPUT) {
+      System.out.println("Rescale");
+      System.out.flush();
+    }
+    int newSize = Integer.highestOneBit(size);
+    float scaleFactor = (float)newSize / size;
+    // System.out.printf("Rescale %d to %d: %f\n", size, newSize, scaleFactor);
+
+    if (newSize != size) {
+      AffineTransform rescaleXform = AffineTransform.getScaleInstance
+        (scaleFactor, scaleFactor);
+      AffineTransformOp rescaleOp = new AffineTransformOp
+        (rescaleXform, AffineTransformOp.TYPE_BICUBIC);
+
+      // must match the image type of the input image
+      BufferedImage newImage = new BufferedImage
+        (newSize, newSize, image.getType());
+
+      rescaleOp.filter(image, newImage);
+      image = newImage;
+    }
+
+    return image;
+  }
+
+
+  public static BufferedImage imageToGrayscale(BufferedImage image) {
+    // convert to grayscale
+    if (VERBOSE_OUTPUT) {
+      System.out.println("Convert to grayscale");
+      System.out.flush();
+    }
+    BufferedImage grayImage = new BufferedImage
+      (image.getWidth(), image.getHeight(), BufferedImage.TYPE_BYTE_GRAY);
+    Graphics g = grayImage.getGraphics();
+    g.drawImage(image, 0, 0, null);
+    g.dispose();
+
+    return grayImage;
+  }
+
+
+  public static byte[] imageToBytes(BufferedImage image) {
+    int h = image.getHeight(), w = image.getWidth();
+    byte[] bytes = new byte[h * w];
+    int pos = 0;
+    for (int y=0; y < h; y++) {
+      for (int x=0; x < w; x++) {
+        bytes[pos++] = (byte) (image.getRGB(x, y) & 0xff);
+      }
+    }
+    return bytes;
+  }
+    
+
   /* Reads a JPEG image, convert to grayscale text data. */
   public static void imageToMatrix(String inputFile, String outputFile,
                                    boolean isCubeletOutput, 
@@ -238,82 +358,17 @@ public class WaveletSampleImage {
       System.out.println("Read image");
       System.out.flush();
     }
-    BufferedImage image;
-    try {
-      image = ImageIO.read(new File(inputFile));
-    } catch (IOException e) {
-      System.err.println("Error reading \"" + inputFile + "\": " + e);
-      return;
-    }
 
-    if (image == null) {
-      String[] formats = ImageIO.getReaderFormatNames();
-      System.out.print(inputFile + " not one of ");
-      for (String s : formats) System.out.print(s + " ");
-      System.out.println();
-      return;
-    }
+    BufferedImage image = readImage(inputFile);
+    if (image == null) return;
+
+    if (doResize)
+      image = resizeImage(image);
 
     int outputWidth = image.getWidth();
     int outputHeight = image.getHeight();
 
-    if (doResize) {
-      // crop image to be square
-      if (VERBOSE_OUTPUT) {
-	System.out.println("Crop");
-	System.out.flush();
-      }
-      int size = image.getWidth();
-      if (image.getWidth() > image.getHeight()) {
-	size = image.getHeight();
-	int leftCrop = (image.getWidth() - image.getHeight()) / 2;
-
-	image = image.getSubimage(leftCrop, 0, image.getHeight(),
-				  image.getHeight());
-
-      } else if (image.getHeight() > image.getWidth()) {
-	int topCrop = (image.getHeight() - image.getWidth()) / 2;
-	image = image.getSubimage(0, topCrop, image.getWidth(),
-				  image.getWidth());
-      }
-
-      // rescale the image the to next smaller power of 2
-      if (VERBOSE_OUTPUT) {
-	System.out.println("Rescale");
-	System.out.flush();
-      }
-      int newSize = Integer.highestOneBit(size);
-      float scaleFactor = (float)newSize / size;
-      // System.out.printf("Rescale %d to %d: %f\n", size, newSize, scaleFactor);
-
-      if (newSize != size) {
-	AffineTransform rescaleXform = AffineTransform.getScaleInstance
-	  (scaleFactor, scaleFactor);
-	AffineTransformOp rescaleOp = new AffineTransformOp
-	  (rescaleXform, AffineTransformOp.TYPE_BICUBIC);
-
-	// must match the image type of the input image
-	BufferedImage newImage = new BufferedImage
-	  (newSize, newSize, image.getType());
-
-	rescaleOp.filter(image, newImage);
-	image = newImage;
-      }
-
-      outputWidth = outputHeight = newSize;
-    }
-
-    // convert to grayscale
-    if (VERBOSE_OUTPUT) {
-      System.out.println("Convert to grayscale");
-      System.out.flush();
-    }
-    BufferedImage grayImage = new BufferedImage
-      (outputWidth, outputHeight, BufferedImage.TYPE_BYTE_GRAY);
-    Graphics g = grayImage.getGraphics();
-    g.drawImage(image, 0, 0, null);
-    g.dispose();
-    image = grayImage;
+    image = imageToGrayscale(image);
 
     // enable this to output a grayscale jpg
     /*
@@ -334,13 +389,7 @@ public class WaveletSampleImage {
     byte[] imageDataBytes = null;
 
     if (isCubeletOutput) {
-      imageDataBytes = new byte[outputWidth * outputHeight];
-      int pos = 0;
-      for (int y=0; y < outputHeight; y++) {
-        for (int x=0; x < outputWidth; x++) {
-          imageDataBytes[pos++] = (byte) (image.getRGB(x, y) & 0xff);
-        }
-      }
+      imageDataBytes = imageToBytes(image);
     } else {
       imageData = new float[outputWidth * outputHeight];
 
@@ -661,7 +710,59 @@ public class WaveletSampleImage {
 
     return image;
   }
+
+
+  public static void imageSlicesToCubelets
+    (String outputFile, List<String> inputFiles, boolean doResize) {
+     
+    if (new File(outputFile).exists()) {
+      System.out.println("Error: " + outputFile + " exists.");
+      return;
+    }
+
+    CubeletFile.Writer out = null;
     
+    try {
+      out = new CubeletFile.Writer();
+      out.open(outputFile);
+    } catch (IOException e) {
+      System.err.println("Error opening output cubelet file \"" + outputFile
+                         + "\": " + e);
+      return;
+    }
+
+    int z = -1;
+    for (String inputFile : inputFiles) {
+      z++;
+      BufferedImage image = readImage(inputFile);
+      if (image == null) break;
+      if (doResize) image = resizeImage(image);
+      image = imageToGrayscale(image);
+      byte[] imageData = imageToBytes(image);
+
+      Cubelet cube = new Cubelet();
+      cube.setSize(image.getWidth(), image.getHeight(), 1);
+      cube.setOffset(0, 0, z);
+      cube.datatype = Cubelet.DataType.UINT8;
+      cube.byteData = imageData;
+      try {
+        out.addCubelet(cube);
+      } catch (IOException e) {
+        System.err.println("Error adding cubelet " + cube + ": " + e);
+        break;
+      }
+      System.out.println("Added " + z + ": " + image.getWidth() + "x" +
+                         image.getHeight() + ": " + inputFile);
+      System.out.flush();
+    }
+
+    try {
+      out.close();
+    } catch (IOException e) {
+      System.err.println("Error closing cubelet file: " + e);
+    }
+
+  }
     
 }
     

@@ -29,9 +29,16 @@ class Quantizer {
  public:
   virtual void quantizeRow(const float *in, int *out, int count) = 0;
   virtual void dequantizeRow(const int *in, float *out, int count) = 0;
+
   int quant(float f) {
     int result;
     quantizeRow(&f, &result, 1);
+    return result;
+  }
+
+  float dequant(int i) {
+    float result;
+    dequantizeRow(&i, &result, 1);
     return result;
   }
 
@@ -538,7 +545,7 @@ class QuantCodebook {
       }
     }
 
-    return start - boundaries;
+    return (int)(start - boundaries);
   }
 
 

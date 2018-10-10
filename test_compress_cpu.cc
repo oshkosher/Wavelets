@@ -20,6 +20,7 @@ bool decompressFile(const char *inputFile, const char *outputFile,
 
 void saveBeforeQuantize(Options &opt, CubeFloat *data);
 void saveAfterQuantize(Options &opt, CubeInt *quantizedData);
+void printBins(CubeInt *quantizedData);
 
 void computeLloydQuantization(const float *inputData, int count,
                               int binCount, float minVal, float maxVal,
@@ -106,7 +107,8 @@ bool compressFile(const char *inputFile, const char *outputFile,
     assert(inputData.datatype == WAVELET_DATA_UINT8);
     data.param = param;
     OptimizationData optData((CubeByte*)&inputData, &data, 
-                             sortedAbsData, minVal, maxVal, maxAbsVal);
+                             sortedAbsData, opt.doCompressZeros,
+                             minVal, maxVal, maxAbsVal);
     if (!optimizeParameters(&optData, &param.thresholdValue, &param.binCount))
       return true;
   }
@@ -142,6 +144,7 @@ bool compressFile(const char *inputFile, const char *outputFile,
 
   // quantizedData.print("After quantization");
   saveAfterQuantize(opt, &quantizedData);
+  if (opt.doPrintQuantizationBins) printBins(&quantizedData);
   
   // compute error rates
   if (opt.doComputeError) {
@@ -335,6 +338,43 @@ void saveAfterQuantize(Options &opt, CubeInt *quantizedData) {
       printf("Write intermediate data file \"%s\"\n", filename);
   }
   if (!quantizedData->param.do2DTransform) quantizedData->transpose3dBack();
+}
+
+
+/** Print the quantization bins. */
+void printBins(CubeInt *data) {
+
+  int binCount = data->param.binCount;
+  printf("Boundaries between %d bins:\n", binCount);
+  
+  if (data->param.quantAlg == QUANT_ALG_UNIFORM ||
+      data->param.quantAlg == QUANT_ALG_LOG) {
+
+    Quantizer *q = createQuantizer(data->param);
+    for (int i=0; i < binCount; i++) {
+      printf("%g\n", q->dequant(i));
+      /*
+      printf("Line[{{%g, 0}, {%g, 1}}],\n",
+             q->dequant(i), q->dequant(i));
+      */
+    }
+    delete q;
+
+  } else if (data->param.quantAlg == QUANT_ALG_LLOYD) {
+
+    assert(data->param.binBoundaries.size() == (size_t)binCount-1);
+    for (int i=0; i < binCount-1; i++) {
+      printf("%g\n", data->param.binBoundaries[i]);
+      /*
+      printf("Line[{{%g, 0}, {%g, 1}}],\n",
+             data->param.binBoundaries[i],
+             data->param.binBoundaries[i]);
+      */
+    }
+
+  } else {
+    printf("Unknown quantization algorithm: %d\n", data->param.quantAlg);
+  }
 }
 
 

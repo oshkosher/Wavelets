@@ -1,0 +1,25 @@
+PREREQUISITES:
+---------------
+
+- CUDA
+
+
+FILES:
+-------
+
+- src: Directory with the source code.
+   |
+   |- cuda: CUDA haar wavelets.
+   |
+   |- oct: Cpp code to generate an oct file.
+
+- Makefile: Building script that generates the CUDA shared lib and the oct file.
+
+
+HOW TO USE:
+------------
+
+Runing make, the code insice src/cuda is compiled and linked using NVCC (CUDA compiler) generating the shared library libhaar.so. 
+Then the code inside src/oct is compiled with mkoctfile and linked using libhaar.so generating cudahaar.oct.
+
+To use it, Octave must be able to find libhaar.so, this can be done in many ways but the easiest probably is to copy libhaar.so to /usr/lib.

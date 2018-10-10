@@ -121,11 +121,12 @@ public class CubeletViewer extends JFrame {
 
   static void loadIcons() {
     URL iconURL = CubeletViewer.class.getResource("brightness.png");
-    // System.out.println("icon URL: " + iconURL);
-    ImageIcon originalIcon = new ImageIcon(iconURL);
-    Image tmpImage = originalIcon.getImage().getScaledInstance
-      (BRIGHTNESS_ICON_SIZE, BRIGHTNESS_ICON_SIZE, Image.SCALE_SMOOTH);
-    BRIGHTNESS_ICON = new ImageIcon(tmpImage);
+    if (iconURL != null) {
+      ImageIcon originalIcon = new ImageIcon(iconURL);
+      Image tmpImage = originalIcon.getImage().getScaledInstance
+        (BRIGHTNESS_ICON_SIZE, BRIGHTNESS_ICON_SIZE, Image.SCALE_SMOOTH);
+      BRIGHTNESS_ICON = new ImageIcon(tmpImage);
+    }
     // System.out.println("icon: " + brightnessIcon);
   }
 
@@ -158,7 +159,12 @@ public class CubeletViewer extends JFrame {
         public void stateChanged(ChangeEvent ce) {
           setBrightness(brightnessSlider.getValue());
         }});
-    JLabel brightnessLabel = new JLabel(BRIGHTNESS_ICON);
+    JLabel brightnessLabel;
+    if (BRIGHTNESS_ICON != null) {
+      brightnessLabel = new JLabel(BRIGHTNESS_ICON);
+    } else {
+      brightnessLabel = new JLabel("Brt");
+    }
     brightnessLabel.setAlignmentX(.5f);
 
     Box rightBox = Box.createVerticalBox();

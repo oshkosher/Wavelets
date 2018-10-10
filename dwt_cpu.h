@@ -159,7 +159,7 @@ public:
   HD MirroredArray(int length_, const T *array_)
     : length(length_), array(array_) {}
 
-  HD T operator[] (int offset) const {
+  HD static int getOffset(int offset, int length) {
 
     // negative offset: mirror to a positive
     if (offset < 0) offset = -offset;
@@ -172,11 +172,95 @@ public:
       if (offset < 0) offset = -offset;
     }
 
-    return array[offset];
+    return offset;
+  }
+    
+
+  HD T operator[] (int offset) const {
+    return array[getOffset(offset, length)];
   }
 
   HD void setLength(int len) {length = len;}
 };
+
+
+/* An iterator that walks through a mirrored array
+   for example, if the array is of length 3, and you start walking forward
+   from 0:
+   0, 1, 2, 1, 0, 1, 2, ...
+*/
+class MirroredIterator {
+  int length, pos, direction;
+
+ public:
+  HD void init(int length_, int pos_) {
+    length = length_;
+    pos = pos_;
+
+    // handle pathological cases gracefully
+    if (length <= 1) {
+      length = 1;
+      pos = 0;
+      direction = 0;
+      return;
+    }
+
+    direction = 1;
+
+    // if the position is off to the left, invert it at 0 and the direction
+    if (pos < 0) {
+      pos = -pos;
+      direction = -direction;
+    }
+    
+    while (pos >= length) {
+      // if it's off to the right, invert it at (length-) and the direcion
+      pos = length*2 - pos - 2;
+      if (pos < 0) {
+        // but if that throws it off the left, invert again at 0 but
+        // leave direction unchanged
+        pos = -pos;
+      } else {
+        direction = -direction;
+      }
+    }
+  }
+  
+  HD int get() {return pos;}
+  
+  // postfix increment
+  HD int operator++(int) {
+    int prev = pos;
+    pos += direction;
+
+    // wrap negative values around to large positive values by
+    // casting to usigned
+    if ((unsigned)pos >= (unsigned)length) {
+      direction = -direction;
+      pos += (direction * 2);
+    }
+    
+    return prev;
+  }
+
+  HD static int getOffset(int offset, int length) {
+
+    // negative offset: mirror to a positive
+    if (offset < 0) offset = -offset;
+
+    // past the end: fold it back, repeat if necessary
+    // try using modulo, see if it speeds this up
+    while (offset >= length) {
+      offset = length*2 - offset - 2;
+
+      if (offset < 0) offset = -offset;
+    }
+
+    return offset;
+  }
+
+};
+
 
 
 // Like MirroredArray, but simpler. Ask for an invalid index and you get 0.

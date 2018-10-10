@@ -9,8 +9,8 @@
 #define QUANTIZE_BLOCK_SIZE 1024
 #define QUANTIZE_BLOCK_COUNT 64
 
-#define MAX_CODEBOOK_SIZE 2048
-
+// Using constant memory for codebook quant and deqaunt made it slower
+// #define MAX_CODEBOOK_SIZE (1024 * 8)
 // __constant__ float constCodebookArray[MAX_CODEBOOK_SIZE];
 
 struct QuantLogFunctor {
@@ -74,21 +74,25 @@ struct QuantCodebookFunctor {
   const float *boundaries_dev;
 
   static float *copyVectorToGPU(const vector<float> &v) {
-    float *v_dev;
+    float *v_dev = NULL;
     size_t bytes = v.size()*sizeof(float);
+    // CUCHECK(cudaMemcpyToSymbol(constCodebookArray, v.data(), bytes, 0, cudaMemcpyHostToDevice));
+
     CUCHECK(cudaMalloc((void**)&v_dev, bytes));
     CUCHECK(cudaMemcpy(v_dev, v.data(), bytes, cudaMemcpyHostToDevice));
+
     return v_dev;
   }
 
   __host__ __device__ QuantCodebookFunctor(int boundaryCount_,
-                                          const float *boundaries_dev_) {
+                                           const float *boundaries_dev_) {
     boundaryCount = boundaryCount_;
     boundaries_dev = boundaries_dev_;
   }
 
-  __host__ __device__ int operator() (float x) const {
+  __device__ int operator() (float x) const {
     return QuantCodebook::quant(x, boundaryCount, boundaries_dev);
+    // return QuantCodebook::quant(x, boundaryCount, constCodebookArray);
   }
 };
 
@@ -103,12 +107,13 @@ struct DequantCodebookFunctor {
     binValues = binValues_;
   }
 
-  __host__ __device__ float operator() (int x) const {
+  __device__ float operator() (int x) const {
     unsigned ux = x;
     if (ux >= binCount) {
       return 0.0f;
     } else {
       return binValues[ux];
+      // return constCodebookArray[ux];
     }
   }
 };

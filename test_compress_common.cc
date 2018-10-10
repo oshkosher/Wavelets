@@ -28,12 +28,6 @@ using namespace scu_wavelet;
 // global variable that disables status output
 bool QUIET = false;
 
-// Read&write just the data part of the file to&from f.intData
-// using Huffman encoding. If binCounts is not NULL, use it for the
-// frequency counts.
-static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet,
-                        int *binCounts = NULL, int zeroBin = -1);
-
 static bool writeQuantDataHuffman(Huffman &huff, vector<uint32_t> *outData,
                                   const CubeInt *data, bool quiet);
 
@@ -55,6 +49,7 @@ void printHelp() {
          "           this will automatically find the threshold and bin count\n"
          "    -bq <filename> : before quantizing, save a copy of the data this file\n"
          "    -aq <filename> : after quantizing, save a copy of the data this file\n"
+         "    -pb : after quantizing, print bin thresholds\n"
          "    -enc : print the bit encoding of each value\n"
          "    -err : compute error metrics (slow, disabled by default)\n"
          "    -2d : rather than 3d transform, do 2d transform at each layer\n"
@@ -132,6 +127,10 @@ bool parseOptions(int argc, char **argv, Options &opt, int &nextArg) {
       opt.saveAfterQuantizingFilename = argv[nextArg];
     }
 
+    else if (!strcmp(arg, "-pb")) {
+      opt.doPrintQuantizationBins = true;
+    }
+
     else if (!strcmp(arg, "-qalg")) {
       if (++nextArg >= argc) printHelp();
       opt.param.quantAlg = quantAlgName2Id(argv[nextArg]);
@@ -204,7 +203,7 @@ bool writeQuantData(CubeletStreamWriter &cubeletStream,
 
   // initialize the huffman encoding
   Huffman huff;
-  initHuffman(huff, cube, opt.quiet, binCounts, zeroBin);
+  initHuffman(huff, cube, binCounts, zeroBin);
   if (opt.printHuffmanEncoding) huff.printEncoding();
 
   vector<uint32_t> encodedData;
@@ -899,31 +898,25 @@ bool readQuantData(CubeletStreamReader &cubeletStream, CubeInt *cube) {
     Build the histogram for huffman coding, looking for strings
     of repeats of 'dupValue' at the same time.
  */
-class HuffmanHistogram {
-public:
-  Huffman &huff;
-  int dupValue, dupStringLength;
+void huffScan(Huffman &huff, int dupValue, int count, const int *data) {
   
+  int dupStringLength = 0;
 
-  HuffmanHistogram(Huffman &h, int dupValue_ = -1)
-    : huff(h), dupValue(dupValue_), dupStringLength(0) {}
-
-  // this will be called for every element
-  void visit(int value) {
-    if (value == dupValue) {
+  for (int i=0; i < count; i++) {
+    if (data[i] == dupValue) {
       dupStringLength++;
     } else {
-      flush();
-      huff.increment(value);
+      if (dupStringLength > 0) {
+        huff.addDupString(dupStringLength);
+        dupStringLength = 0;
+      }
+      huff.increment(data[i]);
     }
   }
 
-  // this will be called after all the last call to value()
-  void flush() {
-    if (dupStringLength > 0) {
-      huff.addDupString(dupStringLength);
-      dupStringLength = 0;
-    }
+  if (dupStringLength > 0) {
+    huff.addDupString(dupStringLength);
+    dupStringLength = 0;
   }
 };
 
@@ -931,61 +924,61 @@ public:
 /** 
     Don't build the Huffman histogram, just look for repeats of 'dupValue'.
  */
-class HuffmanDupStrings {
-public:
-  Huffman &huff;
-  int dupValue, dupStringLength;
+void huffScanDupsOnly(Huffman &huff, int dupValue, int count, const int *data) {
 
-  HuffmanDupStrings(Huffman &h, int dupValue_)
-    : huff(h), dupValue(dupValue_), dupStringLength(0) {
-    assert(dupValue >= 0);
-    // reset the current count for dupValue; we'll recompute it
-    int dupCount = huff.getCount(dupValue);
-    huff.update(dupValue, -dupCount);
-  }
-  
-  void visit(int value) {
-    if (value == dupValue) {
+  // reset the current count for dupValue; we'll recompute it
+  int dupCount = huff.getCount(dupValue);
+  huff.update(dupValue, -dupCount);
+
+  int dupStringLength = 0;
+
+  for (int i=0; i < count; i++) {
+    if (data[i] == dupValue) {
       dupStringLength++;
     } else {
-      flush();
+      if (dupStringLength > 0) {
+        huff.addDupString(dupStringLength);
+        dupStringLength = 0;
+      }
     }
   }
 
-  void flush() {
-    if (dupStringLength > 0) {
-      huff.addDupString(dupStringLength);
-      dupStringLength = 0;
-    }
+  if (dupStringLength > 0) {
+    huff.addDupString(dupStringLength);
+    dupStringLength = 0;
   }
 };
 
 
-static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet,
-                        int *binCounts, int zeroBin) {
+void initHuffman(Huffman &huff, const CubeInt *cube,
+                 int *freqCounts, int zeroBin) {
+  initHuffman(huff, cube->size.count(), cube->pointer(0,0,0), 
+              cube->param.binCount, freqCounts, zeroBin);
+}
+
+
+void initHuffman(Huffman &huff, int count, const int *data,
+                 int binCount, int *freqCounts, int zeroBin) {
 
   double startTime = NixTimer::time();
 
-  if (binCounts) {
-    huff.init(binCounts, cube->param.binCount);
+  if (freqCounts) {
+    huff.init(freqCounts, binCount);
 
     // given the binCount but not dup strings, compute the dup strings stats
     if (zeroBin >= 0) {
+      assert(data);
       huff.setDuplicateValue(zeroBin);
-      HuffmanDupStrings init(huff, zeroBin);
-      cube->visit<HuffmanDupStrings>(init);
-      init.flush();
+      huffScanDupsOnly(huff, zeroBin, count, data);
     }
 
   } else {
     // number of possible values
-    huff.init(cube->param.binCount);
+    huff.init(binCount);
     if (zeroBin >= 0) huff.setDuplicateValue(zeroBin);
 
     // train the huffman encoder
-    HuffmanHistogram init(huff, zeroBin);
-    cube->visit<HuffmanHistogram>(init);
-    init.flush();
+    huffScan(huff, zeroBin, count, data);
   }
 
   double summarizeTime = 1000*(NixTimer::time() - startTime);
@@ -993,7 +986,7 @@ static void initHuffman(Huffman &huff, const CubeInt *cube, bool quiet,
   startTime = NixTimer::time();
   huff.computeHuffmanCoding();
   double buildEncodingTime = 1000*(NixTimer::time() - startTime);
-  if (!quiet) {
+  if (!QUIET) {
     printf("Huffman summarize frequencies %.3f ms, build encoding %.3f ms\n",
 	   summarizeTime, buildEncodingTime);
     fflush(stdout);

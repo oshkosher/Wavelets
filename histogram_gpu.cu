@@ -3,6 +3,11 @@
 #include "test_compress_common.h"
 #include "cuda_timer.h"
 
+#include <thrust/device_ptr.h>
+#include <thrust/sort.h>
+#include <thrust/reduce.h>
+#include <thrust/iterator/constant_iterator.h>
+
 #define HISTOGRAM_CACHE_SIZE 256
 
 // #define DO_DETAILED_CHECKS
@@ -172,3 +177,62 @@ int *computeFrequenciesGPU(int binCount, const int *data_dev, int count,
   }
 
 }
+
+
+/** Try using Thrust - sort/reduce by key
+ */
+int *computeFrequenciesGPU_thrust(int binCount, const int *data_dev, int count,
+                           int zeroBin, bool onDevice) {
+
+  CudaTimer copyTimer("D2D copy"), sortTimer("Sort quantized"),
+    reduceTimer("Reduce");
+  int *sortedCopy_dev, *freqCounts_dev, *binValues_dev;
+  CUCHECK(cudaMalloc((void**)&sortedCopy_dev, count * sizeof(int)));
+  CUCHECK(cudaMalloc((void**)&binValues_dev, count * sizeof(int)));
+  CUCHECK(cudaMalloc((void**)&freqCounts_dev, count * sizeof(int)));
+
+  copyTimer.start();
+  CUCHECK(cudaMemcpy(sortedCopy_dev, data_dev, count*sizeof(int),
+    cudaMemcpyDeviceToDevice));
+  copyTimer.end();
+  
+  thrust::device_ptr<int> sortedStart(sortedCopy_dev),
+    sortedEnd(sortedCopy_dev + count),
+    binValuesStart(binValues_dev),
+    freqCountsStart(freqCounts_dev);
+  thrust::pair<thrust::device_ptr<int>,thrust::device_ptr<int>> ends;
+
+  sortTimer.start();
+  thrust::sort(sortedStart, sortedEnd);
+  sortTimer.end();
+  sortTimer.sync();
+  sortTimer.print();
+  // fprintf(stderr, "Sort timer: %.3f ms\n", sortTimer.time());
+
+  reduceTimer.start();
+  ends = thrust::reduce_by_key(sortedStart, sortedEnd,
+                               thrust::make_constant_iterator(1),
+                               binValuesStart, freqCountsStart);
+  printf("Lengths %d, %d\n",
+          (int)(ends.first - binValuesStart),
+          (int)(ends.second - freqCountsStart));
+                
+  reduceTimer.end();
+  reduceTimer.sync();
+  reduceTimer.print();
+  
+  CUCHECK(cudaFree(sortedCopy_dev));
+  CUCHECK(cudaFree(binValues_dev));
+  
+  if (onDevice) {
+    return freqCounts_dev;
+  } else {
+    int *freqCounts = new int[binCount];
+    CUCHECK(cudaMemcpy(freqCounts, freqCounts_dev, binCount*sizeof(int),
+                       cudaMemcpyDeviceToHost));
+    CUCHECK(cudaFree(freqCounts_dev));
+    return freqCounts;
+  }
+}
+
+  
