@@ -56,6 +56,77 @@ float haar_2d_cuda_internal
  bool useCombinedTranspose);
 
 
+void printArray(const float *array, int width, int height, int depth, 
+                const char *name) {
+  if (name) printf("%s\n", name);
+  for (int level=0; level < depth; level++) {
+    printf("z=%d\n", level);
+    for (int row=0; row < height; row++) {
+      for (int col=0; col < width; col++) {
+        printf("%8.4f ", array[(level*height + row)*width + col]);
+      }
+      putchar('\n');
+    }
+    putchar('\n');
+  }
+  putchar('\n');
+}
+
+
+void printArray(const int *array, int width, int height, int depth, 
+                const char *name) {
+  if (name) printf("%s\n", name);
+  for (int level=0; level < depth; level++) {
+    printf("z=%d\n", level);
+    for (int row=0; row < height; row++) {
+      for (int col=0; col < width; col++) {
+        printf("%5d ", array[(level*height + row)*width + col]);
+      }
+      putchar('\n');
+    }
+    putchar('\n');
+  }
+  putchar('\n');
+}
+
+
+void printDeviceArray(const float *array_dev, scu_wavelet::int3 size,
+                      const char *name) {
+  printDeviceArray(array_dev, size.x, size.y, size.z, name);
+}
+
+void printDeviceArray(const float *array_dev, int width, int height, int depth, 
+                      const char *name) {
+
+  float *array = new float[width*height*depth];
+  CUCHECK(cudaMemcpy(array, array_dev, sizeof(float)*width*height*depth,
+                     cudaMemcpyDeviceToHost));
+
+  printArray(array, width, height, depth, name);
+
+  delete[] array;
+}
+
+void printDeviceArray(const int *array_dev, scu_wavelet::int3 size,
+                      const char *name) {
+  printDeviceArray(array_dev, size.x, size.y, size.z, name);
+}
+
+void printDeviceArray(const int *array_dev, int width, int height, int depth, 
+                      const char *name) {
+
+  int *array = new int[width*height*depth];
+  CUCHECK(cudaMemcpy(array, array_dev, sizeof(int)*width*height*depth,
+                     cudaMemcpyDeviceToHost));
+
+  printArray(array, width, height, depth, name);
+
+  delete[] array;
+}
+
+
+
+
 /**
    Perform one pass of the Haar transform on the first 'length'
    elements of inputRow using outputRow as temp space.

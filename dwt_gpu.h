@@ -4,6 +4,21 @@
 #include "cuda.h"
 #include "cuda_timer.h"
 
+// debug output
+void printArray(const float *array, int width, int height, int depth,
+                const char *name = NULL);
+void printArray(const int *array, int width, int height, int depth,
+                const char *name = NULL);
+void printDeviceArray(const float *array_dev, int width, int height, int depth,
+                      const char *name = NULL);
+void printDeviceArray(const float *array_dev, scu_wavelet::int3 size,
+                      const char *name = NULL);
+void printDeviceArray(const int *array_dev, int width, int height, int depth,
+                      const char *name = NULL);
+void printDeviceArray(const int *array_dev, scu_wavelet::int3 size,
+                      const char *name = NULL);
+
+
 /*
   CUDA implementation of Haar discrete wavelet transform.
 

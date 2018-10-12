@@ -166,7 +166,7 @@ endif
 LLOYD_INC=-IOctave/LloydsAlgorithm/src/c++
 LLOYD_GPU_INC=-ICUDA/lloyds
 
-NVCC = c:/CUDA/v7.0/bin/nvcc $(NVCC_OPT) $(NVCC_ARCH) $(NVCC_ARCH_SIZE) $(NVCC_COMPILER_BINDIR) $(CC_OPT_FLAG) $(LLOYD_GPU_INC)
+NVCC = nvcc $(NVCC_OPT) $(NVCC_ARCH) $(NVCC_ARCH_SIZE) $(NVCC_COMPILER_BINDIR) $(CC_OPT_FLAG) $(LLOYD_GPU_INC)
 
 %.$(OBJ_EXT): %.cc
 	$(NVCC) -c $<
